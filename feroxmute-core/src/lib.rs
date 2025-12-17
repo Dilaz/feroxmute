@@ -4,5 +4,6 @@ pub mod config;
 pub mod docker;
 pub mod error;
 pub mod state;
+pub mod tools;
 
 pub use error::{Error, Result};
