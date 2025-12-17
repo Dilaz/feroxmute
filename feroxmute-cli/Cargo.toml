@@ -1,0 +1,20 @@
+[package]
+name = "feroxmute-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "feroxmute"
+path = "src/main.rs"
+
+[dependencies]
+feroxmute-core = { path = "../feroxmute-core" }
+tokio.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+miette = { workspace = true, features = ["fancy"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+clap.workspace = true

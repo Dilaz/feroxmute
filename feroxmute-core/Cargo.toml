@@ -1,0 +1,25 @@
+[package]
+name = "feroxmute-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+miette.workspace = true
+tracing.workspace = true
+rig-core.workspace = true
+rusqlite.workspace = true
+bollard.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3"
