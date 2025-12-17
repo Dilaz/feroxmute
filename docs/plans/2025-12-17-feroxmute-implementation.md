@@ -2807,32 +2807,613 @@ git commit -m "feat(core): add tool execution and registry"
 
 ---
 
+## Phase 4: LLM Provider Integration
+
+### Task 4.1: Provider Abstraction Trait
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/mod.rs`
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/traits.rs`
+- Modify: `/home/dilaz/kood/feroxmute/feroxmute-core/src/lib.rs`
+
+**Step 1: Create providers module**
+
+```bash
+mkdir -p feroxmute-core/src/providers
+```
+
+**Step 2: Create traits.rs**
+
+```rust
+//! Provider trait definitions
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+use crate::state::MetricsTracker;
+use crate::Result;
+
+/// A message in a conversation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Message {
+    pub role: Role,
+    pub content: String,
+}
+
+/// Message role
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    System,
+    User,
+    Assistant,
+}
+
+/// Tool definition for function calling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+/// A tool call made by the model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+/// Completion request
+#[derive(Debug, Clone)]
+pub struct CompletionRequest {
+    pub messages: Vec<Message>,
+    pub system: Option<String>,
+    pub tools: Vec<ToolDefinition>,
+    pub max_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+}
+
+impl CompletionRequest {
+    pub fn new(messages: Vec<Message>) -> Self {
+        Self {
+            messages,
+            system: None,
+            tools: vec![],
+            max_tokens: Some(4096),
+            temperature: Some(0.7),
+        }
+    }
+
+    pub fn with_system(mut self, system: impl Into<String>) -> Self {
+        self.system = Some(system.into());
+        self
+    }
+
+    pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
+        self.tools = tools;
+        self
+    }
+}
+
+/// Completion response
+#[derive(Debug, Clone)]
+pub struct CompletionResponse {
+    pub content: Option<String>,
+    pub tool_calls: Vec<ToolCall>,
+    pub stop_reason: StopReason,
+    pub usage: TokenUsage,
+}
+
+/// Stop reason for completion
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopReason {
+    EndTurn,
+    ToolUse,
+    MaxTokens,
+}
+
+/// Token usage for a completion
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+}
+
+/// LLM Provider trait
+#[async_trait]
+pub trait LlmProvider: Send + Sync {
+    fn name(&self) -> &str;
+    fn supports_tools(&self) -> bool;
+    async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse>;
+    fn metrics(&self) -> &MetricsTracker;
+}
+```
+
+**Step 3: Create providers/mod.rs**
+
+```rust
+//! LLM provider integration
+
+pub mod traits;
+
+pub use traits::{
+    CompletionRequest, CompletionResponse, LlmProvider, Message, Role, StopReason,
+    ToolCall, ToolDefinition, TokenUsage,
+};
+```
+
+**Step 4: Update lib.rs to add providers module**
+
+**Step 5: Verify it compiles**
+
+Run: `cargo build -p feroxmute-core`
+
+**Step 6: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add LLM provider trait abstraction"
+```
+
+---
+
+### Task 4.2: Anthropic Provider (via Rig.rs)
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/anthropic.rs`
+- Modify: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/mod.rs`
+
+**Step 1: Create anthropic.rs with rig-core integration**
+
+- Use `rig::providers::anthropic::ClientBuilder`
+- Implement `LlmProvider` trait
+- Handle tool calling responses
+- Track token usage via MetricsTracker
+
+**Step 2: Update providers/mod.rs to export AnthropicProvider**
+
+**Step 3: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add Anthropic provider via rig-core"
+```
+
+---
+
+### Task 4.3: OpenAI Provider (via Rig.rs)
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/openai.rs`
+- Modify: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/mod.rs`
+
+**Step 1: Create openai.rs**
+
+- Use `rig::providers::openai::ClientBuilder`
+- Support custom base_url for LiteLLM proxy
+- Implement `LlmProvider` trait
+
+**Step 2: Update mod.rs to export OpenAiProvider**
+
+**Step 3: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add OpenAI provider via rig-core"
+```
+
+---
+
+### Task 4.4: Provider Factory
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/factory.rs`
+- Modify: `/home/dilaz/kood/feroxmute/feroxmute-core/src/providers/mod.rs`
+
+**Step 1: Create factory.rs**
+
+```rust
+//! Provider factory
+
+use std::sync::Arc;
+use crate::config::{ProviderConfig, ProviderName};
+use crate::state::MetricsTracker;
+use crate::Result;
+use super::LlmProvider;
+
+pub fn create_provider(
+    config: &ProviderConfig,
+    metrics: MetricsTracker,
+) -> Result<Arc<dyn LlmProvider>> {
+    match config.name {
+        ProviderName::Anthropic => { /* create AnthropicProvider */ }
+        ProviderName::OpenAi => { /* create OpenAiProvider */ }
+        ProviderName::LiteLlm => { /* use OpenAI with custom base_url */ }
+        ProviderName::Cohere => { /* not implemented */ }
+    }
+}
+```
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add provider factory"
+```
+
+---
+
+## Phase 5: Agent Framework
+
+### Task 5.1: Agent Trait and Types
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/mod.rs`
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/traits.rs`
+- Modify: `/home/dilaz/kood/feroxmute/feroxmute-core/src/lib.rs`
+
+**Step 1: Create agents module with core types**
+
+```rust
+//! Agent trait definitions
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentStatus { Idle, Planning, Running, Waiting, Completed, Failed }
+
+pub struct AgentTask {
+    pub id: String,
+    pub agent: String,
+    pub description: String,
+    pub status: TaskStatus,
+    // ...
+}
+
+pub struct AgentContext<'a> {
+    pub provider: &'a dyn LlmProvider,
+    pub executor: &'a ToolExecutor,
+    pub conn: &'a Connection,
+}
+
+#[async_trait]
+pub trait Agent: Send + Sync {
+    fn name(&self) -> &str;
+    fn status(&self) -> AgentStatus;
+    fn system_prompt(&self) -> &str;
+    fn tools(&self) -> Vec<ToolDefinition>;
+    async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String>;
+    fn thinking(&self) -> Option<&str> { None }
+}
+```
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add agent trait and types"
+```
+
+---
+
+### Task 5.2: Agent Prompts
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/prompts.rs`
+
+**Step 1: Create system prompts for each agent**
+
+- `ORCHESTRATOR_PROMPT`: Plans phases, delegates tasks, tracks progress
+- `RECON_AGENT_PROMPT`: Asset discovery, subdomain enum, port scanning
+- `WEB_SCANNER_PROMPT`: Vulnerability detection, nuclei, fuzzing
+- `EXPLOIT_PROMPT`: PoC validation, safe exploitation
+- `REPORT_PROMPT`: Finding aggregation, report generation
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add agent system prompts"
+```
+
+---
+
+### Task 5.3: Recon Agent
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/recon.rs`
+
+**Step 1: Implement ReconAgent**
+
+- Tools: subfinder, naabu, httpx, katana, dnsx, tlsx, asnmap
+- Conversation loop with tool execution
+- Store thinking for TUI display
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add recon agent"
+```
+
+---
+
+### Task 5.4: Web Scanner Agent
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/scanner.rs`
+
+**Step 1: Implement ScannerAgent**
+
+- Tools: nuclei, feroxbuster, ffuf, report_vulnerability
+- Parse nuclei JSON output
+- Create Vulnerability records
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add web scanner agent"
+```
+
+---
+
+### Task 5.5: Orchestrator Agent
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/orchestrator.rs`
+
+**Step 1: Implement OrchestratorAgent**
+
+- Manages engagement phases (Recon → Scanning → Exploit → Report)
+- Delegates to specialist agents
+- Tools: delegate_recon, delegate_scanner, advance_phase, get_status
+
+**Step 2: Update agents/mod.rs to export all agents**
+
+**Step 3: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add orchestrator agent"
+```
+
+---
+
+## Phase 6: Terminal UI (TUI)
+
+### Task 6.1: TUI Application State
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/tui/mod.rs`
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/tui/app.rs`
+
+**Step 1: Create App struct**
+
+```rust
+pub enum View { Dashboard, AgentDetail(AgentView), Logs }
+pub enum AgentView { Orchestrator, Recon, Scanner, Exploit, Report }
+
+pub struct App {
+    pub view: View,
+    pub should_quit: bool,
+    pub show_thinking: bool,
+    pub mouse_enabled: bool,
+    pub target: String,
+    pub session_id: String,
+    pub phase: Phase,
+    pub elapsed: Duration,
+    pub metrics: Metrics,
+    pub vuln_counts: VulnCounts,
+    pub agent_statuses: AgentStatuses,
+    pub feed: Vec<FeedEntry>,
+}
+```
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(cli): add TUI application state"
+```
+
+---
+
+### Task 6.2: Event Handling
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/tui/events.rs`
+
+**Step 1: Implement keyboard and mouse handlers**
+
+- q/Ctrl+C: Quit
+- h/Home/Esc: Dashboard
+- 1-4: Agent detail views
+- t: Toggle thinking
+- m: Toggle mouse
+- j/k/arrows: Scroll
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(cli): add TUI event handling"
+```
+
+---
+
+### Task 6.3: Dashboard Widget
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/tui/widgets/dashboard.rs`
+
+**Step 1: Implement dashboard layout**
+
+- Header: target, session, phase, elapsed
+- Metrics: tool calls, tokens, vulnerabilities
+- Agents table: status indicators, findings count
+- Live feed: scrollable log entries
+- Footer: keybindings
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(cli): add dashboard widget"
+```
+
+---
+
+### Task 6.4: Agent Detail Widget
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/tui/widgets/agent_detail.rs`
+
+**Step 1: Implement agent detail view**
+
+- Header with agent name and status
+- Tool output area
+- Thinking panel (toggleable)
+- Footer with keybindings
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(cli): add agent detail widget"
+```
+
+---
+
+### Task 6.5: TUI Runner
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/tui/runner.rs`
+- Modify: `/home/dilaz/kood/feroxmute/feroxmute-cli/src/main.rs`
+
+**Step 1: Implement main TUI loop**
+
+```rust
+pub fn run(app: &mut App) -> io::Result<()> {
+    enable_raw_mode()?;
+    execute!(stdout, EnterAlternateScreen)?;
+    let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+
+    loop {
+        terminal.draw(|f| render(f, app))?;
+        if let Some(event) = poll_event(Duration::from_millis(100))? {
+            handle_event(event, app);
+        }
+        if app.should_quit { break; }
+    }
+
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    Ok(())
+}
+```
+
+**Step 2: Update main.rs to launch TUI**
+
+**Step 3: Commit**
+
+```bash
+git add -A && git commit -m "feat(cli): add TUI runner and integrate with main"
+```
+
+---
+
+## Phase 7: Report Generation
+
+### Task 7.1: Report Models
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/reports/mod.rs`
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/reports/models.rs`
+
+**Step 1: Create report data structures**
+
+```rust
+pub struct Report {
+    pub metadata: ReportMetadata,
+    pub metrics: ReportMetrics,
+    pub summary: ReportSummary,
+    pub findings: Vec<Finding>,
+}
+
+pub struct ReportSummary {
+    pub total_vulnerabilities: u32,
+    pub by_severity: SeverityCounts,
+    pub by_status: VulnCounts,
+    pub risk_rating: RiskRating,
+    pub key_findings: Vec<String>,
+}
+
+pub enum RiskRating { Critical, High, Medium, Low, Minimal }
+```
+
+**Step 2: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add report data models"
+```
+
+---
+
+### Task 7.2: Report Generator
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/reports/generator.rs`
+
+**Step 1: Implement generate_report function**
+
+- Load vulnerabilities, hosts, metrics from database
+- Calculate severity counts and risk rating
+- Build Report struct
+
+**Step 2: Implement export_json**
+
+```rust
+pub fn export_json(report: &Report, path: impl AsRef<Path>) -> Result<()> {
+    let json = serde_json::to_string_pretty(report)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+```
+
+**Step 3: Implement export_markdown**
+
+- Executive summary
+- Vulnerability table
+- Detailed findings with evidence
+- Remediation recommendations
+
+**Step 4: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add report generator with JSON/Markdown export"
+```
+
+---
+
+### Task 7.3: Report Agent
+
+**Files:**
+- Create: `/home/dilaz/kood/feroxmute/feroxmute-core/src/agents/report.rs`
+
+**Step 1: Implement ReportAgent**
+
+- Tools: generate_report, export_json, export_markdown
+- Orchestrator delegates when engagement complete
+
+**Step 2: Update agents/mod.rs to export ReportAgent
+
+**Step 3: Commit**
+
+```bash
+git add -A && git commit -m "feat(core): add report agent"
+```
+
+---
+
 ## Summary
 
-This implementation plan covers the foundation of feroxmute:
+**Phase 1: Project Setup** (5 tasks) ✅ Completed
+**Phase 2: State Management** (4 tasks) ✅ Completed
+**Phase 3: Docker Integration** (2 tasks) ✅ Completed
+**Phase 4: LLM Provider Integration** (4 tasks)
+**Phase 5: Agent Framework** (5 tasks)
+**Phase 6: Terminal UI** (5 tasks)
+**Phase 7: Report Generation** (3 tasks)
 
-**Phase 1: Project Setup**
-- Workspace structure with core and CLI crates
-- Error types with miette diagnostics
-- Configuration parsing
-- CLI argument handling
-- Docker configuration files
-
-**Phase 2: State Management**
-- SQLite schema and migrations
-- Session management (create/resume)
-- Data models (hosts, ports, vulnerabilities)
-- Metrics tracking
-
-**Phase 3: Docker Integration**
-- Container management with bollard
-- Tool execution within container
-- Tool registry
-
-**Remaining phases to plan:**
-- Phase 4: LLM Provider Integration (Rig.rs)
-- Phase 5: Agent Framework
-- Phase 6: TUI (ratatui)
-- Phase 7: Report Generation
-
-Would you like me to continue with the remaining phases, or shall we start implementing these first three phases?
+**Total tasks:** 28
+**Completed:** 11
+**Remaining:** 17
