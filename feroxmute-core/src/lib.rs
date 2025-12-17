@@ -3,6 +3,7 @@
 pub mod config;
 pub mod docker;
 pub mod error;
+pub mod providers;
 pub mod state;
 pub mod tools;
 
