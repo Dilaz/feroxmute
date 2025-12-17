@@ -27,7 +27,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # LLM
-rig-core = "0.6"
+rig-core = "0.27"
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
