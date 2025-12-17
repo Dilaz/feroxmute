@@ -1,0 +1,35 @@
+services:
+  kali:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: feroxmute-kali
+    volumes:
+      - ../sessions:/root/.feroxmute/sessions
+      - ./workdir:/feroxmute/workdir
+    networks:
+      - feroxmute
+    # Allow network access for scanning
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - seccomp:unconfined
+
+  # Optional LiteLLM sidecar - only starts with --profile litellm
+  litellm:
+    profiles: ["litellm"]
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: feroxmute-litellm
+    ports:
+      - "4000:4000"
+    environment:
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
+    networks:
+      - feroxmute
+    command: --model gpt-4o --model claude-sonnet-4-20250514
+
+networks:
+  feroxmute:
+    driver: bridge
