@@ -4,6 +4,8 @@ mod tui;
 use anyhow::Result;
 use args::Args;
 use clap::Parser;
+use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
+use std::io::{self, Write};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
@@ -35,16 +37,107 @@ fn main() -> Result<()> {
     }
 
     if !args.target.is_empty() {
-        // Use the first target for now (multi-target support will be enhanced later)
-        let target = &args.target[0];
+        // Parse all targets into a TargetCollection
+        let mut targets = TargetCollection::from_strings(&args.target)?;
+
+        // If --source is explicitly provided, link it to the primary web target
+        if let Some(ref source_path) = args.source {
+            let source_str = source_path.to_string_lossy().to_string();
+            let web_raw = targets.web_targets().first().map(|t| t.raw.clone());
+            if let Some(web_target_raw) = web_raw {
+                let linked = targets.link_source_to_web(&source_str, &web_target_raw);
+                if linked {
+                    tracing::info!(
+                        "Explicitly linked source {} to {}",
+                        source_str,
+                        web_target_raw
+                    );
+                } else {
+                    tracing::warn!("Failed to link source {} to {}", source_str, web_target_raw);
+                }
+            } else {
+                tracing::warn!("--source provided but no web target found");
+            }
+        }
+
+        // If not --separate, run relationship detection
+        if !args.separate && !targets.standalone_sources.is_empty() {
+            let hints = RelationshipDetector::detect(&targets);
+
+            for hint in hints {
+                if hint.confidence >= 0.5 {
+                    // Auto-link high confidence matches
+                    targets.link_source_to_web(&hint.source_raw, &hint.web_raw);
+                    tracing::info!(
+                        "Auto-linked {} to {} (confidence: {:.2}, reason: {})",
+                        hint.source_raw,
+                        hint.web_raw,
+                        hint.confidence,
+                        hint.reason
+                    );
+                } else if hint.confidence >= 0.3 {
+                    // For medium confidence, ask user
+                    println!("\nDetected potential relationship:");
+                    println!("  Source: {}", hint.source_raw);
+                    println!("  Web target: {}", hint.web_raw);
+                    println!("  Confidence: {:.2}", hint.confidence);
+                    println!("  Reason: {}", hint.reason);
+                    print!("Link them? [Y/n]: ");
+                    io::stdout().flush()?;
+
+                    let mut response = String::new();
+                    io::stdin().read_line(&mut response)?;
+                    let response = response.trim().to_lowercase();
+
+                    if response.is_empty() || response == "y" || response == "yes" {
+                        targets.link_source_to_web(&hint.source_raw, &hint.web_raw);
+                        tracing::info!(
+                            "User confirmed linking {} to {}",
+                            hint.source_raw,
+                            hint.web_raw
+                        );
+                    } else {
+                        tracing::info!(
+                            "User declined linking {} to {}",
+                            hint.source_raw,
+                            hint.web_raw
+                        );
+                    }
+                } else {
+                    // Low confidence - just log for information
+                    tracing::debug!(
+                        "Low confidence relationship hint: {} -> {} (confidence: {:.2})",
+                        hint.source_raw,
+                        hint.web_raw,
+                        hint.confidence
+                    );
+                }
+            }
+        }
+
+        // Use the first web target for now (full multi-target support in orchestrator)
+        let target = if let Some(web_target) = targets.web_targets().first() {
+            match &web_target.target_type {
+                feroxmute_core::targets::TargetType::Web { url } => url.clone(),
+                _ => args.target[0].clone(),
+            }
+        } else {
+            // No web targets, might be SAST-only
+            if args.sast_only && !targets.standalone_sources.is_empty() {
+                "sast-only".to_string()
+            } else {
+                println!("No web targets found. Use --sast-only for source code analysis only.");
+                return Ok(());
+            }
+        };
 
         // Create session ID
         let session_id = Uuid::new_v4().to_string()[..8].to_string();
 
         // Create TUI app
-        let mut app = tui::App::new(target, &session_id);
+        let mut app = tui::App::new(&target, &session_id);
 
-        // Add initial feed entry
+        // Add initial feed entries
         app.add_feed(tui::FeedEntry::new(
             "system",
             format!("Starting engagement against {}", target),
@@ -53,6 +146,27 @@ fn main() -> Result<()> {
             "system",
             format!("Provider: {} | Scope: {}", args.provider, args.scope),
         ));
+
+        // If we have linked sources, add info about them
+        for group in &targets.groups {
+            if let Some(ref source) = group.source_target {
+                app.add_feed(tui::FeedEntry::new(
+                    "system",
+                    format!(
+                        "Linked source code: {} -> {}",
+                        source.raw, group.web_target.raw
+                    ),
+                ));
+            }
+        }
+
+        // If we have standalone sources (not linked), note them
+        for source in &targets.standalone_sources {
+            app.add_feed(tui::FeedEntry::new(
+                "system",
+                format!("Standalone source for SAST: {}", source.raw),
+            ));
+        }
 
         // Run TUI
         tui::run(&mut app)?;
