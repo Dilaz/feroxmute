@@ -1,6 +1,7 @@
 //! Terminal User Interface module
 
 pub mod app;
+pub mod colors;
 pub mod events;
 pub mod runner;
 pub mod widgets;
