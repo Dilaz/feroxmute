@@ -7,6 +7,7 @@ pub mod error;
 pub mod providers;
 pub mod reports;
 pub mod state;
+pub mod targets;
 pub mod tools;
 
 pub use error::{Error, Result};
