@@ -1,5 +1,6 @@
 //! feroxmute-core: LLM-powered penetration testing framework library
 
+pub mod agents;
 pub mod config;
 pub mod docker;
 pub mod error;
