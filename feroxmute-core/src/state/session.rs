@@ -45,8 +45,8 @@ impl Session {
 
         // Save config
         let config_path = path.join("config.toml");
-        let config_str = toml::to_string_pretty(&config)
-            .map_err(|e| Error::Config(e.to_string()))?;
+        let config_str =
+            toml::to_string_pretty(&config).map_err(|e| Error::Config(e.to_string()))?;
         std::fs::write(&config_path, config_str)?;
 
         // Create database
@@ -147,8 +147,8 @@ impl Session {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::config::TargetConfig;
+    use tempfile::TempDir;
 
     fn test_config() -> EngagementConfig {
         EngagementConfig {

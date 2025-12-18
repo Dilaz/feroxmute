@@ -213,20 +213,16 @@ impl ToolRegistry {
                 .with_description("Vulnerability scanning")
                 .with_json_output(),
             // Other tools
-            Tool::new("sqlmap", "sqlmap")
-                .with_description("SQL injection testing"),
+            Tool::new("sqlmap", "sqlmap").with_description("SQL injection testing"),
             Tool::new("feroxbuster", "feroxbuster")
                 .with_description("Directory bruteforcing")
                 .with_json_output(),
             Tool::new("ffuf", "ffuf")
                 .with_description("Fuzzing")
                 .with_json_output(),
-            Tool::new("nmap", "nmap")
-                .with_description("Network scanning"),
-            Tool::new("whois", "whois")
-                .with_description("WHOIS lookup"),
-            Tool::new("dig", "dig")
-                .with_description("DNS queries"),
+            Tool::new("nmap", "nmap").with_description("Network scanning"),
+            Tool::new("whois", "whois").with_description("WHOIS lookup"),
+            Tool::new("dig", "dig").with_description("DNS queries"),
         ];
 
         Self { tools }
@@ -266,7 +262,11 @@ mod tests {
 
     #[test]
     fn test_tool_execution_record() {
-        let mut exec = ToolExecution::new("recon", "subfinder", vec!["-d".to_string(), "example.com".to_string()]);
+        let mut exec = ToolExecution::new(
+            "recon",
+            "subfinder",
+            vec!["-d".to_string(), "example.com".to_string()],
+        );
 
         assert!(exec.output.is_none());
         assert!(exec.completed_at.is_none());

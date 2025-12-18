@@ -188,9 +188,7 @@ impl Agent for ReportAgent {
                         .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
 
                     let tool_result = match tool_call.name.as_str() {
-                        "generate_report" => {
-                            self.handle_generate_report(&args, ctx).await?
-                        }
+                        "generate_report" => self.handle_generate_report(&args, ctx).await?,
                         "export_json" => self.handle_export_json(&args)?,
                         "export_markdown" => self.handle_export_markdown(&args)?,
                         "add_recommendation" => self.handle_add_recommendation(&args),

@@ -2,9 +2,16 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TargetType {
-    Web { url: String },
-    Directory { path: PathBuf },
-    Repository { url: String, local_path: Option<PathBuf> },
+    Web {
+        url: String,
+    },
+    Directory {
+        path: PathBuf,
+    },
+    Repository {
+        url: String,
+        local_path: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +40,9 @@ impl Target {
             }
             return Ok(Self {
                 raw: input.to_string(),
-                target_type: TargetType::Web { url: input.to_string() },
+                target_type: TargetType::Web {
+                    url: input.to_string(),
+                },
                 linked_to: None,
             });
         }
@@ -81,7 +90,10 @@ impl Target {
     }
 
     pub fn is_source(&self) -> bool {
-        matches!(self.target_type, TargetType::Directory { .. } | TargetType::Repository { .. })
+        matches!(
+            self.target_type,
+            TargetType::Directory { .. } | TargetType::Repository { .. }
+        )
     }
 
     pub fn is_web(&self) -> bool {
@@ -104,7 +116,9 @@ mod tests {
     #[test]
     fn test_parse_https_url() {
         let target = Target::parse("https://example.com").unwrap();
-        assert!(matches!(target.target_type, TargetType::Web { url } if url == "https://example.com"));
+        assert!(
+            matches!(target.target_type, TargetType::Web { url } if url == "https://example.com")
+        );
     }
 
     #[test]
@@ -135,7 +149,9 @@ mod tests {
     fn test_is_source() {
         let dir = Target {
             raw: "./src".to_string(),
-            target_type: TargetType::Directory { path: PathBuf::from("./src") },
+            target_type: TargetType::Directory {
+                path: PathBuf::from("./src"),
+            },
             linked_to: None,
         };
         assert!(dir.is_source());

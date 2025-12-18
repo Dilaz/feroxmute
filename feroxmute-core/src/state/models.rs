@@ -120,16 +120,20 @@ impl Host {
     pub fn insert(&self, conn: &Connection) -> Result<()> {
         conn.execute(
             "INSERT INTO hosts (id, address, hostname, discovered_at) VALUES (?1, ?2, ?3, ?4)",
-            params![self.id, self.address, self.hostname, self.discovered_at.to_rfc3339()],
+            params![
+                self.id,
+                self.address,
+                self.hostname,
+                self.discovered_at.to_rfc3339()
+            ],
         )?;
         Ok(())
     }
 
     /// Find host by address
     pub fn find_by_address(conn: &Connection, address: &str) -> Result<Option<Self>> {
-        let mut stmt = conn.prepare(
-            "SELECT id, address, hostname, discovered_at FROM hosts WHERE address = ?1"
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT id, address, hostname, discovered_at FROM hosts WHERE address = ?1")?;
 
         let mut rows = stmt.query([address])?;
         if let Some(row) = rows.next()? {
@@ -142,7 +146,7 @@ impl Host {
     /// Get all hosts
     pub fn all(conn: &Connection) -> Result<Vec<Self>> {
         let mut stmt = conn.prepare(
-            "SELECT id, address, hostname, discovered_at FROM hosts ORDER BY discovered_at"
+            "SELECT id, address, hostname, discovered_at FROM hosts ORDER BY discovered_at",
         )?;
 
         let hosts = stmt
@@ -222,7 +226,7 @@ impl Port {
     pub fn for_host(conn: &Connection, host_id: &str) -> Result<Vec<Self>> {
         let mut stmt = conn.prepare(
             "SELECT id, host_id, port, protocol, service, state, discovered_at
-             FROM ports WHERE host_id = ?1 ORDER BY port"
+             FROM ports WHERE host_id = ?1 ORDER BY port",
         )?;
 
         let ports = stmt
@@ -279,7 +283,15 @@ impl Vulnerability {
         discovered_by: impl Into<String>,
     ) -> Self {
         Self {
-            id: format!("VULN-{}", Uuid::new_v4().to_string().split('-').next().unwrap().to_uppercase()),
+            id: format!(
+                "VULN-{}",
+                Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap()
+                    .to_uppercase()
+            ),
             host_id: None,
             vuln_type: vuln_type.into(),
             severity,
@@ -408,9 +420,8 @@ impl Vulnerability {
     pub fn count_by_status(conn: &Connection) -> Result<VulnCounts> {
         let mut counts = VulnCounts::default();
 
-        let mut stmt = conn.prepare(
-            "SELECT status, COUNT(*) FROM vulnerabilities GROUP BY status"
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT status, COUNT(*) FROM vulnerabilities GROUP BY status")?;
 
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
@@ -611,34 +622,39 @@ impl CodeFinding {
         let mut stmt = conn.prepare(
             "SELECT id, file_path, line_number, severity, finding_type, cve_id, cwe_id, title, description, snippet, tool, package_name, package_version, fixed_version, discovered_at FROM code_findings ORDER BY discovered_at DESC"
         )?;
-        let findings = stmt.query_map([], |row| {
-            Ok(Self {
-                id: row.get(0)?,
-                file_path: row.get(1)?,
-                line_number: row.get(2)?,
-                severity: Severity::from_str(&row.get::<_, String>(3)?).unwrap_or(Severity::Info),
-                finding_type: FindingType::from_str(&row.get::<_, String>(4)?).unwrap_or(FindingType::Sast),
-                cve_id: row.get(5)?,
-                cwe_id: row.get(6)?,
-                title: row.get(7)?,
-                description: row.get(8)?,
-                snippet: row.get(9)?,
-                tool: row.get(10)?,
-                package_name: row.get(11)?,
-                package_version: row.get(12)?,
-                fixed_version: row.get(13)?,
-                discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(14)?)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now()),
-            })
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let findings = stmt
+            .query_map([], |row| {
+                Ok(Self {
+                    id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    line_number: row.get(2)?,
+                    severity: Severity::from_str(&row.get::<_, String>(3)?)
+                        .unwrap_or(Severity::Info),
+                    finding_type: FindingType::from_str(&row.get::<_, String>(4)?)
+                        .unwrap_or(FindingType::Sast),
+                    cve_id: row.get(5)?,
+                    cwe_id: row.get(6)?,
+                    title: row.get(7)?,
+                    description: row.get(8)?,
+                    snippet: row.get(9)?,
+                    tool: row.get(10)?,
+                    package_name: row.get(11)?,
+                    package_version: row.get(12)?,
+                    fixed_version: row.get(13)?,
+                    discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(14)?)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .unwrap_or_else(|_| Utc::now()),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(findings)
     }
 
-    pub fn count_by_severity(conn: &Connection) -> Result<std::collections::HashMap<Severity, u32>> {
-        let mut stmt = conn.prepare(
-            "SELECT severity, COUNT(*) FROM code_findings GROUP BY severity"
-        )?;
+    pub fn count_by_severity(
+        conn: &Connection,
+    ) -> Result<std::collections::HashMap<Severity, u32>> {
+        let mut stmt =
+            conn.prepare("SELECT severity, COUNT(*) FROM code_findings GROUP BY severity")?;
         let mut counts = std::collections::HashMap::new();
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
@@ -800,14 +816,42 @@ mod tests {
         let conn = setup_db();
 
         // Insert findings with different severities
-        CodeFinding::new("file1.rs", Severity::Critical, FindingType::Sast, "Issue 1", "tool")
-            .insert(&conn).unwrap();
-        CodeFinding::new("file2.rs", Severity::Critical, FindingType::Sast, "Issue 2", "tool")
-            .insert(&conn).unwrap();
-        CodeFinding::new("file3.rs", Severity::High, FindingType::Sast, "Issue 3", "tool")
-            .insert(&conn).unwrap();
-        CodeFinding::new("file4.rs", Severity::Medium, FindingType::Sast, "Issue 4", "tool")
-            .insert(&conn).unwrap();
+        CodeFinding::new(
+            "file1.rs",
+            Severity::Critical,
+            FindingType::Sast,
+            "Issue 1",
+            "tool",
+        )
+        .insert(&conn)
+        .unwrap();
+        CodeFinding::new(
+            "file2.rs",
+            Severity::Critical,
+            FindingType::Sast,
+            "Issue 2",
+            "tool",
+        )
+        .insert(&conn)
+        .unwrap();
+        CodeFinding::new(
+            "file3.rs",
+            Severity::High,
+            FindingType::Sast,
+            "Issue 3",
+            "tool",
+        )
+        .insert(&conn)
+        .unwrap();
+        CodeFinding::new(
+            "file4.rs",
+            Severity::Medium,
+            FindingType::Sast,
+            "Issue 4",
+            "tool",
+        )
+        .insert(&conn)
+        .unwrap();
 
         let counts = CodeFinding::count_by_severity(&conn).unwrap();
         assert_eq!(counts.get(&Severity::Critical), Some(&2));
@@ -839,10 +883,8 @@ mod tests {
     #[test]
     fn test_code_endpoint_find_by_route() {
         let conn = setup_db();
-        let endpoint1 = CodeEndpoint::new("/api/users", "src/routes/users.rs")
-            .with_method("GET");
-        let endpoint2 = CodeEndpoint::new("/api/posts", "src/routes/posts.rs")
-            .with_method("POST");
+        let endpoint1 = CodeEndpoint::new("/api/users", "src/routes/users.rs").with_method("GET");
+        let endpoint2 = CodeEndpoint::new("/api/posts", "src/routes/posts.rs").with_method("POST");
 
         endpoint1.insert(&conn).unwrap();
         endpoint2.insert(&conn).unwrap();
@@ -888,7 +930,9 @@ mod tests {
 
         endpoint.insert(&conn).unwrap();
 
-        let found = CodeEndpoint::find_by_route(&conn, "/api/search").unwrap().unwrap();
+        let found = CodeEndpoint::find_by_route(&conn, "/api/search")
+            .unwrap()
+            .unwrap();
         assert_eq!(found.parameters, params);
         assert_eq!(found.auth_required, Some(false));
         assert_eq!(found.handler_line, Some(120));
@@ -943,7 +987,8 @@ impl CodeEndpoint {
     }
 
     pub fn insert(&self, conn: &Connection) -> Result<()> {
-        let params_json = serde_json::to_string(&self.parameters).unwrap_or_else(|_| "[]".to_string());
+        let params_json =
+            serde_json::to_string(&self.parameters).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
             "INSERT INTO code_endpoints (id, route, method, handler_file, handler_line, parameters, auth_required, notes)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -965,20 +1010,22 @@ impl CodeEndpoint {
         let mut stmt = conn.prepare(
             "SELECT id, route, method, handler_file, handler_line, parameters, auth_required, notes FROM code_endpoints"
         )?;
-        let endpoints = stmt.query_map([], |row| {
-            let params_str: String = row.get(5)?;
-            let parameters: Vec<String> = serde_json::from_str(&params_str).unwrap_or_default();
-            Ok(Self {
-                id: row.get(0)?,
-                route: row.get(1)?,
-                method: row.get(2)?,
-                handler_file: row.get(3)?,
-                handler_line: row.get(4)?,
-                parameters,
-                auth_required: row.get(6)?,
-                notes: row.get(7)?,
-            })
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let endpoints = stmt
+            .query_map([], |row| {
+                let params_str: String = row.get(5)?;
+                let parameters: Vec<String> = serde_json::from_str(&params_str).unwrap_or_default();
+                Ok(Self {
+                    id: row.get(0)?,
+                    route: row.get(1)?,
+                    method: row.get(2)?,
+                    handler_file: row.get(3)?,
+                    handler_line: row.get(4)?,
+                    parameters,
+                    auth_required: row.get(6)?,
+                    notes: row.get(7)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(endpoints)
     }
 

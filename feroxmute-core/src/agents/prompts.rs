@@ -30,7 +30,8 @@ impl Prompts {
 
     /// Parse prompts from TOML string
     pub fn from_str(content: &str) -> Result<Self> {
-        toml::from_str(content).map_err(|e| Error::Config(format!("Failed to parse prompts: {}", e)))
+        toml::from_str(content)
+            .map_err(|e| Error::Config(format!("Failed to parse prompts: {}", e)))
     }
 
     /// Load from default location (embedded)

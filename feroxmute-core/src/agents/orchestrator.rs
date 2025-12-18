@@ -219,7 +219,10 @@ impl Agent for OrchestratorAgent {
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
         self.status = AgentStatus::Running;
-        self.thinking = Some(format!("Starting engagement orchestration: {}", task.description));
+        self.thinking = Some(format!(
+            "Starting engagement orchestration: {}",
+            task.description
+        ));
 
         // Build initial message
         let task_message = format!(
@@ -258,9 +261,7 @@ impl Agent for OrchestratorAgent {
                         .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
 
                     let tool_result = match tool_call.name.as_str() {
-                        "delegate_recon" => {
-                            self.handle_delegate_recon(&args, task, ctx).await?
-                        }
+                        "delegate_recon" => self.handle_delegate_recon(&args, task, ctx).await?,
                         "delegate_scanner" => {
                             self.handle_delegate_scanner(&args, task, ctx).await?
                         }
@@ -333,12 +334,9 @@ impl OrchestratorAgent {
             .unwrap_or("Perform reconnaissance");
         let context = args.get("context").and_then(|v| v.as_str());
 
-        let mut recon_task = AgentTask::new(
-            format!("{}-recon", parent_task.id),
-            "recon",
-            description,
-        )
-        .with_parent(&parent_task.id);
+        let mut recon_task =
+            AgentTask::new(format!("{}-recon", parent_task.id), "recon", description)
+                .with_parent(&parent_task.id);
 
         if let Some(ctx_str) = context {
             recon_task = recon_task.with_context(ctx_str);

@@ -77,13 +77,19 @@ impl LlmProvider for AnthropicProvider {
         let agent = self
             .client
             .agent(&self.model)
-            .preamble(request.system.as_deref().unwrap_or("You are a helpful assistant."))
+            .preamble(
+                request
+                    .system
+                    .as_deref()
+                    .unwrap_or("You are a helpful assistant."),
+            )
             .max_tokens(request.max_tokens.unwrap_or(4096) as u64)
             .build();
 
-        let response = agent.prompt(&prompt).await.map_err(|e| {
-            Error::Provider(format!("Anthropic completion failed: {}", e))
-        })?;
+        let response = agent
+            .prompt(&prompt)
+            .await
+            .map_err(|e| Error::Provider(format!("Anthropic completion failed: {}", e)))?;
 
         // Record token usage (estimated since rig doesn't expose raw usage directly)
         let estimated_input = prompt.len() as u64 / 4; // Rough token estimate

@@ -9,6 +9,6 @@ pub use anthropic::AnthropicProvider;
 pub use factory::create_provider;
 pub use openai::OpenAiProvider;
 pub use traits::{
-    CompletionRequest, CompletionResponse, LlmProvider, Message, Role, StopReason, ToolCall,
-    ToolDefinition, TokenUsage,
+    CompletionRequest, CompletionResponse, LlmProvider, Message, Role, StopReason, TokenUsage,
+    ToolCall, ToolDefinition,
 };

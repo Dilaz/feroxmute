@@ -59,8 +59,7 @@ fn render_logs(frame: &mut Frame, app: &App) {
         })
         .collect();
 
-    let logs = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Logs "));
+    let logs = List::new(items).block(Block::default().borders(Borders::ALL).title(" Logs "));
 
     frame.render_widget(logs, chunks[0]);
 
@@ -92,9 +91,10 @@ fn render_help(frame: &mut Frame) {
 
     let help_text = vec![
         Line::from(""),
-        Line::from(vec![
-            Span::styled("  Keybindings", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            "  Keybindings",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from(""),
         Line::from(vec![
             Span::styled("  q, Ctrl+c  ", Style::default().fg(Color::Yellow)),
@@ -142,14 +142,15 @@ fn render_help(frame: &mut Frame) {
         ]),
     ];
 
-    let help = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title(" Help "));
+    let help =
+        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title(" Help "));
 
     frame.render_widget(help, chunks[0]);
 
-    let footer_text = Line::from(vec![
-        Span::styled("Press any key to close", Style::default().fg(Color::DarkGray)),
-    ]);
+    let footer_text = Line::from(vec![Span::styled(
+        "Press any key to close",
+        Style::default().fg(Color::DarkGray),
+    )]);
     let footer = Paragraph::new(footer_text);
     frame.render_widget(footer, chunks[1]);
 }

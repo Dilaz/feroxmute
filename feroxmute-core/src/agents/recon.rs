@@ -79,7 +79,8 @@ impl ReconAgent {
             },
             ToolDefinition {
                 name: "httpx".to_string(),
-                description: "HTTP probing tool to identify web servers and technologies".to_string(),
+                description: "HTTP probing tool to identify web servers and technologies"
+                    .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -215,7 +216,10 @@ impl Agent for ReconAgent {
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
         self.status = AgentStatus::Running;
-        self.thinking = Some(format!("Starting reconnaissance for task: {}", task.description));
+        self.thinking = Some(format!(
+            "Starting reconnaissance for task: {}",
+            task.description
+        ));
 
         // Build initial message
         let task_message = format!(
@@ -230,7 +234,10 @@ impl Agent for ReconAgent {
         let max_iterations = 10;
 
         for iteration in 0..max_iterations {
-            self.thinking = Some(format!("Iteration {}: Planning next action...", iteration + 1));
+            self.thinking = Some(format!(
+                "Iteration {}: Planning next action...",
+                iteration + 1
+            ));
 
             // Make completion request
             let request = CompletionRequest::new(messages.clone())
@@ -257,7 +264,12 @@ impl Agent for ReconAgent {
                     // Execute the tool
                     let execution = ctx
                         .executor
-                        .execute_raw(cmd_args.iter().map(|s| s.as_str()).collect(), None, self.name(), ctx.conn)
+                        .execute_raw(
+                            cmd_args.iter().map(|s| s.as_str()).collect(),
+                            None,
+                            self.name(),
+                            ctx.conn,
+                        )
                         .await?;
 
                     // Add tool result to messages
@@ -266,9 +278,14 @@ impl Agent for ReconAgent {
                         "Tool {} executed. Result:\n{}",
                         tool_call.name, tool_result
                     )));
-                    messages.push(Message::user("Continue with the reconnaissance or report findings."));
+                    messages.push(Message::user(
+                        "Continue with the reconnaissance or report findings.",
+                    ));
 
-                    result.push_str(&format!("\n## {} Output\n{}\n", tool_call.name, tool_result));
+                    result.push_str(&format!(
+                        "\n## {} Output\n{}\n",
+                        tool_call.name, tool_result
+                    ));
                 }
             } else if let Some(content) = response.content {
                 // LLM provided a response without tool calls
@@ -283,7 +300,9 @@ impl Agent for ReconAgent {
                 }
 
                 messages.push(Message::assistant(&content));
-                messages.push(Message::user("Continue with additional reconnaissance or provide a summary."));
+                messages.push(Message::user(
+                    "Continue with additional reconnaissance or provide a summary.",
+                ));
             } else {
                 break;
             }
@@ -314,7 +333,11 @@ impl ReconAgent {
                 if let Some(domain) = args.get("domain").and_then(|v| v.as_str()) {
                     cmd.extend(["-d".to_string(), domain.to_string()]);
                 }
-                if args.get("silent").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if args
+                    .get("silent")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
                     cmd.push("-silent".to_string());
                 }
                 cmd.push("-json".to_string());
@@ -335,10 +358,18 @@ impl ReconAgent {
                 if let Some(target) = args.get("target").and_then(|v| v.as_str()) {
                     cmd.extend(["-u".to_string(), target.to_string()]);
                 }
-                if args.get("tech_detect").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if args
+                    .get("tech_detect")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
                     cmd.push("-td".to_string());
                 }
-                if args.get("status_code").and_then(|v| v.as_bool()).unwrap_or(true) {
+                if args
+                    .get("status_code")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true)
+                {
                     cmd.push("-sc".to_string());
                 }
                 cmd.push("-json".to_string());
@@ -350,7 +381,11 @@ impl ReconAgent {
                 if let Some(depth) = args.get("depth").and_then(|v| v.as_i64()) {
                     cmd.extend(["-d".to_string(), depth.to_string()]);
                 }
-                if args.get("js_crawl").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if args
+                    .get("js_crawl")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
                     cmd.push("-jc".to_string());
                 }
                 cmd.push("-json".to_string());

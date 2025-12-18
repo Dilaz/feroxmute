@@ -39,10 +39,13 @@ pub fn create_provider(
                 .map_err(|_| {
                     Error::Provider("LITELLM_API_KEY or OPENAI_API_KEY not set".to_string())
                 })?;
-            let provider = OpenAiProvider::with_base_url(api_key, base_url, &config.model, metrics)?;
+            let provider =
+                OpenAiProvider::with_base_url(api_key, base_url, &config.model, metrics)?;
             Ok(Arc::new(provider))
         }
-        ProviderName::Cohere => Err(Error::Provider("Cohere provider not implemented".to_string())),
+        ProviderName::Cohere => Err(Error::Provider(
+            "Cohere provider not implemented".to_string(),
+        )),
     }
 }
 

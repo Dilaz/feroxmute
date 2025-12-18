@@ -183,7 +183,9 @@ impl From<Vulnerability> for Finding {
         Self {
             title: vuln.title,
             severity: vuln.severity.to_string(),
-            affected: vuln.asset.unwrap_or_else(|| vuln.host_id.unwrap_or_default()),
+            affected: vuln
+                .asset
+                .unwrap_or_else(|| vuln.host_id.unwrap_or_default()),
             description: vuln.description.unwrap_or_default(),
             evidence: vuln.evidence,
             reproduction_steps: None,
@@ -277,13 +279,8 @@ mod tests {
 
     #[test]
     fn test_report_update_summary() {
-        let metadata = ReportMetadata::new(
-            "example.com",
-            "test-session",
-            "web",
-            Utc::now(),
-            Utc::now(),
-        );
+        let metadata =
+            ReportMetadata::new("example.com", "test-session", "web", Utc::now(), Utc::now());
         let mut report = Report::new(metadata);
 
         report.add_finding(Finding {

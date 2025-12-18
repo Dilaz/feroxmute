@@ -61,9 +61,9 @@ impl ContainerManager {
     pub async fn image_exists(&self) -> Result<bool> {
         match self.docker.inspect_image(&self.config.image).await {
             Ok(_) => Ok(true),
-            Err(bollard::errors::Error::DockerResponseServerError { status_code: 404, .. }) => {
-                Ok(false)
-            }
+            Err(bollard::errors::Error::DockerResponseServerError {
+                status_code: 404, ..
+            }) => Ok(false),
             Err(e) => Err(e.into()),
         }
     }
@@ -83,7 +83,9 @@ impl ContainerManager {
                         .await?;
                 }
             }
-            Err(bollard::errors::Error::DockerResponseServerError { status_code: 404, .. }) => {
+            Err(bollard::errors::Error::DockerResponseServerError {
+                status_code: 404, ..
+            }) => {
                 // Create new container
                 info!("Creating new container: {}", self.config.name);
                 self.create_container().await?;
@@ -114,7 +116,11 @@ impl ContainerManager {
             working_dir: Some(self.config.workdir.clone()),
             host_config: Some(host_config),
             tty: Some(true),
-            cmd: Some(vec!["tail".to_string(), "-f".to_string(), "/dev/null".to_string()]),
+            cmd: Some(vec![
+                "tail".to_string(),
+                "-f".to_string(),
+                "/dev/null".to_string(),
+            ]),
             ..Default::default()
         };
 
@@ -158,8 +164,9 @@ impl ContainerManager {
         let mut output = String::new();
         let mut stderr = String::new();
 
-        if let StartExecResults::Attached { output: mut stream, .. } =
-            self.docker.start_exec(&exec.id, None).await?
+        if let StartExecResults::Attached {
+            output: mut stream, ..
+        } = self.docker.start_exec(&exec.id, None).await?
         {
             while let Some(msg) = stream.next().await {
                 match msg {

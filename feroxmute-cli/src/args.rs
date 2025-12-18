@@ -89,11 +89,7 @@ impl Args {
     pub fn parse_ports(&self) -> Vec<u16> {
         self.ports
             .as_ref()
-            .map(|p| {
-                p.split(',')
-                    .filter_map(|s| s.trim().parse().ok())
-                    .collect()
-            })
+            .map(|p| p.split(',').filter_map(|s| s.trim().parse().ok()).collect())
             .unwrap_or_default()
     }
 }

@@ -135,10 +135,21 @@ impl MetricsTracker {
     /// Create from existing metrics
     pub fn from_metrics(metrics: &Metrics) -> Self {
         let tracker = Self::new();
-        tracker.tool_calls.store(metrics.tool_calls, Ordering::Relaxed);
-        tracker.tokens.input.store(metrics.tokens.input, Ordering::Relaxed);
-        tracker.tokens.cached.store(metrics.tokens.cached, Ordering::Relaxed);
-        tracker.tokens.output.store(metrics.tokens.output, Ordering::Relaxed);
+        tracker
+            .tool_calls
+            .store(metrics.tool_calls, Ordering::Relaxed);
+        tracker
+            .tokens
+            .input
+            .store(metrics.tokens.input, Ordering::Relaxed);
+        tracker
+            .tokens
+            .cached
+            .store(metrics.tokens.cached, Ordering::Relaxed);
+        tracker
+            .tokens
+            .output
+            .store(metrics.tokens.output, Ordering::Relaxed);
         tracker
     }
 

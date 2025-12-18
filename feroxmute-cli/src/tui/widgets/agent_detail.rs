@@ -17,16 +17,16 @@ pub fn render(frame: &mut Frame, app: &App, agent_view: AgentView) {
 
     let constraints = if show_thinking {
         vec![
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Output
-            Constraint::Length(8),  // Thinking
-            Constraint::Length(1),  // Footer
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Output
+            Constraint::Length(8), // Thinking
+            Constraint::Length(1), // Footer
         ]
     } else {
         vec![
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Output
-            Constraint::Length(1),  // Footer
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Output
+            Constraint::Length(1), // Footer
         ]
     };
 
@@ -57,14 +57,22 @@ fn render_header(frame: &mut Frame, app: &App, agent_view: AgentView, area: Rect
     let (status_text, status_style) = format_status(status);
 
     let header_text = vec![Line::from(vec![
-        Span::styled(name, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            name,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("  |  "),
         Span::styled("Status: ", Style::default().fg(Color::Gray)),
         Span::styled(status_text, status_style),
     ])];
 
-    let header = Paragraph::new(header_text)
-        .block(Block::default().borders(Borders::ALL).title(format!(" {} ", name)));
+    let header = Paragraph::new(header_text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(format!(" {} ", name)),
+    );
 
     frame.render_widget(header, area);
 }
@@ -162,7 +170,9 @@ fn format_status(status: AgentStatus) -> (&'static str, Style) {
         AgentStatus::Planning => ("Planning...", Style::default().fg(Color::Blue)),
         AgentStatus::Running => (
             "Running",
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
         ),
         AgentStatus::Waiting => ("Waiting", Style::default().fg(Color::Yellow)),
         AgentStatus::Completed => ("Completed", Style::default().fg(Color::Cyan)),

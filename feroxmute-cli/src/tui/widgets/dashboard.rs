@@ -16,11 +16,11 @@ pub fn render(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Length(5),  // Metrics
-            Constraint::Length(7),  // Agent status table
-            Constraint::Min(5),     // Feed
-            Constraint::Length(1),  // Footer
+            Constraint::Length(3), // Header
+            Constraint::Length(5), // Metrics
+            Constraint::Length(7), // Agent status table
+            Constraint::Min(5),    // Feed
+            Constraint::Length(1), // Footer
         ])
         .split(frame.area());
 
@@ -35,7 +35,12 @@ pub fn render(frame: &mut Frame, app: &App) {
 fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     let header_text = vec![Line::from(vec![
         Span::styled("Target: ", Style::default().fg(Color::Gray)),
-        Span::styled(&app.target, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            &app.target,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw("  |  "),
         Span::styled("Session: ", Style::default().fg(Color::Gray)),
         Span::styled(&app.session_id, Style::default().fg(Color::Yellow)),
@@ -71,14 +76,14 @@ fn render_metrics(frame: &mut Frame, app: &App, area: Rect) {
         format_number(app.metrics.output_tokens),
         format_number(app.metrics.cache_read_tokens)
     );
-    let token_block = Paragraph::new(tokens)
-        .block(Block::default().borders(Borders::ALL).title(" Tokens "));
+    let token_block =
+        Paragraph::new(tokens).block(Block::default().borders(Borders::ALL).title(" Tokens "));
     frame.render_widget(token_block, chunks[0]);
 
     // Tool calls
     let tools = format!("Tool Calls: {}", app.metrics.tool_calls);
-    let tools_block = Paragraph::new(tools)
-        .block(Block::default().borders(Borders::ALL).title(" Activity "));
+    let tools_block =
+        Paragraph::new(tools).block(Block::default().borders(Borders::ALL).title(" Activity "));
     frame.render_widget(tools_block, chunks[1]);
 
     // Vulnerabilities
@@ -97,16 +102,21 @@ fn render_metrics(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         Style::default()
     };
-    let vuln_block = Paragraph::new(vulns)
-        .style(vuln_style)
-        .block(Block::default().borders(Borders::ALL).title(" Vulnerabilities "));
+    let vuln_block = Paragraph::new(vulns).style(vuln_style).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Vulnerabilities "),
+    );
     frame.render_widget(vuln_block, chunks[2]);
 }
 
 /// Render agent status table
 fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(vec!["Agent", "Status", ""])
-        .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    let header = Row::new(vec!["Agent", "Status", ""]).style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
 
     let rows = vec![
         agent_row("Orchestrator", app.agent_statuses.orchestrator, "[1]"),
@@ -133,10 +143,18 @@ fn agent_row<'a>(name: &'a str, status: AgentStatus, key: &'a str) -> Row<'a> {
     let (status_text, status_style) = match status {
         AgentStatus::Idle => ("Idle", Style::default().fg(Color::Gray)),
         AgentStatus::Planning => ("Planning", Style::default().fg(Color::Blue)),
-        AgentStatus::Running => ("Running", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        AgentStatus::Running => (
+            "Running",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
         AgentStatus::Waiting => ("Waiting", Style::default().fg(Color::Yellow)),
         AgentStatus::Completed => ("Done", Style::default().fg(Color::Cyan)),
-        AgentStatus::Failed => ("Failed", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        AgentStatus::Failed => (
+            "Failed",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
     };
 
     Row::new(vec![
@@ -170,8 +188,11 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let feed = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Activity Feed "));
+    let feed = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Activity Feed "),
+    );
 
     frame.render_widget(feed, area);
 }
@@ -215,7 +236,9 @@ fn phase_color(phase: feroxmute_core::agents::EngagementPhase) -> Style {
         EngagementPhase::Scanning => Style::default().fg(Color::Yellow),
         EngagementPhase::Exploitation => Style::default().fg(Color::Red),
         EngagementPhase::Reporting => Style::default().fg(Color::Cyan),
-        EngagementPhase::Complete => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        EngagementPhase::Complete => Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD),
     }
 }
 

@@ -209,7 +209,10 @@ impl Agent for ScannerAgent {
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
         self.status = AgentStatus::Running;
-        self.thinking = Some(format!("Starting vulnerability scan for task: {}", task.description));
+        self.thinking = Some(format!(
+            "Starting vulnerability scan for task: {}",
+            task.description
+        ));
 
         // Build initial message
         let task_message = format!(
@@ -225,7 +228,10 @@ impl Agent for ScannerAgent {
         let max_iterations = 10;
 
         for iteration in 0..max_iterations {
-            self.thinking = Some(format!("Iteration {}: Planning next scan...", iteration + 1));
+            self.thinking = Some(format!(
+                "Iteration {}: Planning next scan...",
+                iteration + 1
+            ));
 
             // Make completion request
             let request = CompletionRequest::new(messages.clone())
@@ -253,7 +259,9 @@ impl Agent for ScannerAgent {
                         result.push_str(&format!("\n## Vulnerability Found\n{}\n", vuln_report));
                         messages.push(Message::assistant(format!(
                             "Vulnerability recorded: {}",
-                            args.get("title").and_then(|v| v.as_str()).unwrap_or("Unknown")
+                            args.get("title")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("Unknown")
                         )));
                     } else {
                         // Execute the scanning tool
@@ -261,17 +269,28 @@ impl Agent for ScannerAgent {
 
                         let execution = ctx
                             .executor
-                            .execute_raw(cmd_args.iter().map(|s| s.as_str()).collect(), None, self.name(), ctx.conn)
+                            .execute_raw(
+                                cmd_args.iter().map(|s| s.as_str()).collect(),
+                                None,
+                                self.name(),
+                                ctx.conn,
+                            )
                             .await?;
 
-                        let tool_result = execution.output.unwrap_or_else(|| "No output".to_string());
+                        let tool_result =
+                            execution.output.unwrap_or_else(|| "No output".to_string());
                         messages.push(Message::assistant(format!(
                             "Tool {} executed. Result:\n{}",
                             tool_call.name, tool_result
                         )));
-                        messages.push(Message::user("Analyze the results and continue scanning or report findings."));
+                        messages.push(Message::user(
+                            "Analyze the results and continue scanning or report findings.",
+                        ));
 
-                        result.push_str(&format!("\n## {} Output\n{}\n", tool_call.name, tool_result));
+                        result.push_str(&format!(
+                            "\n## {} Output\n{}\n",
+                            tool_call.name, tool_result
+                        ));
                     }
                 }
             } else if let Some(content) = response.content {
@@ -286,7 +305,9 @@ impl Agent for ScannerAgent {
                 }
 
                 messages.push(Message::assistant(&content));
-                messages.push(Message::user("Continue scanning or provide a summary of findings."));
+                messages.push(Message::user(
+                    "Continue scanning or provide a summary of findings.",
+                ));
             } else {
                 break;
             }
@@ -295,7 +316,10 @@ impl Agent for ScannerAgent {
         // Add summary of vulnerabilities
         if !vulnerabilities_found.is_empty() {
             result.push_str("\n## Vulnerability Summary\n");
-            result.push_str(&format!("Total vulnerabilities found: {}\n", vulnerabilities_found.len()));
+            result.push_str(&format!(
+                "Total vulnerabilities found: {}\n",
+                vulnerabilities_found.len()
+            ));
             for (i, vuln) in vulnerabilities_found.iter().enumerate() {
                 result.push_str(&format!("\n{}. {}\n", i + 1, vuln));
             }
@@ -344,7 +368,10 @@ impl ScannerAgent {
                 if let Some(wordlist) = args.get("wordlist").and_then(|v| v.as_str()) {
                     cmd.extend(["-w".to_string(), wordlist.to_string()]);
                 } else {
-                    cmd.extend(["-w".to_string(), "/usr/share/seclists/Discovery/Web-Content/common.txt".to_string()]);
+                    cmd.extend([
+                        "-w".to_string(),
+                        "/usr/share/seclists/Discovery/Web-Content/common.txt".to_string(),
+                    ]);
                 }
                 if let Some(ext) = args.get("extensions").and_then(|v| v.as_str()) {
                     cmd.extend(["-x".to_string(), ext.to_string()]);
@@ -394,12 +421,27 @@ impl ScannerAgent {
 
     /// Handle vulnerability reporting
     fn handle_vulnerability_report(&self, args: &serde_json::Value) -> String {
-        let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("Unknown");
-        let severity = args.get("severity").and_then(|v| v.as_str()).unwrap_or("info");
-        let description = args.get("description").and_then(|v| v.as_str()).unwrap_or("");
+        let title = args
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown");
+        let severity = args
+            .get("severity")
+            .and_then(|v| v.as_str())
+            .unwrap_or("info");
+        let description = args
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let endpoint = args.get("endpoint").and_then(|v| v.as_str()).unwrap_or("");
-        let evidence = args.get("evidence").and_then(|v| v.as_str()).unwrap_or("N/A");
-        let remediation = args.get("remediation").and_then(|v| v.as_str()).unwrap_or("N/A");
+        let evidence = args
+            .get("evidence")
+            .and_then(|v| v.as_str())
+            .unwrap_or("N/A");
+        let remediation = args
+            .get("remediation")
+            .and_then(|v| v.as_str())
+            .unwrap_or("N/A");
 
         format!(
             "**{}** [{}]\n\
@@ -407,7 +449,12 @@ impl ScannerAgent {
             Description: {}\n\
             Evidence: {}\n\
             Remediation: {}",
-            title, severity.to_uppercase(), endpoint, description, evidence, remediation
+            title,
+            severity.to_uppercase(),
+            endpoint,
+            description,
+            evidence,
+            remediation
         )
     }
 }

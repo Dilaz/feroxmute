@@ -97,9 +97,7 @@ mod tests {
     #[test]
     fn test_from_strings_web_and_source() {
         // Note: This test needs a real directory, use temp
-        let inputs = vec![
-            "https://example.com".to_string(),
-        ];
+        let inputs = vec!["https://example.com".to_string()];
         let collection = TargetCollection::from_strings(&inputs).unwrap();
         assert_eq!(collection.groups.len(), 1);
     }
