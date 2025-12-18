@@ -51,6 +51,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         KeyCode::Char('3') => {
             app.navigate(View::AgentDetail(AgentView::Scanner));
         }
+        KeyCode::Char('4') => {
+            app.navigate(View::AgentDetail(AgentView::Sast));
+        }
 
         // Toggles
         KeyCode::Char('t') => {

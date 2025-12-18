@@ -121,6 +121,10 @@ fn render_help(frame: &mut Frame) {
             Span::raw("Scanner agent details"),
         ]),
         Line::from(vec![
+            Span::styled("  4          ", Style::default().fg(Color::Yellow)),
+            Span::raw("SAST agent details"),
+        ]),
+        Line::from(vec![
             Span::styled("  t          ", Style::default().fg(Color::Yellow)),
             Span::raw("Toggle thinking panel"),
         ]),

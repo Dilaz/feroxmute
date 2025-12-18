@@ -13,6 +13,12 @@ use crate::tui::app::{AgentView, App};
 
 /// Render the agent detail view
 pub fn render(frame: &mut Frame, app: &App, agent_view: AgentView) {
+    // Delegate to SAST widget for SAST agent
+    if agent_view == AgentView::Sast {
+        super::sast::render(frame, app, frame.area());
+        return;
+    }
+
     let show_thinking = app.show_thinking && app.current_thinking.is_some();
 
     let constraints = if show_thinking {
