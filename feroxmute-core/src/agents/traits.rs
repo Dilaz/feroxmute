@@ -134,7 +134,7 @@ impl<'a> AgentContext<'a> {
 }
 
 /// Core trait for all agents
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Agent: Send + Sync {
     /// Get the agent's name
     fn name(&self) -> &str;
