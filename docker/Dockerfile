@@ -33,6 +33,27 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN uv pip install --system playwright \
     && playwright install chromium --with-deps
 
+# SAST tools
+# Install ast-grep via cargo
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN cargo install ast-grep --locked
+
+# Install Python SAST tools via uv
+RUN uv tool install semgrep && \
+    uv tool install bandit && \
+    uv tool install pip-audit
+
+# Install Go-based SAST tools
+RUN go install github.com/gitleaks/gitleaks/v8@latest && \
+    go install golang.org/x/vuln/cmd/govulncheck@latest
+
+# Install Grype for dependency scanning
+RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+# Install Trivy for container/dependency scanning
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
 # Create working directories
 RUN mkdir -p /feroxmute/workdir/{orchestrator,recon,scanner,exploit,scripts} \
     /feroxmute/artifacts/{downloads,evidence} \
