@@ -50,3 +50,25 @@ uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
 futures = "0.3"
 dirs = "5"
+
+[workspace.lints.clippy]
+# Error handling & safety
+unwrap_used = "warn"
+expect_used = "warn"
+indexing_slicing = "warn"
+panic = "warn"
+
+# Code quality
+clone_on_ref_ptr = "warn"
+redundant_clone = "warn"
+inefficient_to_string = "warn"
+needless_pass_by_value = "warn"
+
+# Debug leftovers
+dbg_macro = "warn"
+todo = "warn"
+print_stdout = "warn"
+
+# Documentation
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"

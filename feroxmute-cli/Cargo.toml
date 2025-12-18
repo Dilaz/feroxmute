@@ -19,3 +19,6 @@ ratatui.workspace = true
 crossterm.workspace = true
 clap.workspace = true
 uuid.workspace = true
+
+[lints]
+workspace = true
