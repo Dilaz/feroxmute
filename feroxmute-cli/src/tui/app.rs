@@ -3,6 +3,7 @@
 use std::time::{Duration, Instant};
 
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
+use feroxmute_core::state::models::CodeFinding;
 
 /// Active view in the TUI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -20,6 +21,7 @@ pub enum AgentView {
     Orchestrator,
     Recon,
     Scanner,
+    Sast,
 }
 
 /// Metrics display
@@ -47,12 +49,27 @@ impl VulnCounts {
     }
 }
 
+/// Code finding counts by type
+#[derive(Debug, Clone, Default)]
+pub struct CodeFindingCounts {
+    pub dependencies: u32,
+    pub sast: u32,
+    pub secrets: u32,
+}
+
+impl CodeFindingCounts {
+    pub fn total(&self) -> u32 {
+        self.dependencies + self.sast + self.secrets
+    }
+}
+
 /// Status for each agent
 #[derive(Debug, Clone, Default)]
 pub struct AgentStatuses {
     pub orchestrator: AgentStatus,
     pub recon: AgentStatus,
     pub scanner: AgentStatus,
+    pub sast: Option<String>,
 }
 
 /// Activity feed entry
@@ -116,6 +133,14 @@ pub struct App {
     pub log_scroll: usize,
     /// Selected feed item
     pub selected_feed: usize,
+    /// Source path for SAST analysis
+    pub source_path: Option<String>,
+    /// Detected programming languages
+    pub detected_languages: Vec<String>,
+    /// Code findings from SAST
+    pub code_findings: Vec<CodeFinding>,
+    /// Code finding counts by type
+    pub code_finding_counts: CodeFindingCounts,
 }
 
 impl App {
@@ -137,6 +162,10 @@ impl App {
             current_thinking: None,
             log_scroll: 0,
             selected_feed: 0,
+            source_path: None,
+            detected_languages: Vec::new(),
+            code_findings: Vec::new(),
+            code_finding_counts: CodeFindingCounts::default(),
         }
     }
 
@@ -176,6 +205,7 @@ impl App {
             "orchestrator" => self.agent_statuses.orchestrator = status,
             "recon" => self.agent_statuses.recon = status,
             "scanner" => self.agent_statuses.scanner = status,
+            "sast" => self.agent_statuses.sast = Some(format!("{:?}", status)),
             _ => {}
         }
     }

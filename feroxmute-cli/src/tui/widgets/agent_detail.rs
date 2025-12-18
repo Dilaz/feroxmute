@@ -52,6 +52,7 @@ fn render_header(frame: &mut Frame, app: &App, agent_view: AgentView, area: Rect
         AgentView::Orchestrator => ("Orchestrator", app.agent_statuses.orchestrator),
         AgentView::Recon => ("Recon Agent", app.agent_statuses.recon),
         AgentView::Scanner => ("Scanner Agent", app.agent_statuses.scanner),
+        AgentView::Sast => ("SAST Agent", AgentStatus::Idle), // SAST uses string status
     };
 
     let (status_text, status_style) = format_status(status);
@@ -84,6 +85,7 @@ fn render_output(frame: &mut Frame, app: &App, agent_view: AgentView, area: Rect
         AgentView::Orchestrator => "orchestrator",
         AgentView::Recon => "recon",
         AgentView::Scanner => "scanner",
+        AgentView::Sast => "sast",
     };
 
     let output_text: Vec<Line> = app
@@ -144,6 +146,7 @@ fn render_footer(frame: &mut Frame, agent_view: AgentView, area: Rect) {
         AgentView::Orchestrator => "1",
         AgentView::Recon => "2",
         AgentView::Scanner => "3",
+        AgentView::Sast => "4",
     };
 
     let help = Line::from(vec![
