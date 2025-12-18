@@ -232,6 +232,7 @@ fn phase_color(phase: feroxmute_core::agents::EngagementPhase) -> Style {
     use feroxmute_core::agents::EngagementPhase;
     match phase {
         EngagementPhase::Setup => Style::default().fg(Color::White),
+        EngagementPhase::StaticAnalysis => Style::default().fg(Color::Magenta),
         EngagementPhase::Reconnaissance => Style::default().fg(Color::Blue),
         EngagementPhase::Scanning => Style::default().fg(Color::Yellow),
         EngagementPhase::Exploitation => Style::default().fg(Color::Red),

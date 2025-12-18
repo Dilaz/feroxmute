@@ -7,7 +7,9 @@ use serde_json::json;
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
 use crate::{Error, Result};
 
-use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts, ReconAgent, ScannerAgent};
+use super::{
+    Agent, AgentContext, AgentStatus, AgentTask, Prompts, ReconAgent, SastAgent, ScannerAgent,
+};
 
 /// Engagement phase
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,6 +17,8 @@ use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts, ReconAgent, Sc
 pub enum EngagementPhase {
     /// Initial setup and scope validation
     Setup,
+    /// Static analysis of source code
+    StaticAnalysis,
     /// Asset discovery and enumeration
     Reconnaissance,
     /// Vulnerability scanning
@@ -37,7 +41,27 @@ impl EngagementPhase {
     /// Get the next phase in the engagement workflow
     pub fn next(&self) -> Option<Self> {
         match self {
-            Self::Setup => Some(Self::Reconnaissance),
+            Self::Setup => Some(Self::StaticAnalysis),
+            Self::StaticAnalysis => Some(Self::Reconnaissance),
+            Self::Reconnaissance => Some(Self::Scanning),
+            Self::Scanning => Some(Self::Exploitation),
+            Self::Exploitation => Some(Self::Reporting),
+            Self::Reporting => Some(Self::Complete),
+            Self::Complete => None,
+        }
+    }
+
+    /// Get the next phase, optionally skipping StaticAnalysis if no source target
+    pub fn next_with_config(&self, has_source_target: bool) -> Option<Self> {
+        match self {
+            Self::Setup => {
+                if has_source_target {
+                    Some(Self::StaticAnalysis)
+                } else {
+                    Some(Self::Reconnaissance)
+                }
+            }
+            Self::StaticAnalysis => Some(Self::Reconnaissance),
             Self::Reconnaissance => Some(Self::Scanning),
             Self::Scanning => Some(Self::Exploitation),
             Self::Exploitation => Some(Self::Reporting),
@@ -55,6 +79,8 @@ pub struct OrchestratorAgent {
     current_phase: EngagementPhase,
     recon_agent: ReconAgent,
     scanner_agent: ScannerAgent,
+    sast_agent: Option<SastAgent>,
+    has_source_target: bool,
     findings: Vec<String>,
 }
 
@@ -68,7 +94,9 @@ impl OrchestratorAgent {
             prompts: prompts.clone(),
             current_phase: EngagementPhase::Setup,
             recon_agent: ReconAgent::with_prompts(prompts.clone()),
-            scanner_agent: ScannerAgent::with_prompts(prompts),
+            scanner_agent: ScannerAgent::with_prompts(prompts.clone()),
+            sast_agent: None,
+            has_source_target: false,
             findings: Vec::new(),
         }
     }
@@ -81,9 +109,18 @@ impl OrchestratorAgent {
             prompts: prompts.clone(),
             current_phase: EngagementPhase::Setup,
             recon_agent: ReconAgent::with_prompts(prompts.clone()),
-            scanner_agent: ScannerAgent::with_prompts(prompts),
+            scanner_agent: ScannerAgent::with_prompts(prompts.clone()),
+            sast_agent: None,
+            has_source_target: false,
             findings: Vec::new(),
         }
+    }
+
+    /// Set the SAST agent for source code analysis
+    pub fn with_sast_agent(mut self, sast_agent: SastAgent) -> Self {
+        self.sast_agent = Some(sast_agent);
+        self.has_source_target = true;
+        self
     }
 
     /// Get the current engagement phase
@@ -98,7 +135,7 @@ impl OrchestratorAgent {
 
     /// Build tool definitions for the orchestrator
     fn build_tools(&self) -> Vec<ToolDefinition> {
-        vec![
+        let mut tools = vec![
             ToolDefinition {
                 name: "delegate_recon".to_string(),
                 description: "Delegate a reconnaissance task to the recon agent".to_string(),
@@ -189,7 +226,36 @@ impl OrchestratorAgent {
                     "required": ["summary"]
                 }),
             },
-        ]
+        ];
+
+        // Add SAST delegation tool if SAST agent is available
+        if self.sast_agent.is_some() {
+            tools.insert(
+                2,
+                ToolDefinition {
+                    name: "delegate_sast".to_string(),
+                    description:
+                        "Delegate static analysis task to the SAST agent for source code scanning"
+                            .to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "task_description": {
+                                "type": "string",
+                                "description": "Description of the SAST task"
+                            },
+                            "context": {
+                                "type": "string",
+                                "description": "Additional context for the analysis"
+                            }
+                        },
+                        "required": ["task_description"]
+                    }),
+                },
+            );
+        }
+
+        tools
     }
 }
 
@@ -265,6 +331,7 @@ impl Agent for OrchestratorAgent {
                         "delegate_scanner" => {
                             self.handle_delegate_scanner(&args, task, ctx).await?
                         }
+                        "delegate_sast" => self.handle_delegate_sast(&args, task, ctx).await?,
                         "advance_phase" => self.handle_advance_phase(&args),
                         "get_status" => self.handle_get_status(),
                         "record_finding" => self.handle_record_finding(&args),
@@ -378,6 +445,36 @@ impl OrchestratorAgent {
         Ok(result)
     }
 
+    /// Handle delegation to SAST agent
+    async fn handle_delegate_sast(
+        &mut self,
+        args: &serde_json::Value,
+        parent_task: &AgentTask,
+        ctx: &AgentContext<'_>,
+    ) -> Result<String> {
+        let description = args
+            .get("task_description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Perform static analysis");
+        let context = args.get("context").and_then(|v| v.as_str());
+
+        let mut sast_task = AgentTask::new(format!("{}-sast", parent_task.id), "sast", description)
+            .with_parent(&parent_task.id);
+
+        if let Some(ctx_str) = context {
+            sast_task = sast_task.with_context(ctx_str);
+        }
+
+        // Execute SAST agent if available
+        if let Some(ref mut sast_agent) = self.sast_agent {
+            let result = sast_agent.execute(&sast_task, ctx).await?;
+            self.findings.push(format!("SAST: {}", description));
+            Ok(result)
+        } else {
+            Ok("SAST agent not available (no source target configured)".to_string())
+        }
+    }
+
     /// Handle phase advancement
     fn handle_advance_phase(&mut self, args: &serde_json::Value) -> String {
         let reason = args
@@ -386,7 +483,7 @@ impl OrchestratorAgent {
             .unwrap_or("Phase objectives complete");
 
         let old_phase = self.current_phase;
-        if let Some(next_phase) = self.current_phase.next() {
+        if let Some(next_phase) = self.current_phase.next_with_config(self.has_source_target) {
             self.current_phase = next_phase;
             format!(
                 "Advanced from {:?} to {:?}. Reason: {}",
@@ -472,6 +569,10 @@ mod tests {
     fn test_phase_progression() {
         assert_eq!(
             EngagementPhase::Setup.next(),
+            Some(EngagementPhase::StaticAnalysis)
+        );
+        assert_eq!(
+            EngagementPhase::StaticAnalysis.next(),
             Some(EngagementPhase::Reconnaissance)
         );
         assert_eq!(
@@ -494,6 +595,27 @@ mod tests {
     }
 
     #[test]
+    fn test_phase_progression_with_config() {
+        // With source target, should go to StaticAnalysis
+        assert_eq!(
+            EngagementPhase::Setup.next_with_config(true),
+            Some(EngagementPhase::StaticAnalysis)
+        );
+
+        // Without source target, should skip to Reconnaissance
+        assert_eq!(
+            EngagementPhase::Setup.next_with_config(false),
+            Some(EngagementPhase::Reconnaissance)
+        );
+
+        // Other phases should behave the same
+        assert_eq!(
+            EngagementPhase::StaticAnalysis.next_with_config(true),
+            Some(EngagementPhase::Reconnaissance)
+        );
+    }
+
+    #[test]
     fn test_orchestrator_tools() {
         let agent = OrchestratorAgent::new();
         let tools = agent.tools();
@@ -506,11 +628,32 @@ mod tests {
     }
 
     #[test]
-    fn test_advance_phase() {
+    fn test_advance_phase_without_sast() {
         let mut agent = OrchestratorAgent::new();
         assert_eq!(agent.current_phase(), EngagementPhase::Setup);
+        assert!(!agent.has_source_target);
 
+        // Without source target, should skip StaticAnalysis and go to Reconnaissance
         let result = agent.handle_advance_phase(&json!({"reason": "Setup complete"}));
+        assert!(result.contains("Reconnaissance"));
+        assert_eq!(agent.current_phase(), EngagementPhase::Reconnaissance);
+    }
+
+    #[test]
+    fn test_advance_phase_with_sast() {
+        use std::path::PathBuf;
+        let sast_agent = SastAgent::new(PathBuf::from("/tmp/test"));
+        let mut agent = OrchestratorAgent::new().with_sast_agent(sast_agent);
+        assert_eq!(agent.current_phase(), EngagementPhase::Setup);
+        assert!(agent.has_source_target);
+
+        // With source target, should go to StaticAnalysis
+        let result = agent.handle_advance_phase(&json!({"reason": "Setup complete"}));
+        assert!(result.contains("StaticAnalysis"));
+        assert_eq!(agent.current_phase(), EngagementPhase::StaticAnalysis);
+
+        // Then from StaticAnalysis to Reconnaissance
+        let result = agent.handle_advance_phase(&json!({"reason": "SAST complete"}));
         assert!(result.contains("Reconnaissance"));
         assert_eq!(agent.current_phase(), EngagementPhase::Reconnaissance);
     }
