@@ -815,4 +815,193 @@ mod tests {
         assert_eq!(counts.get(&Severity::Medium), Some(&1));
         assert_eq!(counts.get(&Severity::Low), None);
     }
+
+    #[test]
+    fn test_code_endpoint_insert_and_retrieve() {
+        let conn = setup_db();
+        let endpoint = CodeEndpoint::new("/api/users", "src/routes/users.rs")
+            .with_method("GET")
+            .with_line(47)
+            .with_parameters(vec!["id".to_string(), "limit".to_string()])
+            .with_auth(true);
+
+        endpoint.insert(&conn).unwrap();
+
+        let endpoints = CodeEndpoint::all(&conn).unwrap();
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].route, "/api/users");
+        assert_eq!(endpoints[0].method, Some("GET".to_string()));
+        assert_eq!(endpoints[0].handler_line, Some(47));
+        assert_eq!(endpoints[0].parameters.len(), 2);
+        assert_eq!(endpoints[0].auth_required, Some(true));
+    }
+
+    #[test]
+    fn test_code_endpoint_find_by_route() {
+        let conn = setup_db();
+        let endpoint1 = CodeEndpoint::new("/api/users", "src/routes/users.rs")
+            .with_method("GET");
+        let endpoint2 = CodeEndpoint::new("/api/posts", "src/routes/posts.rs")
+            .with_method("POST");
+
+        endpoint1.insert(&conn).unwrap();
+        endpoint2.insert(&conn).unwrap();
+
+        let found = CodeEndpoint::find_by_route(&conn, "/api/users").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().handler_file, "src/routes/users.rs");
+
+        let not_found = CodeEndpoint::find_by_route(&conn, "/api/invalid").unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_code_endpoint_minimal() {
+        let conn = setup_db();
+        let endpoint = CodeEndpoint::new("/health", "src/main.rs");
+
+        endpoint.insert(&conn).unwrap();
+
+        let endpoints = CodeEndpoint::all(&conn).unwrap();
+        assert_eq!(endpoints.len(), 1);
+        assert_eq!(endpoints[0].route, "/health");
+        assert_eq!(endpoints[0].method, None);
+        assert_eq!(endpoints[0].handler_line, None);
+        assert_eq!(endpoints[0].parameters.len(), 0);
+        assert_eq!(endpoints[0].auth_required, None);
+    }
+
+    #[test]
+    fn test_code_endpoint_with_multiple_parameters() {
+        let conn = setup_db();
+        let params = vec![
+            "user_id".to_string(),
+            "page".to_string(),
+            "limit".to_string(),
+            "sort_by".to_string(),
+        ];
+        let endpoint = CodeEndpoint::new("/api/search", "src/search.rs")
+            .with_method("POST")
+            .with_line(120)
+            .with_parameters(params.clone())
+            .with_auth(false);
+
+        endpoint.insert(&conn).unwrap();
+
+        let found = CodeEndpoint::find_by_route(&conn, "/api/search").unwrap().unwrap();
+        assert_eq!(found.parameters, params);
+        assert_eq!(found.auth_required, Some(false));
+        assert_eq!(found.handler_line, Some(120));
+    }
+}
+
+/// A code endpoint extracted from source code
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeEndpoint {
+    pub id: String,
+    pub route: String,
+    pub method: Option<String>,
+    pub handler_file: String,
+    pub handler_line: Option<u32>,
+    pub parameters: Vec<String>,
+    pub auth_required: Option<bool>,
+    pub notes: Option<String>,
+}
+
+impl CodeEndpoint {
+    pub fn new(route: impl Into<String>, handler_file: impl Into<String>) -> Self {
+        Self {
+            id: format!("EP-{}", &Uuid::new_v4().to_string()[..8]),
+            route: route.into(),
+            method: None,
+            handler_file: handler_file.into(),
+            handler_line: None,
+            parameters: Vec::new(),
+            auth_required: None,
+            notes: None,
+        }
+    }
+
+    pub fn with_method(mut self, method: impl Into<String>) -> Self {
+        self.method = Some(method.into());
+        self
+    }
+
+    pub fn with_line(mut self, line: u32) -> Self {
+        self.handler_line = Some(line);
+        self
+    }
+
+    pub fn with_parameters(mut self, params: Vec<String>) -> Self {
+        self.parameters = params;
+        self
+    }
+
+    pub fn with_auth(mut self, required: bool) -> Self {
+        self.auth_required = Some(required);
+        self
+    }
+
+    pub fn insert(&self, conn: &Connection) -> Result<()> {
+        let params_json = serde_json::to_string(&self.parameters).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "INSERT INTO code_endpoints (id, route, method, handler_file, handler_line, parameters, auth_required, notes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                self.id,
+                self.route,
+                self.method,
+                self.handler_file,
+                self.handler_line,
+                params_json,
+                self.auth_required,
+                self.notes,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn all(conn: &Connection) -> Result<Vec<Self>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, route, method, handler_file, handler_line, parameters, auth_required, notes FROM code_endpoints"
+        )?;
+        let endpoints = stmt.query_map([], |row| {
+            let params_str: String = row.get(5)?;
+            let parameters: Vec<String> = serde_json::from_str(&params_str).unwrap_or_default();
+            Ok(Self {
+                id: row.get(0)?,
+                route: row.get(1)?,
+                method: row.get(2)?,
+                handler_file: row.get(3)?,
+                handler_line: row.get(4)?,
+                parameters,
+                auth_required: row.get(6)?,
+                notes: row.get(7)?,
+            })
+        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(endpoints)
+    }
+
+    pub fn find_by_route(conn: &Connection, route: &str) -> Result<Option<Self>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, route, method, handler_file, handler_line, parameters, auth_required, notes FROM code_endpoints WHERE route = ?1"
+        )?;
+        let mut rows = stmt.query(params![route])?;
+        if let Some(row) = rows.next()? {
+            let params_str: String = row.get(5)?;
+            let parameters: Vec<String> = serde_json::from_str(&params_str).unwrap_or_default();
+            Ok(Some(Self {
+                id: row.get(0)?,
+                route: row.get(1)?,
+                method: row.get(2)?,
+                handler_file: row.get(3)?,
+                handler_line: row.get(4)?,
+                parameters,
+                auth_required: row.get(6)?,
+                notes: row.get(7)?,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
 }
