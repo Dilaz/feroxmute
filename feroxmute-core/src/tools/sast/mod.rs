@@ -1,6 +1,10 @@
+mod ast_grep;
+mod gitleaks;
 mod grype;
 mod semgrep;
 
+pub use ast_grep::{AstGrepMatch, AstGrepOutput};
+pub use gitleaks::{GitleaksFinding, GitleaksOutput};
 pub use grype::{GrypeFinding, GrypeOutput};
 pub use semgrep::{SemgrepOutput, SemgrepResult};
 
