@@ -1,4 +1,5 @@
 mod args;
+mod tui;
 
 use anyhow::Result;
 use args::Args;
