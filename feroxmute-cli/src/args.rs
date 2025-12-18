@@ -1,15 +1,27 @@
 //! CLI argument parsing
 
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "feroxmute")]
 #[command(author, version, about = "LLM-powered penetration testing framework")]
 pub struct Args {
-    /// Target domain or IP address
-    #[arg(short, long)]
-    pub target: Option<String>,
+    /// Target domains, IPs, directories, or git URLs (can be repeated)
+    #[arg(long, action = ArgAction::Append)]
+    pub target: Vec<String>,
+
+    /// Explicit source directory for the primary target
+    #[arg(long)]
+    pub source: Option<PathBuf>,
+
+    /// Treat all targets as separate engagements (skip relationship detection)
+    #[arg(long)]
+    pub separate: bool,
+
+    /// Run static analysis only (no web testing)
+    #[arg(long)]
+    pub sast_only: bool,
 
     /// Path to configuration file
     #[arg(short, long)]

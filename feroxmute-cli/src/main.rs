@@ -34,7 +34,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    if let Some(ref target) = args.target {
+    if !args.target.is_empty() {
+        // Use the first target for now (multi-target support will be enhanced later)
+        let target = &args.target[0];
+
         // Create session ID
         let session_id = Uuid::new_v4().to_string()[..8].to_string();
 
