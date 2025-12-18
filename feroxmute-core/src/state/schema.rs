@@ -51,6 +51,24 @@ CREATE TABLE IF NOT EXISTS vulnerabilities (
     verified_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS code_findings (
+    id TEXT PRIMARY KEY,
+    file_path TEXT NOT NULL,
+    line_number INTEGER,
+    severity TEXT NOT NULL,
+    finding_type TEXT NOT NULL,
+    cve_id TEXT,
+    cwe_id TEXT,
+    title TEXT NOT NULL,
+    description TEXT,
+    snippet TEXT,
+    tool TEXT NOT NULL,
+    package_name TEXT,
+    package_version TEXT,
+    fixed_version TEXT,
+    discovered_at TEXT NOT NULL
+);
+
 -- Agent state
 CREATE TABLE IF NOT EXISTS agent_tasks (
     id TEXT PRIMARY KEY,
@@ -105,6 +123,8 @@ CREATE INDEX IF NOT EXISTS idx_ports_host ON ports(host_id);
 CREATE INDEX IF NOT EXISTS idx_technologies_host ON technologies(host_id);
 CREATE INDEX IF NOT EXISTS idx_vulnerabilities_host ON vulnerabilities(host_id);
 CREATE INDEX IF NOT EXISTS idx_vulnerabilities_status ON vulnerabilities(status);
+CREATE INDEX IF NOT EXISTS idx_code_findings_severity ON code_findings(severity);
+CREATE INDEX IF NOT EXISTS idx_code_findings_type ON code_findings(finding_type);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_agent ON agent_tasks(agent);
 CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tool_executions_agent ON tool_executions(agent);

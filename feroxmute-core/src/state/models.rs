@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::Result;
 
 /// Severity level for vulnerabilities
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Critical,
@@ -42,6 +42,22 @@ impl std::str::FromStr for Severity {
             "info" => Ok(Severity::Info),
             _ => Err(format!("Unknown severity: {}", s)),
         }
+    }
+}
+
+impl Severity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Severity::Critical => "critical",
+            Severity::High => "high",
+            Severity::Medium => "medium",
+            Severity::Low => "low",
+            Severity::Info => "info",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        s.parse().ok()
     }
 }
 
@@ -455,6 +471,188 @@ pub struct VulnCounts {
     pub exploited: u32,
 }
 
+/// Code finding type
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FindingType {
+    Dependency,
+    Sast,
+    Secret,
+}
+
+impl FindingType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Dependency => "dependency",
+            Self::Sast => "sast",
+            Self::Secret => "secret",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "dependency" => Some(Self::Dependency),
+            "sast" => Some(Self::Sast),
+            "secret" => Some(Self::Secret),
+            _ => None,
+        }
+    }
+}
+
+/// A code finding from static analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeFinding {
+    pub id: String,
+    pub file_path: String,
+    pub line_number: Option<u32>,
+    pub severity: Severity,
+    pub finding_type: FindingType,
+    pub cve_id: Option<String>,
+    pub cwe_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub snippet: Option<String>,
+    pub tool: String,
+    pub package_name: Option<String>,
+    pub package_version: Option<String>,
+    pub fixed_version: Option<String>,
+    pub discovered_at: DateTime<Utc>,
+}
+
+impl CodeFinding {
+    pub fn new(
+        file_path: impl Into<String>,
+        severity: Severity,
+        finding_type: FindingType,
+        title: impl Into<String>,
+        tool: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: format!("CODE-{}", &Uuid::new_v4().to_string()[..8]),
+            file_path: file_path.into(),
+            line_number: None,
+            severity,
+            finding_type,
+            cve_id: None,
+            cwe_id: None,
+            title: title.into(),
+            description: None,
+            snippet: None,
+            tool: tool.into(),
+            package_name: None,
+            package_version: None,
+            fixed_version: None,
+            discovered_at: Utc::now(),
+        }
+    }
+
+    pub fn with_line(mut self, line: u32) -> Self {
+        self.line_number = Some(line);
+        self
+    }
+
+    pub fn with_cve(mut self, cve: impl Into<String>) -> Self {
+        self.cve_id = Some(cve.into());
+        self
+    }
+
+    pub fn with_cwe(mut self, cwe: impl Into<String>) -> Self {
+        self.cwe_id = Some(cwe.into());
+        self
+    }
+
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    pub fn with_snippet(mut self, snippet: impl Into<String>) -> Self {
+        self.snippet = Some(snippet.into());
+        self
+    }
+
+    pub fn with_package(mut self, name: impl Into<String>, version: impl Into<String>) -> Self {
+        self.package_name = Some(name.into());
+        self.package_version = Some(version.into());
+        self
+    }
+
+    pub fn with_fixed_version(mut self, version: impl Into<String>) -> Self {
+        self.fixed_version = Some(version.into());
+        self
+    }
+
+    pub fn insert(&self, conn: &Connection) -> Result<()> {
+        conn.execute(
+            "INSERT INTO code_findings (id, file_path, line_number, severity, finding_type, cve_id, cwe_id, title, description, snippet, tool, package_name, package_version, fixed_version, discovered_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                self.id,
+                self.file_path,
+                self.line_number,
+                self.severity.as_str(),
+                self.finding_type.as_str(),
+                self.cve_id,
+                self.cwe_id,
+                self.title,
+                self.description,
+                self.snippet,
+                self.tool,
+                self.package_name,
+                self.package_version,
+                self.fixed_version,
+                self.discovered_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn all(conn: &Connection) -> Result<Vec<Self>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, file_path, line_number, severity, finding_type, cve_id, cwe_id, title, description, snippet, tool, package_name, package_version, fixed_version, discovered_at FROM code_findings ORDER BY discovered_at DESC"
+        )?;
+        let findings = stmt.query_map([], |row| {
+            Ok(Self {
+                id: row.get(0)?,
+                file_path: row.get(1)?,
+                line_number: row.get(2)?,
+                severity: Severity::from_str(&row.get::<_, String>(3)?).unwrap_or(Severity::Info),
+                finding_type: FindingType::from_str(&row.get::<_, String>(4)?).unwrap_or(FindingType::Sast),
+                cve_id: row.get(5)?,
+                cwe_id: row.get(6)?,
+                title: row.get(7)?,
+                description: row.get(8)?,
+                snippet: row.get(9)?,
+                tool: row.get(10)?,
+                package_name: row.get(11)?,
+                package_version: row.get(12)?,
+                fixed_version: row.get(13)?,
+                discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(14)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            })
+        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(findings)
+    }
+
+    pub fn count_by_severity(conn: &Connection) -> Result<std::collections::HashMap<Severity, u32>> {
+        let mut stmt = conn.prepare(
+            "SELECT severity, COUNT(*) FROM code_findings GROUP BY severity"
+        )?;
+        let mut counts = std::collections::HashMap::new();
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?;
+        for row in rows {
+            let (sev_str, count) = row?;
+            if let Some(sev) = Severity::from_str(&sev_str) {
+                counts.insert(sev, count);
+            }
+        }
+        Ok(counts)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -527,5 +725,94 @@ mod tests {
         let counts = Vulnerability::count_by_status(&conn).unwrap();
         assert_eq!(counts.verified, 1);
         assert_eq!(counts.potential, 0);
+    }
+
+    #[test]
+    fn test_code_finding_insert_and_retrieve() {
+        let conn = setup_db();
+        let finding = CodeFinding::new(
+            "src/main.rs",
+            Severity::High,
+            FindingType::Sast,
+            "SQL Injection",
+            "semgrep",
+        )
+        .with_line(42)
+        .with_cwe("CWE-89");
+
+        finding.insert(&conn).unwrap();
+
+        let findings = CodeFinding::all(&conn).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].title, "SQL Injection");
+        assert_eq!(findings[0].line_number, Some(42));
+        assert_eq!(findings[0].cwe_id, Some("CWE-89".to_string()));
+    }
+
+    #[test]
+    fn test_dependency_finding() {
+        let conn = setup_db();
+        let finding = CodeFinding::new(
+            "Cargo.toml",
+            Severity::Critical,
+            FindingType::Dependency,
+            "CVE-2024-1234",
+            "grype",
+        )
+        .with_cve("CVE-2024-1234")
+        .with_package("lodash", "4.17.20")
+        .with_fixed_version("4.17.21");
+
+        finding.insert(&conn).unwrap();
+
+        let findings = CodeFinding::all(&conn).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].package_name, Some("lodash".to_string()));
+        assert_eq!(findings[0].package_version, Some("4.17.20".to_string()));
+        assert_eq!(findings[0].fixed_version, Some("4.17.21".to_string()));
+        assert_eq!(findings[0].finding_type, FindingType::Dependency);
+    }
+
+    #[test]
+    fn test_secret_finding() {
+        let conn = setup_db();
+        let finding = CodeFinding::new(
+            "config/.env",
+            Severity::High,
+            FindingType::Secret,
+            "AWS Access Key",
+            "gitleaks",
+        )
+        .with_line(10)
+        .with_description("Hardcoded AWS credentials detected")
+        .with_snippet("AWS_ACCESS_KEY=AKIA****");
+
+        finding.insert(&conn).unwrap();
+
+        let findings = CodeFinding::all(&conn).unwrap();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].finding_type, FindingType::Secret);
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn test_count_by_severity() {
+        let conn = setup_db();
+
+        // Insert findings with different severities
+        CodeFinding::new("file1.rs", Severity::Critical, FindingType::Sast, "Issue 1", "tool")
+            .insert(&conn).unwrap();
+        CodeFinding::new("file2.rs", Severity::Critical, FindingType::Sast, "Issue 2", "tool")
+            .insert(&conn).unwrap();
+        CodeFinding::new("file3.rs", Severity::High, FindingType::Sast, "Issue 3", "tool")
+            .insert(&conn).unwrap();
+        CodeFinding::new("file4.rs", Severity::Medium, FindingType::Sast, "Issue 4", "tool")
+            .insert(&conn).unwrap();
+
+        let counts = CodeFinding::count_by_severity(&conn).unwrap();
+        assert_eq!(counts.get(&Severity::Critical), Some(&2));
+        assert_eq!(counts.get(&Severity::High), Some(&1));
+        assert_eq!(counts.get(&Severity::Medium), Some(&1));
+        assert_eq!(counts.get(&Severity::Low), None);
     }
 }
