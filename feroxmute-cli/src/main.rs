@@ -5,6 +5,7 @@ use anyhow::Result;
 use args::Args;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
+use uuid::Uuid;
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -34,12 +35,24 @@ fn main() -> Result<()> {
     }
 
     if let Some(ref target) = args.target {
-        println!("Target: {}", target);
-        println!("Scope: {}", args.scope);
-        println!("Provider: {}", args.provider);
-        if let Some(ref model) = args.model {
-            println!("Model: {}", model);
-        }
+        // Create session ID
+        let session_id = Uuid::new_v4().to_string()[..8].to_string();
+
+        // Create TUI app
+        let mut app = tui::App::new(target, &session_id);
+
+        // Add initial feed entry
+        app.add_feed(tui::FeedEntry::new(
+            "system",
+            format!("Starting engagement against {}", target),
+        ));
+        app.add_feed(tui::FeedEntry::new(
+            "system",
+            format!("Provider: {} | Scope: {}", args.provider, args.scope),
+        ));
+
+        // Run TUI
+        tui::run(&mut app)?;
     } else {
         println!("No target specified. Use --target or --wizard");
     }

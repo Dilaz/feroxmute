@@ -2,7 +2,9 @@
 
 pub mod app;
 pub mod events;
+pub mod runner;
 pub mod widgets;
 
 pub use app::{AgentStatuses, AgentView, App, FeedEntry, Metrics, View, VulnCounts};
 pub use events::{handle_event, poll_event, EventResult};
+pub use runner::run;

@@ -18,3 +18,4 @@ tracing-subscriber.workspace = true
 ratatui.workspace = true
 crossterm.workspace = true
 clap.workspace = true
+uuid.workspace = true
