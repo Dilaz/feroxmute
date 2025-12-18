@@ -19,6 +19,7 @@ pub struct Prompts {
     pub scanner: AgentPrompt,
     pub exploit: AgentPrompt,
     pub report: AgentPrompt,
+    pub sast: AgentPrompt,
 }
 
 impl Prompts {
@@ -48,6 +49,7 @@ impl Prompts {
             "scanner" => Some(&self.scanner.prompt),
             "exploit" => Some(&self.exploit.prompt),
             "report" => Some(&self.report.prompt),
+            "sast" => Some(&self.sast.prompt),
             _ => None,
         }
     }
