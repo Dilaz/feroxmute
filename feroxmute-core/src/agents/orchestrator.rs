@@ -12,10 +12,11 @@ use super::{
 };
 
 /// Engagement phase
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EngagementPhase {
     /// Initial setup and scope validation
+    #[default]
     Setup,
     /// Static analysis of source code
     StaticAnalysis,
@@ -31,11 +32,6 @@ pub enum EngagementPhase {
     Complete,
 }
 
-impl Default for EngagementPhase {
-    fn default() -> Self {
-        Self::Setup
-    }
-}
 
 impl EngagementPhase {
     /// Get the next phase in the engagement workflow
@@ -94,7 +90,7 @@ impl OrchestratorAgent {
             prompts: prompts.clone(),
             current_phase: EngagementPhase::Setup,
             recon_agent: ReconAgent::with_prompts(prompts.clone()),
-            scanner_agent: ScannerAgent::with_prompts(prompts.clone()),
+            scanner_agent: ScannerAgent::with_prompts(prompts),
             sast_agent: None,
             has_source_target: false,
             findings: Vec::new(),
@@ -109,7 +105,7 @@ impl OrchestratorAgent {
             prompts: prompts.clone(),
             current_phase: EngagementPhase::Setup,
             recon_agent: ReconAgent::with_prompts(prompts.clone()),
-            scanner_agent: ScannerAgent::with_prompts(prompts.clone()),
+            scanner_agent: ScannerAgent::with_prompts(prompts),
             sast_agent: None,
             has_source_target: false,
             findings: Vec::new(),

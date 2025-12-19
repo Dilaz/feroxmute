@@ -42,9 +42,10 @@ pub enum ProviderName {
     Mira,
 }
 
-/// Target configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Target configuration (optional in config file - use CLI --target instead)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TargetConfig {
+    #[serde(default)]
     pub host: String,
     #[serde(default)]
     pub scope: Scope,
@@ -132,8 +133,9 @@ impl Default for OutputConfig {
 }
 
 /// Complete engagement configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EngagementConfig {
+    #[serde(default)]
     pub target: TargetConfig,
     #[serde(default)]
     pub constraints: Constraints,
@@ -149,11 +151,11 @@ impl EngagementConfig {
     /// Load configuration from a TOML file
     pub fn from_file(path: impl AsRef<std::path::Path>) -> crate::Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        Self::from_str(&content)
+        Self::parse(&content)
     }
 
     /// Parse configuration from TOML string
-    pub fn from_str(content: &str) -> crate::Result<Self> {
+    pub fn parse(content: &str) -> crate::Result<Self> {
         Ok(toml::from_str(content)?)
     }
 
@@ -175,18 +177,8 @@ impl EngagementConfig {
             }
         }
 
-        // Fall back to defaults (requires a target, so this is partial)
-        Self {
-            target: TargetConfig {
-                host: String::new(),
-                scope: Scope::default(),
-                ports: Vec::new(),
-            },
-            constraints: Constraints::default(),
-            auth: AuthConfig::default(),
-            provider: ProviderConfig::default(),
-            output: OutputConfig::default(),
-        }
+        // Fall back to defaults
+        Self::default()
     }
 
     /// Get the path to the global config file
@@ -204,6 +196,14 @@ impl EngagementConfig {
                 }
             }
         }
+        if let Some(ref key) = self.provider.api_key {
+            if key.starts_with("${") && key.ends_with("}") {
+                let var_name = &key[2..key.len() - 1];
+                if let Ok(value) = std::env::var(var_name) {
+                    self.provider.api_key = Some(value);
+                }
+            }
+        }
     }
 }
 
@@ -212,12 +212,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_minimal_config() {
+    fn test_parse_provider_only_config() {
+        let toml = r#"
+[provider]
+name = "openai"
+model = "gpt-4o"
+"#;
+        let config = EngagementConfig::parse(toml).unwrap();
+        assert_eq!(config.provider.name, ProviderName::OpenAi);
+        assert_eq!(config.provider.model, "gpt-4o");
+        assert_eq!(config.target.host, ""); // Target defaults to empty
+    }
+
+    #[test]
+    fn test_parse_config_with_target() {
         let toml = r#"
 [target]
 host = "example.com"
 "#;
-        let config = EngagementConfig::from_str(toml).unwrap();
+        let config = EngagementConfig::parse(toml).unwrap();
         assert_eq!(config.target.host, "example.com");
         assert_eq!(config.target.scope, Scope::Web);
     }
@@ -246,7 +259,7 @@ model = "claude-sonnet-4-20250514"
 [output]
 export_html = true
 "#;
-        let config = EngagementConfig::from_str(toml).unwrap();
+        let config = EngagementConfig::parse(toml).unwrap();
         assert_eq!(config.target.host, "example.com");
         assert_eq!(config.target.ports, vec![80, 443, 8080]);
         assert!(config.constraints.no_exploit);
@@ -266,7 +279,7 @@ host = "example.com"
 type = "bearer"
 token = "${TEST_TOKEN}"
 "#;
-        let mut config = EngagementConfig::from_str(toml).unwrap();
+        let mut config = EngagementConfig::parse(toml).unwrap();
         config.expand_env_vars();
         assert_eq!(config.auth.token, Some("expanded_value".to_string()));
         std::env::remove_var("TEST_TOKEN");
@@ -283,7 +296,7 @@ name = "anthropic"
 model = "claude-sonnet-4-20250514"
 api_key = "sk-ant-test123"
 "#;
-        let config = EngagementConfig::from_str(toml).unwrap();
+        let config = EngagementConfig::parse(toml).unwrap();
         assert_eq!(config.provider.name, ProviderName::Anthropic);
         assert_eq!(config.provider.api_key, Some("sk-ant-test123".to_string()));
     }

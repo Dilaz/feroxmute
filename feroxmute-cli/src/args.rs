@@ -60,8 +60,8 @@ pub struct Args {
     pub rate_limit: Option<u32>,
 
     /// LLM provider (anthropic, openai, litellm)
-    #[arg(long, default_value = "anthropic")]
-    pub provider: String,
+    #[arg(long)]
+    pub provider: Option<String>,
 
     /// Model to use
     #[arg(long)]

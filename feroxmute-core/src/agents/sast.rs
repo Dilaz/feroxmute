@@ -104,7 +104,7 @@ impl SastAgent {
         let result = ctx
             .executor
             .execute_raw(
-                vec!["grype", &path.to_string(), "-o", "json"],
+                vec!["grype", path.as_ref(), "-o", "json"],
                 None,
                 "sast",
                 ctx.conn,
@@ -135,7 +135,7 @@ impl SastAgent {
                     "--config",
                     "auto",
                     "--json",
-                    &path.to_string(),
+                    path.as_ref(),
                 ],
                 None,
                 "sast",
@@ -153,7 +153,7 @@ impl SastAgent {
         let result = ctx
             .executor
             .execute_raw(
-                vec!["ast-grep", "scan", "--json", &path.to_string()],
+                vec!["ast-grep", "scan", "--json", path.as_ref()],
                 None,
                 "sast",
                 ctx.conn,
@@ -183,7 +183,7 @@ impl SastAgent {
                     "gitleaks",
                     "detect",
                     "--source",
-                    &path.to_string(),
+                    path.as_ref(),
                     "--report-format",
                     "json",
                     "--report-path",

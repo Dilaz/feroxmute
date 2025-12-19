@@ -1,5 +1,7 @@
 //! Data models for feroxmute state
 
+#![allow(clippy::unwrap_used)]
+
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
@@ -56,7 +58,7 @@ impl Severity {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_opt(s: &str) -> Option<Self> {
         s.parse().ok()
     }
 }
@@ -500,7 +502,7 @@ impl FindingType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_opt(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "dependency" => Some(Self::Dependency),
             "sast" => Some(Self::Sast),
@@ -628,9 +630,9 @@ impl CodeFinding {
                     id: row.get(0)?,
                     file_path: row.get(1)?,
                     line_number: row.get(2)?,
-                    severity: Severity::from_str(&row.get::<_, String>(3)?)
+                    severity: Severity::parse_opt(&row.get::<_, String>(3)?)
                         .unwrap_or(Severity::Info),
-                    finding_type: FindingType::from_str(&row.get::<_, String>(4)?)
+                    finding_type: FindingType::parse_opt(&row.get::<_, String>(4)?)
                         .unwrap_or(FindingType::Sast),
                     cve_id: row.get(5)?,
                     cwe_id: row.get(6)?,
@@ -661,7 +663,7 @@ impl CodeFinding {
         })?;
         for row in rows {
             let (sev_str, count) = row?;
-            if let Some(sev) = Severity::from_str(&sev_str) {
+            if let Some(sev) = Severity::parse_opt(&sev_str) {
                 counts.insert(sev, count);
             }
         }

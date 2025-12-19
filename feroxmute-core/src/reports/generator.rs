@@ -114,7 +114,7 @@ pub fn generate_markdown(report: &Report) -> String {
 
     // Vulnerability Summary
     md.push_str("### Vulnerability Summary\n\n");
-    md.push_str(&format!("| Severity | Count |\n|----------|-------|\n"));
+    md.push_str("| Severity | Count |\n|----------|-------|\n");
     md.push_str(&format!(
         "| Critical | {} |\n",
         report.summary.by_severity.critical
@@ -137,7 +137,7 @@ pub fn generate_markdown(report: &Report) -> String {
         for finding in &report.summary.key_findings {
             md.push_str(&format!("- {}\n", finding));
         }
-        md.push_str("\n");
+        md.push('\n');
     }
 
     // Metrics
@@ -196,7 +196,7 @@ pub fn generate_markdown(report: &Report) -> String {
                 for reference in &finding.references {
                     md.push_str(&format!("- {}\n", reference));
                 }
-                md.push_str("\n");
+                md.push('\n');
             }
 
             md.push_str("---\n\n");

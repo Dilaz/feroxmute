@@ -26,19 +26,20 @@ impl Prompts {
     /// Load prompts from a TOML file
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
-        Self::from_str(&content)
+        Self::parse(&content)
     }
 
     /// Parse prompts from TOML string
-    pub fn from_str(content: &str) -> Result<Self> {
+    pub fn parse(content: &str) -> Result<Self> {
         toml::from_str(content)
             .map_err(|e| Error::Config(format!("Failed to parse prompts: {}", e)))
     }
 
     /// Load from default location (embedded)
+    #[allow(clippy::expect_used)]
     pub fn default_prompts() -> Self {
         let content = include_str!("../../prompts.toml");
-        Self::from_str(content).expect("Embedded prompts.toml should be valid")
+        Self::parse(content).expect("Embedded prompts.toml should be valid")
     }
 
     /// Get prompt for a specific agent

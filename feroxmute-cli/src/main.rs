@@ -60,22 +60,27 @@ async fn main() -> Result<()> {
     }
 
     // Load configuration
-    let config = EngagementConfig::load_default();
+    let mut config = EngagementConfig::load_default();
+    config.expand_env_vars();
 
-    // Build provider config from CLI args
-    let provider_name = match args.provider.to_lowercase().as_str() {
-        "anthropic" => ProviderName::Anthropic,
-        "openai" => ProviderName::OpenAi,
-        "litellm" => ProviderName::LiteLlm,
-        "cohere" => ProviderName::Cohere,
-        "gemini" => ProviderName::Gemini,
-        "xai" => ProviderName::Xai,
-        "deepseek" => ProviderName::DeepSeek,
-        "azure" => ProviderName::Azure,
-        "perplexity" => ProviderName::Perplexity,
-        "mira" => ProviderName::Mira,
-        _ => ProviderName::Anthropic,
-    };
+    // Resolve provider: CLI arg takes precedence, then config file, then default
+    let provider_name = args
+        .provider
+        .as_ref()
+        .map(|p| match p.to_lowercase().as_str() {
+            "anthropic" => ProviderName::Anthropic,
+            "openai" => ProviderName::OpenAi,
+            "litellm" => ProviderName::LiteLlm,
+            "cohere" => ProviderName::Cohere,
+            "gemini" => ProviderName::Gemini,
+            "xai" => ProviderName::Xai,
+            "deepseek" => ProviderName::DeepSeek,
+            "azure" => ProviderName::Azure,
+            "perplexity" => ProviderName::Perplexity,
+            "mira" => ProviderName::Mira,
+            _ => ProviderName::Anthropic,
+        })
+        .unwrap_or_else(|| config.provider.name.clone());
 
     let provider_config = ProviderConfig {
         name: provider_name,
@@ -86,7 +91,7 @@ async fn main() -> Result<()> {
 
     // Validate LLM provider - fail fast
     let metrics = MetricsTracker::new();
-    let provider = create_provider(&provider_config, metrics.clone()).map_err(|e| {
+    let provider = create_provider(&provider_config, metrics).map_err(|e| {
         anyhow!(
             "LLM provider error: {}\n\nHint: Set API key in ~/.feroxmute/config.toml or {} environment variable",
             e,
@@ -241,7 +246,7 @@ async fn main() -> Result<()> {
         ));
         app.add_feed(tui::FeedEntry::new(
             "system",
-            format!("Provider: {} | Model: {}", args.provider, provider_config.model),
+            format!("Provider: {:?} | Model: {}", provider_config.name, provider_config.model),
         ));
 
         // If we have linked sources, add info about them
@@ -275,10 +280,6 @@ async fn main() -> Result<()> {
         })?;
         app.add_feed(tui::FeedEntry::new("system", "Docker container started"));
 
-        // Create database connection (in-memory for demo)
-        let conn = rusqlite::Connection::open_in_memory()?;
-        feroxmute_core::state::run_migrations(&conn)?;
-
         // Create a LocalSet to run !Send futures
         let local = tokio::task::LocalSet::new();
 
@@ -286,16 +287,7 @@ async fn main() -> Result<()> {
         let agent_target = target.clone();
         let agent_cancel = cancel.clone();
         let agent_handle = local.spawn_local(async move {
-            runner::run_recon_agent(
-                agent_target,
-                provider,
-                container,
-                metrics,
-                conn,
-                tx,
-                agent_cancel,
-            )
-            .await
+            runner::run_recon_agent(agent_target, provider, container, tx, agent_cancel).await
         });
 
         // Spawn TUI in blocking task

@@ -268,13 +268,14 @@ impl ReportAgent {
             }
         }
 
+        let result = format!(
+            "Report generated with {} findings. Risk rating: {:?}",
+            report.findings.len(),
+            report.summary.risk_rating
+        );
         self.generated_report = Some(report);
 
-        Ok(format!(
-            "Report generated with {} findings. Risk rating: {:?}",
-            self.generated_report.as_ref().unwrap().findings.len(),
-            self.generated_report.as_ref().unwrap().summary.risk_rating
-        ))
+        Ok(result)
     }
 
     /// Handle JSON export

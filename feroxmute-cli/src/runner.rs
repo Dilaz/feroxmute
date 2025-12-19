@@ -3,12 +3,9 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use feroxmute_core::agents::{Agent, AgentContext, AgentStatus, AgentTask, ReconAgent};
+use feroxmute_core::agents::{AgentStatus, Prompts};
 use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::providers::LlmProvider;
-use feroxmute_core::state::MetricsTracker;
-use feroxmute_core::tools::ToolExecutor;
-use rusqlite::Connection;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -19,8 +16,6 @@ pub async fn run_recon_agent(
     target: String,
     provider: Arc<dyn LlmProvider>,
     container: ContainerManager,
-    metrics: MetricsTracker,
-    conn: Connection,
     tx: mpsc::Sender<AgentEvent>,
     cancel: CancellationToken,
 ) -> Result<()> {
@@ -40,19 +35,17 @@ pub async fn run_recon_agent(
         })
         .await;
 
-    // Create agent and executor
-    let mut agent = ReconAgent::new();
-    let executor = ToolExecutor::new(container, metrics);
+    // Load prompts and build user prompt
+    let prompts = Prompts::default();
+    let system_prompt = prompts.get("recon").unwrap_or("");
+    let user_prompt = format!("Perform reconnaissance on {}", target);
 
-    // Create task
-    let task = AgentTask::new("recon-main", "recon", format!("Reconnaissance of {}", target));
+    // Wrap container in Arc for the shell tool
+    let container = Arc::new(container);
 
-    // Create context
-    let ctx = AgentContext::new(provider.as_ref(), &executor, &conn, &target);
-
-    // Run with cancellation support
+    // Run with cancellation support using rig's tool loop
     tokio::select! {
-        result = agent.execute(&task, &ctx) => {
+        result = provider.complete_with_shell(system_prompt, &user_prompt, container) => {
             match result {
                 Ok(output) => {
                     let _ = tx.send(AgentEvent::Status {

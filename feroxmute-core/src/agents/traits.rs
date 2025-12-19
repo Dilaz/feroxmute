@@ -9,10 +9,11 @@ use crate::tools::ToolExecutor;
 use crate::Result;
 
 /// Agent execution status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentStatus {
     /// Agent is idle, waiting for tasks
+    #[default]
     Idle,
     /// Agent is planning next actions
     Planning,
@@ -26,27 +27,18 @@ pub enum AgentStatus {
     Failed,
 }
 
-impl Default for AgentStatus {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 /// Task status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
+    #[default]
     Pending,
     InProgress,
     Completed,
     Failed,
 }
 
-impl Default for TaskStatus {
-    fn default() -> Self {
-        Self::Pending
-    }
-}
 
 /// A task for an agent to execute
 #[derive(Debug, Clone, Serialize, Deserialize)]
