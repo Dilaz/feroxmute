@@ -5,8 +5,11 @@ use bollard::container::{
     StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, StartExecResults};
+use bollard::image::BuildImageOptions;
 use bollard::Docker;
 use futures::StreamExt;
+use hyper::body::Bytes;
+use std::path::Path;
 use tracing::{debug, info, warn};
 
 use crate::{Error, Result};
@@ -66,6 +69,56 @@ impl ContainerManager {
             }) => Ok(false),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Build a Docker image from the specified docker directory
+    ///
+    /// The `on_progress` callback is called with each line of build output.
+    pub async fn build_image<F>(&self, docker_dir: &Path, on_progress: F) -> Result<()>
+    where
+        F: Fn(&str),
+    {
+        info!("Building Docker image from: {}", docker_dir.display());
+
+        // Create tar archive build context
+        let tar_bytes = super::builder::create_build_context(docker_dir)?;
+
+        // Convert to hyper::body::Bytes
+        let bytes = Bytes::from(tar_bytes);
+
+        // Build image options
+        let options = BuildImageOptions {
+            dockerfile: "Dockerfile",
+            t: &self.config.image,
+            rm: true,
+            ..Default::default()
+        };
+
+        // Stream the build output
+        let mut stream = self.docker.build_image(options, None, Some(bytes));
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(info) => {
+                    // Handle different types of build output
+                    if let Some(stream_msg) = info.stream {
+                        on_progress(&stream_msg);
+                    }
+                    if let Some(error_msg) = info.error {
+                        return Err(Error::Docker(
+                            bollard::errors::Error::DockerResponseServerError {
+                                status_code: 500,
+                                message: error_msg,
+                            },
+                        ));
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        info!("Successfully built image: {}", self.config.image);
+        Ok(())
     }
 
     /// Start or create the container

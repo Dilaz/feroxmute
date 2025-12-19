@@ -35,6 +35,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Docker
 bollard = "0.18"
 tar = "0.4"
+hyper = "1"
 
 # TUI
 ratatui = "0.29"
