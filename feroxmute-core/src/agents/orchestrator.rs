@@ -7,9 +7,7 @@ use serde_json::json;
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
 use crate::{Error, Result};
 
-use super::{
-    Agent, AgentContext, AgentStatus, AgentTask, Prompts, ReconAgent, SastAgent, ScannerAgent,
-};
+use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts};
 
 /// Engagement phase
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,9 +71,6 @@ pub struct OrchestratorAgent {
     thinking: Option<String>,
     prompts: Prompts,
     current_phase: EngagementPhase,
-    recon_agent: ReconAgent,
-    scanner_agent: ScannerAgent,
-    sast_agent: Option<SastAgent>,
     has_source_target: bool,
     findings: Vec<String>,
 }
@@ -87,11 +82,8 @@ impl OrchestratorAgent {
         Self {
             status: AgentStatus::Idle,
             thinking: None,
-            prompts: prompts.clone(),
+            prompts,
             current_phase: EngagementPhase::Setup,
-            recon_agent: ReconAgent::with_prompts(prompts.clone()),
-            scanner_agent: ScannerAgent::with_prompts(prompts),
-            sast_agent: None,
             has_source_target: false,
             findings: Vec::new(),
         }
@@ -102,19 +94,15 @@ impl OrchestratorAgent {
         Self {
             status: AgentStatus::Idle,
             thinking: None,
-            prompts: prompts.clone(),
+            prompts,
             current_phase: EngagementPhase::Setup,
-            recon_agent: ReconAgent::with_prompts(prompts.clone()),
-            scanner_agent: ScannerAgent::with_prompts(prompts),
-            sast_agent: None,
             has_source_target: false,
             findings: Vec::new(),
         }
     }
 
-    /// Set the SAST agent for source code analysis
-    pub fn with_sast_agent(mut self, sast_agent: SastAgent) -> Self {
-        self.sast_agent = Some(sast_agent);
+    /// Enable SAST support (source target available)
+    pub fn with_source_target(mut self) -> Self {
         self.has_source_target = true;
         self
     }
@@ -127,6 +115,16 @@ impl OrchestratorAgent {
     /// Get all findings collected
     pub fn findings(&self) -> &[String] {
         &self.findings
+    }
+
+    /// Get prompts reference for spawning agents
+    pub fn prompts(&self) -> &Prompts {
+        &self.prompts
+    }
+
+    /// Check if source target is available
+    pub fn has_source_target(&self) -> bool {
+        self.has_source_target
     }
 
     /// Build tool definitions for the orchestrator
@@ -225,7 +223,7 @@ impl OrchestratorAgent {
         ];
 
         // Add SAST delegation tool if SAST agent is available
-        if self.sast_agent.is_some() {
+        if self.has_source_target {
             tools.insert(
                 2,
                 ToolDefinition {
@@ -384,88 +382,56 @@ impl Agent for OrchestratorAgent {
 }
 
 impl OrchestratorAgent {
-    /// Handle delegation to recon agent
+    /// Handle delegation to recon agent (STUB - will be removed in Task 5)
     async fn handle_delegate_recon(
         &mut self,
         args: &serde_json::Value,
-        parent_task: &AgentTask,
-        ctx: &AgentContext<'_>,
+        _parent_task: &AgentTask,
+        _ctx: &AgentContext<'_>,
     ) -> Result<String> {
         let description = args
             .get("task_description")
             .and_then(|v| v.as_str())
             .unwrap_or("Perform reconnaissance");
-        let context = args.get("context").and_then(|v| v.as_str());
 
-        let mut recon_task =
-            AgentTask::new(format!("{}-recon", parent_task.id), "recon", description)
-                .with_parent(&parent_task.id);
-
-        if let Some(ctx_str) = context {
-            recon_task = recon_task.with_context(ctx_str);
-        }
-
-        let result = self.recon_agent.execute(&recon_task, ctx).await?;
+        // Stub implementation - agents will be spawned dynamically in Task 5
         self.findings.push(format!("Recon: {}", description));
-
-        Ok(result)
+        Ok("Recon task delegated (stub)".to_string())
     }
 
-    /// Handle delegation to scanner agent
+    /// Handle delegation to scanner agent (STUB - will be removed in Task 5)
     async fn handle_delegate_scanner(
         &mut self,
         args: &serde_json::Value,
-        parent_task: &AgentTask,
-        ctx: &AgentContext<'_>,
+        _parent_task: &AgentTask,
+        _ctx: &AgentContext<'_>,
     ) -> Result<String> {
         let description = args
             .get("task_description")
             .and_then(|v| v.as_str())
             .unwrap_or("Perform vulnerability scanning");
-        let context = args.get("context").and_then(|v| v.as_str());
 
-        let mut scanner_task = AgentTask::new(
-            format!("{}-scanner", parent_task.id),
-            "scanner",
-            description,
-        )
-        .with_parent(&parent_task.id);
-
-        if let Some(ctx_str) = context {
-            scanner_task = scanner_task.with_context(ctx_str);
-        }
-
-        let result = self.scanner_agent.execute(&scanner_task, ctx).await?;
+        // Stub implementation - agents will be spawned dynamically in Task 5
         self.findings.push(format!("Scan: {}", description));
-
-        Ok(result)
+        Ok("Scanner task delegated (stub)".to_string())
     }
 
-    /// Handle delegation to SAST agent
+    /// Handle delegation to SAST agent (STUB - will be removed in Task 5)
     async fn handle_delegate_sast(
         &mut self,
         args: &serde_json::Value,
-        parent_task: &AgentTask,
-        ctx: &AgentContext<'_>,
+        _parent_task: &AgentTask,
+        _ctx: &AgentContext<'_>,
     ) -> Result<String> {
         let description = args
             .get("task_description")
             .and_then(|v| v.as_str())
             .unwrap_or("Perform static analysis");
-        let context = args.get("context").and_then(|v| v.as_str());
 
-        let mut sast_task = AgentTask::new(format!("{}-sast", parent_task.id), "sast", description)
-            .with_parent(&parent_task.id);
-
-        if let Some(ctx_str) = context {
-            sast_task = sast_task.with_context(ctx_str);
-        }
-
-        // Execute SAST agent if available
-        if let Some(ref mut sast_agent) = self.sast_agent {
-            let result = sast_agent.execute(&sast_task, ctx).await?;
+        // Stub implementation - agents will be spawned dynamically in Task 5
+        if self.has_source_target {
             self.findings.push(format!("SAST: {}", description));
-            Ok(result)
+            Ok("SAST task delegated (stub)".to_string())
         } else {
             Ok("SAST agent not available (no source target configured)".to_string())
         }
@@ -627,7 +593,7 @@ mod tests {
     fn test_advance_phase_without_sast() {
         let mut agent = OrchestratorAgent::new();
         assert_eq!(agent.current_phase(), EngagementPhase::Setup);
-        assert!(!agent.has_source_target);
+        assert!(!agent.has_source_target());
 
         // Without source target, should skip StaticAnalysis and go to Reconnaissance
         let result = agent.handle_advance_phase(&json!({"reason": "Setup complete"}));
@@ -637,11 +603,9 @@ mod tests {
 
     #[test]
     fn test_advance_phase_with_sast() {
-        use std::path::PathBuf;
-        let sast_agent = SastAgent::new(PathBuf::from("/tmp/test"));
-        let mut agent = OrchestratorAgent::new().with_sast_agent(sast_agent);
+        let mut agent = OrchestratorAgent::new().with_source_target();
         assert_eq!(agent.current_phase(), EngagementPhase::Setup);
-        assert!(agent.has_source_target);
+        assert!(agent.has_source_target());
 
         // With source target, should go to StaticAnalysis
         let result = agent.handle_advance_phase(&json!({"reason": "Setup complete"}));
