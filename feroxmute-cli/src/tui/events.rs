@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_quit_shows_confirmation() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
 
         let result = handle_key_event(&mut app, key);
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_quit_confirmation_yes() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         app.confirm_quit = true;
 
         let key = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_quit_confirmation_no() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         app.confirm_quit = true;
 
         let key = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_ctrl_c_shows_confirmation() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         let key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 
         let result = handle_key_event(&mut app, key);
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn test_navigation_to_dashboard() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         app.navigate(View::Logs);
         assert_eq!(app.view, View::Logs);
 
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_navigation_to_agent_detail() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
 
         let key = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE);
         handle_key_event(&mut app, key);
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_toggle_thinking() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         let initial = app.show_thinking;
 
         let key = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE);
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_scroll() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         app.navigate(View::Logs);
         app.log_scroll = 5;
 

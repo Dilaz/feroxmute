@@ -150,7 +150,7 @@ fn main() -> Result<()> {
         let session_id = Uuid::new_v4().to_string()[..8].to_string();
 
         // Create TUI app
-        let mut app = tui::App::new(&target, &session_id);
+        let mut app = tui::App::new(&target, &session_id, None);
 
         // Add initial feed entries
         app.add_feed(tui::FeedEntry::new(

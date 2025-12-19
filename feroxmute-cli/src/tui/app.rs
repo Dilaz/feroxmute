@@ -2,8 +2,10 @@
 
 use std::time::{Duration, Instant};
 
+use tokio::sync::mpsc;
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
 use feroxmute_core::state::models::CodeFinding;
+use super::channel::AgentEvent;
 
 /// Active view in the TUI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -143,11 +145,17 @@ pub struct App {
     pub code_findings: Vec<CodeFinding>,
     /// Code finding counts by type
     pub code_finding_counts: CodeFindingCounts,
+    /// Channel receiver for agent events
+    pub event_rx: Option<mpsc::Receiver<AgentEvent>>,
 }
 
 impl App {
     /// Create a new app instance
-    pub fn new(target: impl Into<String>, session_id: impl Into<String>) -> Self {
+    pub fn new(
+        target: impl Into<String>,
+        session_id: impl Into<String>,
+        event_rx: Option<mpsc::Receiver<AgentEvent>>,
+    ) -> Self {
         Self {
             view: View::Dashboard,
             should_quit: false,
@@ -169,6 +177,7 @@ impl App {
             detected_languages: Vec::new(),
             code_findings: Vec::new(),
             code_finding_counts: CodeFindingCounts::default(),
+            event_rx,
         }
     }
 
@@ -265,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_app_creation() {
-        let app = App::new("example.com", "session-123");
+        let app = App::new("example.com", "session-123", None);
         assert_eq!(app.target, "example.com");
         assert_eq!(app.session_id, "session-123");
         assert_eq!(app.view, View::Dashboard);
@@ -296,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_navigation() {
-        let mut app = App::new("test.com", "test-session");
+        let mut app = App::new("test.com", "test-session", None);
         assert_eq!(app.view, View::Dashboard);
 
         app.navigate(View::Logs);
