@@ -9,16 +9,16 @@ use crate::docker::{ContainerManager, ExecResult};
 use crate::state::MetricsTracker;
 use crate::Result;
 
-/// A security tool that can be executed
+/// A security tool definition (renamed from Tool to avoid conflict with rig::tool::Tool)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tool {
+pub struct ToolDef {
     pub name: String,
     pub command: String,
     pub description: String,
     pub json_output: bool,
 }
 
-impl Tool {
+impl ToolDef {
     pub fn new(name: impl Into<String>, command: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -110,7 +110,7 @@ impl ToolExecutor {
     /// Execute a tool with arguments
     pub async fn execute(
         &self,
-        tool: &Tool,
+        tool: &ToolDef,
         args: &[&str],
         workdir: Option<&str>,
         agent: &str,
@@ -170,7 +170,7 @@ impl ToolExecutor {
 
 /// Registry of available tools
 pub struct ToolRegistry {
-    tools: Vec<Tool>,
+    tools: Vec<ToolDef>,
 }
 
 impl Default for ToolRegistry {
@@ -184,62 +184,62 @@ impl ToolRegistry {
     pub fn new() -> Self {
         let tools = vec![
             // ProjectDiscovery - Discovery
-            Tool::new("subfinder", "subfinder")
+            ToolDef::new("subfinder", "subfinder")
                 .with_description("Subdomain enumeration")
                 .with_json_output(),
-            Tool::new("naabu", "naabu")
+            ToolDef::new("naabu", "naabu")
                 .with_description("Port scanning")
                 .with_json_output(),
-            Tool::new("httpx", "httpx")
+            ToolDef::new("httpx", "httpx")
                 .with_description("HTTP probing")
                 .with_json_output(),
-            Tool::new("katana", "katana")
+            ToolDef::new("katana", "katana")
                 .with_description("Web crawling")
                 .with_json_output(),
-            Tool::new("dnsx", "dnsx")
+            ToolDef::new("dnsx", "dnsx")
                 .with_description("DNS resolution")
                 .with_json_output(),
-            Tool::new("tlsx", "tlsx")
+            ToolDef::new("tlsx", "tlsx")
                 .with_description("TLS analysis")
                 .with_json_output(),
-            Tool::new("asnmap", "asnmap")
+            ToolDef::new("asnmap", "asnmap")
                 .with_description("ASN mapping")
                 .with_json_output(),
-            Tool::new("uncover", "uncover")
+            ToolDef::new("uncover", "uncover")
                 .with_description("Asset discovery")
                 .with_json_output(),
             // ProjectDiscovery - Detection
-            Tool::new("nuclei", "nuclei")
+            ToolDef::new("nuclei", "nuclei")
                 .with_description("Vulnerability scanning")
                 .with_json_output(),
             // Other tools
-            Tool::new("sqlmap", "sqlmap").with_description("SQL injection testing"),
-            Tool::new("feroxbuster", "feroxbuster")
+            ToolDef::new("sqlmap", "sqlmap").with_description("SQL injection testing"),
+            ToolDef::new("feroxbuster", "feroxbuster")
                 .with_description("Directory bruteforcing")
                 .with_json_output(),
-            Tool::new("ffuf", "ffuf")
+            ToolDef::new("ffuf", "ffuf")
                 .with_description("Fuzzing")
                 .with_json_output(),
-            Tool::new("nmap", "nmap").with_description("Network scanning"),
-            Tool::new("whois", "whois").with_description("WHOIS lookup"),
-            Tool::new("dig", "dig").with_description("DNS queries"),
+            ToolDef::new("nmap", "nmap").with_description("Network scanning"),
+            ToolDef::new("whois", "whois").with_description("WHOIS lookup"),
+            ToolDef::new("dig", "dig").with_description("DNS queries"),
         ];
 
         Self { tools }
     }
 
     /// Get a tool by name
-    pub fn get(&self, name: &str) -> Option<&Tool> {
+    pub fn get(&self, name: &str) -> Option<&ToolDef> {
         self.tools.iter().find(|t| t.name == name)
     }
 
     /// Get all tools
-    pub fn all(&self) -> &[Tool] {
+    pub fn all(&self) -> &[ToolDef] {
         &self.tools
     }
 
     /// Get tools that output JSON
-    pub fn json_tools(&self) -> Vec<&Tool> {
+    pub fn json_tools(&self) -> Vec<&ToolDef> {
         self.tools.iter().filter(|t| t.json_output).collect()
     }
 }
