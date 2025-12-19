@@ -1,6 +1,7 @@
 //! Configuration wizard for feroxmute
 
 mod state;
+mod widgets;
 
 pub use state::{WizardData, WizardScreen};
 
