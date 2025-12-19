@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use args::Args;
 use clap::Parser;
 use feroxmute_core::config::{EngagementConfig, ProviderConfig, ProviderName};
-use feroxmute_core::docker::{ContainerConfig, ContainerManager};
+use feroxmute_core::docker::{find_docker_dir, ContainerConfig, ContainerManager};
 use feroxmute_core::providers::create_provider;
 use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
@@ -124,15 +124,37 @@ async fn main() -> Result<()> {
         anyhow!("Docker not responding.\n\nHint: Is Docker daemon running? Try 'docker ps'")
     })?;
 
-    // Check if Kali image exists
+    // Check if Kali image exists, build if needed
     let container_config = ContainerConfig::default();
     match docker.inspect_image(&container_config.image).await {
-        Ok(_) => {}
+        Ok(_) => {
+            tracing::info!("Docker image '{}' found", container_config.image);
+        }
         Err(_) => {
-            return Err(anyhow!(
-                "Docker image '{}' not found.\n\nHint: Run 'docker compose build' first",
-                container_config.image
-            ));
+            println!("Docker image '{}' not found. Building...", container_config.image);
+
+            // Find the docker directory
+            let docker_dir = find_docker_dir().map_err(|e| {
+                anyhow!(
+                    "Could not find docker directory: {}\n\nHint: Ensure you're running from the project root or set FEROXMUTE_DOCKER_DIR",
+                    e
+                )
+            })?;
+
+            // Create a temporary ContainerManager to build the image
+            let temp_container = ContainerManager::new(ContainerConfig::default()).await.map_err(|e| {
+                anyhow!("Failed to create container manager for building: {}", e)
+            })?;
+
+            // Build the image with progress output
+            temp_container.build_image(&docker_dir, |msg| {
+                print!("{}", msg);
+                io::stdout().flush().ok();
+            }).await.map_err(|e| {
+                anyhow!("Failed to build Docker image: {}", e)
+            })?;
+
+            println!("\nDocker image built successfully!");
         }
     }
 
