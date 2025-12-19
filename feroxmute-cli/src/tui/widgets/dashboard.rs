@@ -184,21 +184,23 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
             let prefix = format!("[{}] ", entry.agent);
             let full_text = format!("{}{}", prefix, entry.message);
 
-            // Apply horizontal scroll
-            let display_text = if scroll_x < full_text.len() {
-                let end = (scroll_x + inner_width).min(full_text.len());
-                full_text[scroll_x..end].to_string()
+            // Apply horizontal scroll (UTF-8 safe character slicing)
+            let full_text_len = full_text.chars().count();
+            let display_text = if scroll_x < full_text_len {
+                let take_count = inner_width.min(full_text_len - scroll_x);
+                full_text.chars().skip(scroll_x).take(take_count).collect()
             } else {
                 String::new()
             };
 
-            // Color the prefix portion if visible
-            let prefix_len = prefix.len();
-            if scroll_x < prefix_len {
-                let visible_prefix_end = prefix_len.saturating_sub(scroll_x);
-                let visible_prefix = display_text[..visible_prefix_end.min(display_text.len())].to_string();
-                let visible_message = if display_text.len() > visible_prefix_end {
-                    display_text[visible_prefix_end..].to_string()
+            // Color the prefix portion if visible (UTF-8 safe character slicing)
+            let prefix_char_len = prefix.chars().count();
+            if scroll_x < prefix_char_len {
+                let visible_prefix_len = prefix_char_len.saturating_sub(scroll_x);
+                let display_char_count = display_text.chars().count();
+                let visible_prefix: String = display_text.chars().take(visible_prefix_len.min(display_char_count)).collect();
+                let visible_message: String = if display_char_count > visible_prefix_len {
+                    display_text.chars().skip(visible_prefix_len).collect()
                 } else {
                     String::new()
                 };
@@ -214,9 +216,9 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    // Check if content extends beyond visible area
+    // Check if content extends beyond visible area (UTF-8 safe character counting)
     let has_more_right = app.feed.iter().any(|e| {
-        let full_len = format!("[{}] {}", e.agent, e.message).len();
+        let full_len = format!("[{}] {}", e.agent, e.message).chars().count();
         scroll_x + inner_width < full_len
     });
     let has_more_left = scroll_x > 0;
