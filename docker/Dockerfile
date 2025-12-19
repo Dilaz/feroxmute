@@ -45,7 +45,7 @@ RUN uv tool install semgrep && \
     uv tool install pip-audit
 
 # Install Go-based SAST tools
-RUN go install github.com/gitleaks/gitleaks/v8@latest && \
+RUN go install github.com/zricethezav/gitleaks/v8@latest && \
     go install golang.org/x/vuln/cmd/govulncheck@latest
 
 # Install Grype for dependency scanning
