@@ -10,10 +10,15 @@ use feroxmute_core::config::{ProviderName, Scope};
 
 use super::screens;
 
+const FEROXMUTE_DIR: &str = ".feroxmute";
+const CONFIG_FILE: &str = "config.toml";
+
 /// Wizard screens in order
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WizardScreen {
+    #[default]
     Welcome,
+    ConfirmOverwrite,
     Provider,
     ApiKey,
     Scope,
@@ -60,8 +65,16 @@ pub struct WizardState {
 
 impl WizardState {
     pub fn new() -> Self {
+        let config_exists = dirs::home_dir()
+            .map(|h: PathBuf| h.join(FEROXMUTE_DIR).join(CONFIG_FILE).exists())
+            .unwrap_or(false);
+
         Self {
-            screen: WizardScreen::Welcome,
+            screen: if config_exists {
+                WizardScreen::ConfirmOverwrite
+            } else {
+                WizardScreen::Welcome
+            },
             data: WizardData::default(),
             selected_index: 0,
             text_input: String::new(),
@@ -75,6 +88,7 @@ impl WizardState {
     pub fn render(&self, frame: &mut Frame) {
         match self.screen {
             WizardScreen::Welcome => screens::render_welcome(frame, self),
+            WizardScreen::ConfirmOverwrite => screens::render_confirm_overwrite(frame, self),
             WizardScreen::Provider => screens::render_provider(frame, self),
             WizardScreen::ApiKey => screens::render_api_key(frame, self),
             WizardScreen::Scope => screens::render_scope(frame, self),
@@ -98,6 +112,29 @@ impl WizardState {
                 match key.code {
                     KeyCode::Char('q') => return WizardAction::Quit,
                     KeyCode::Enter => return self.next_screen(),
+                    _ => {}
+                }
+            }
+            WizardScreen::ConfirmOverwrite => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.selected_index = self.selected_index.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.selected_index = (self.selected_index + 1).min(1);
+                    }
+                    KeyCode::Enter => {
+                        if self.selected_index == 0 {
+                            // Yes, continue to wizard
+                            self.screen = WizardScreen::Welcome;
+                            self.selected_index = 0;
+                        } else {
+                            // No, quit
+                            return WizardAction::Quit;
+                        }
+                    }
+                    KeyCode::Esc => return WizardAction::Quit,
                     _ => {}
                 }
             }
@@ -277,6 +314,7 @@ impl WizardState {
     /// Move to next screen
     fn next_screen(&mut self) -> WizardAction {
         self.screen = match self.screen {
+            WizardScreen::ConfirmOverwrite => WizardScreen::Welcome,
             WizardScreen::Welcome => WizardScreen::Provider,
             WizardScreen::Provider => WizardScreen::ApiKey,
             WizardScreen::ApiKey => WizardScreen::Scope,
@@ -298,7 +336,8 @@ impl WizardState {
     /// Move to previous screen
     fn prev_screen(&mut self) -> WizardAction {
         self.screen = match self.screen {
-            WizardScreen::Welcome => WizardScreen::Welcome,
+            WizardScreen::ConfirmOverwrite => return WizardAction::Quit,
+            WizardScreen::Welcome => return WizardAction::Quit,
             WizardScreen::Provider => WizardScreen::Welcome,
             WizardScreen::ApiKey => WizardScreen::Provider,
             WizardScreen::Scope => WizardScreen::ApiKey,
@@ -319,7 +358,7 @@ impl WizardState {
     /// Save configuration to file
     fn save_config(&self) -> anyhow::Result<PathBuf> {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let config_dir = PathBuf::from(home).join(".feroxmute");
+        let config_dir = PathBuf::from(home).join(FEROXMUTE_DIR);
         fs::create_dir_all(&config_dir)?;
 
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");

@@ -11,6 +11,47 @@ use ratatui::{
 use super::state::WizardState;
 use super::widgets::{CheckboxGroup, SelectList, TextInput};
 
+/// Render the confirm overwrite screen
+pub fn render_confirm_overwrite(frame: &mut Frame, state: &WizardState) {
+    let area = centered_rect(60, 40, frame.area());
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(" Existing Config Found ");
+
+    let text = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  A configuration file already exists at:",
+            Style::default(),
+        )),
+        Line::from(Span::styled(
+            "  ~/.feroxmute/config.toml",
+            Style::default().fg(Color::Yellow),
+        )),
+        Line::from(""),
+        Line::from("  Do you want to overwrite it?"),
+        Line::from(""),
+    ];
+
+    let options = ["Yes, overwrite", "No, cancel"];
+    let list = SelectList::new(&options, state.selected_index)
+        .focused(true)
+        .label("");
+
+    let para = Paragraph::new(text).block(block);
+    frame.render_widget(para, area);
+
+    let list_area = Rect {
+        x: area.x + 2,
+        y: area.y + 8,
+        width: area.width.saturating_sub(4),
+        height: 4,
+    };
+    list.render(frame, list_area);
+}
+
 /// Render the welcome screen
 pub fn render_welcome(frame: &mut Frame, _state: &WizardState) {
     let area = centered_rect(60, 50, frame.area());
