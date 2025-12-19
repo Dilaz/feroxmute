@@ -24,12 +24,27 @@ pub fn poll_event(timeout: Duration) -> std::io::Result<Option<Event>> {
 
 /// Handle keyboard events
 pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
-    // Check for quit keys
+    // Handle quit confirmation dialog
+    if app.confirm_quit {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Enter => {
+                app.should_quit = true;
+                return EventResult::Quit;
+            }
+            KeyCode::Char('n') | KeyCode::Esc => {
+                app.confirm_quit = false;
+            }
+            _ => {}
+        }
+        return EventResult::Continue;
+    }
+
+    // Check for quit keys - show confirmation
     if key.code == KeyCode::Char('q')
         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
     {
-        app.should_quit = true;
-        return EventResult::Quit;
+        app.confirm_quit = true;
+        return EventResult::Continue;
     }
 
     match key.code {
@@ -143,22 +158,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_quit_on_q() {
+    fn test_quit_shows_confirmation() {
         let mut app = App::new("test.com", "test-session");
         let key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
 
+        let result = handle_key_event(&mut app, key);
+        assert!(matches!(result, EventResult::Continue));
+        assert!(app.confirm_quit);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn test_quit_confirmation_yes() {
+        let mut app = App::new("test.com", "test-session");
+        app.confirm_quit = true;
+
+        let key = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE);
         let result = handle_key_event(&mut app, key);
         assert!(matches!(result, EventResult::Quit));
         assert!(app.should_quit);
     }
 
     #[test]
-    fn test_quit_on_ctrl_c() {
+    fn test_quit_confirmation_no() {
+        let mut app = App::new("test.com", "test-session");
+        app.confirm_quit = true;
+
+        let key = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE);
+        let result = handle_key_event(&mut app, key);
+        assert!(matches!(result, EventResult::Continue));
+        assert!(!app.confirm_quit);
+    }
+
+    #[test]
+    fn test_ctrl_c_shows_confirmation() {
         let mut app = App::new("test.com", "test-session");
         let key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
 
         let result = handle_key_event(&mut app, key);
-        assert!(matches!(result, EventResult::Quit));
+        assert!(matches!(result, EventResult::Continue));
+        assert!(app.confirm_quit);
     }
 
     #[test]

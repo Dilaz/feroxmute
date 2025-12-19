@@ -107,6 +107,8 @@ pub struct App {
     pub view: View,
     /// Should quit the application
     pub should_quit: bool,
+    /// Show quit confirmation dialog
+    pub confirm_quit: bool,
     /// Show agent thinking panel
     pub show_thinking: bool,
     /// Mouse support enabled
@@ -149,6 +151,7 @@ impl App {
         Self {
             view: View::Dashboard,
             should_quit: false,
+            confirm_quit: false,
             show_thinking: true,
             mouse_enabled: true,
             target: target.into(),

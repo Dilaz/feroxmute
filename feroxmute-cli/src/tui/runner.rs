@@ -21,6 +21,48 @@ fn render(frame: &mut Frame, app: &App) {
         View::Logs => render_logs(frame, app),
         View::Help => render_help(frame),
     }
+
+    if app.confirm_quit {
+        render_quit_dialog(frame);
+    }
+}
+
+/// Render quit confirmation dialog
+fn render_quit_dialog(frame: &mut Frame) {
+    use ratatui::{
+        layout::{Constraint, Flex, Layout},
+        style::{Color, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, Clear, Paragraph},
+    };
+
+    let area = frame.area();
+    let dialog_width = 30;
+    let dialog_height = 5;
+
+    let [dialog_area] = Layout::horizontal([Constraint::Length(dialog_width)])
+        .flex(Flex::Center)
+        .areas(area);
+    let [dialog_area] = Layout::vertical([Constraint::Length(dialog_height)])
+        .flex(Flex::Center)
+        .areas(dialog_area);
+
+    frame.render_widget(Clear, dialog_area);
+
+    let text = vec![
+        Line::from(""),
+        Line::from(vec![Span::raw("        Quit? (y/n)")]),
+        Line::from(""),
+    ];
+
+    let dialog = Paragraph::new(text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .title(" Confirm "),
+    );
+
+    frame.render_widget(dialog, dialog_area);
 }
 
 /// Render logs view
