@@ -91,6 +91,81 @@ impl AgentRegistry {
             .filter(|a| a.status == AgentStatus::Running)
             .count()
     }
+
+    /// Wait for a specific agent to complete
+    /// Returns None if agent doesn't exist, Some(result) when complete
+    pub async fn wait_for_agent(&mut self, name: &str) -> Option<AgentResult> {
+        if !self.agents.contains_key(name) {
+            return None;
+        }
+
+        // Check pending results first
+        if let Some(idx) = self.pending_results.iter().position(|r| r.name == name) {
+            let result = self.pending_results.remove(idx);
+            if let Some(agent) = self.agents.get_mut(name) {
+                agent.status = if result.success {
+                    AgentStatus::Completed
+                } else {
+                    AgentStatus::Failed
+                };
+            }
+            return Some(result);
+        }
+
+        // Wait for results from channel
+        while let Some(result) = self.result_rx.recv().await {
+            if result.name == name {
+                if let Some(agent) = self.agents.get_mut(name) {
+                    agent.status = if result.success {
+                        AgentStatus::Completed
+                    } else {
+                        AgentStatus::Failed
+                    };
+                }
+                return Some(result);
+            } else {
+                // Store for later
+                self.pending_results.push(result);
+            }
+        }
+
+        None
+    }
+
+    /// Wait for any agent to complete
+    /// Returns None if no agents are running
+    pub async fn wait_for_any(&mut self) -> Option<AgentResult> {
+        if self.running_count() == 0 && self.pending_results.is_empty() {
+            return None;
+        }
+
+        // Check pending results first
+        if !self.pending_results.is_empty() {
+            let result = self.pending_results.remove(0);
+            if let Some(agent) = self.agents.get_mut(&result.name) {
+                agent.status = if result.success {
+                    AgentStatus::Completed
+                } else {
+                    AgentStatus::Failed
+                };
+            }
+            return Some(result);
+        }
+
+        // Wait for next result
+        if let Some(result) = self.result_rx.recv().await {
+            if let Some(agent) = self.agents.get_mut(&result.name) {
+                agent.status = if result.success {
+                    AgentStatus::Completed
+                } else {
+                    AgentStatus::Failed
+                };
+            }
+            return Some(result);
+        }
+
+        None
+    }
 }
 
 impl Default for AgentRegistry {
@@ -114,5 +189,19 @@ mod tests {
     fn test_has_agent() {
         let registry = AgentRegistry::new();
         assert!(!registry.has_agent("test-agent"));
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_any_no_agents() {
+        let mut registry = AgentRegistry::new();
+        let result = registry.wait_for_any().await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_wait_for_agent_not_found() {
+        let mut registry = AgentRegistry::new();
+        let result = registry.wait_for_agent("nonexistent").await;
+        assert!(result.is_none());
     }
 }
