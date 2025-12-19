@@ -107,6 +107,18 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
             }
         }
 
+        // Horizontal feed scrolling (Dashboard view only)
+        KeyCode::Left | KeyCode::Char('H') => {
+            if matches!(app.view, View::Dashboard) {
+                app.scroll_feed_left();
+            }
+        }
+        KeyCode::Right | KeyCode::Char('L') => {
+            if matches!(app.view, View::Dashboard) {
+                app.scroll_feed_right();
+            }
+        }
+
         // Enter to select/confirm
         KeyCode::Enter => {
             // Could expand selected feed item, etc.
