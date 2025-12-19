@@ -8,7 +8,6 @@ use feroxmute_core::agents::{
 };
 use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::providers::{CompletionRequest, LlmProvider, Message};
-use serde_json;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -51,7 +50,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator loop with cancellation support
     tokio::select! {
-        result = run_orchestrator_loop(&mut orchestrator, &mut registry, &target, &tx, provider.clone(), container.clone(), &prompts) => {
+        result = run_orchestrator_loop(&mut orchestrator, &mut registry, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts) => {
             match result {
                 Ok(output) => {
                     let _ = tx.send(AgentEvent::Status {
@@ -153,8 +152,8 @@ async fn run_orchestrator_loop(
             for tool_call in &response.tool_calls {
                 let tool_name = &tool_call.name;
                 // Parse arguments from JSON string to Value
-                let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
-                    .unwrap_or(serde_json::json!({}));
+                let args: serde_json::Value =
+                    serde_json::from_str(&tool_call.arguments).unwrap_or(serde_json::json!({}));
 
                 let tool_result = match tool_name.as_str() {
                     "spawn_agent" => {
@@ -162,8 +161,8 @@ async fn run_orchestrator_loop(
                             &args,
                             registry,
                             tx,
-                            provider.clone(),
-                            container.clone(),
+                            Arc::clone(&provider),
+                            Arc::clone(&container),
                             prompts,
                             target,
                         )
@@ -172,10 +171,7 @@ async fn run_orchestrator_loop(
                     "wait_for_agent" => handle_wait_for_agent(&args, registry, tx).await,
                     "wait_for_any" => handle_wait_for_any(registry, tx).await,
                     "list_agents" => handle_list_agents(registry),
-                    "record_finding" => {
-                        let finding_result = orchestrator.handle_record_finding(&args);
-                        finding_result
-                    }
+                    "record_finding" => orchestrator.handle_record_finding(&args),
                     "complete_engagement" => {
                         result = orchestrator.handle_complete_engagement(&args);
                         return Ok(result);

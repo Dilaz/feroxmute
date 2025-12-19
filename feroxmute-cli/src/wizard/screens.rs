@@ -1,5 +1,7 @@
 //! Wizard screen renderers
 
+#![allow(clippy::indexing_slicing)]
+
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -292,12 +294,10 @@ pub fn render_azure_endpoint(frame: &mut Frame, state: &WizardState) {
         width: content_area.width.saturating_sub(4),
         height: 2,
     };
-    let info = Paragraph::new(Line::from(vec![
-        Span::styled(
-            "Azure OpenAI requires a resource-specific endpoint URL.",
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]));
+    let info = Paragraph::new(Line::from(vec![Span::styled(
+        "Azure OpenAI requires a resource-specific endpoint URL.",
+        Style::default().fg(Color::DarkGray),
+    )]));
     frame.render_widget(info, info_area);
 
     let input_area = Rect {

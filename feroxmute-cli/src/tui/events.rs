@@ -153,6 +153,7 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> EventResult {
 }
 
 /// Process an event
+#[allow(clippy::needless_pass_by_value)]
 pub fn handle_event(app: &mut App, event: Event) -> EventResult {
     match event {
         Event::Key(key) => handle_key_event(app, key),

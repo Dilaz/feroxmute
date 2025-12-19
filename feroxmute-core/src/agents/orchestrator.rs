@@ -30,7 +30,6 @@ pub enum EngagementPhase {
     Complete,
 }
 
-
 impl EngagementPhase {
     /// Get the next phase in the engagement workflow
     pub fn next(&self) -> Option<Self> {
@@ -132,7 +131,9 @@ impl OrchestratorAgent {
         let mut tools = vec![
             ToolDefinition {
                 name: "spawn_agent".to_string(),
-                description: "Spawn a new agent to run a task in the background. Returns immediately.".to_string(),
+                description:
+                    "Spawn a new agent to run a task in the background. Returns immediately."
+                        .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -155,7 +156,8 @@ impl OrchestratorAgent {
             },
             ToolDefinition {
                 name: "wait_for_agent".to_string(),
-                description: "Wait for a specific agent to complete and get its results.".to_string(),
+                description: "Wait for a specific agent to complete and get its results."
+                    .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -169,7 +171,8 @@ impl OrchestratorAgent {
             },
             ToolDefinition {
                 name: "wait_for_any".to_string(),
-                description: "Wait for any running agent to complete and get its results.".to_string(),
+                description: "Wait for any running agent to complete and get its results."
+                    .to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {}

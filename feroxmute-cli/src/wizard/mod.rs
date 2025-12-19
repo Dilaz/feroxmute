@@ -4,8 +4,6 @@ mod screens;
 mod state;
 mod widgets;
 
-pub use state::{WizardData, WizardScreen};
-
 use std::io::{self, stdout};
 use std::path::PathBuf;
 
@@ -44,7 +42,7 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     state: &mut state::WizardState,
 ) -> anyhow::Result<PathBuf> {
-    use crossterm::event::{self, Event, KeyCode};
+    use crossterm::event::{self, Event};
     use std::time::Duration;
 
     loop {

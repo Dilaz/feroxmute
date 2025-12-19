@@ -19,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
 #[tokio::main]
+#[allow(clippy::print_stdout)]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -85,7 +86,10 @@ async fn main() -> Result<()> {
 
     let provider_config = ProviderConfig {
         name: provider_name,
-        model: args.model.clone().unwrap_or_else(|| config.provider.model.clone()),
+        model: args
+            .model
+            .clone()
+            .unwrap_or_else(|| config.provider.model.clone()),
         api_key: config.provider.api_key.clone(),
         base_url: config.provider.base_url.clone(),
     };
@@ -112,8 +116,9 @@ async fn main() -> Result<()> {
     })?;
 
     // Check Docker connectivity - fail fast
-    let docker = bollard::Docker::connect_with_local_defaults()
-        .map_err(|_| anyhow!("Cannot connect to Docker.\n\nHint: Is Docker running? Try 'docker ps'"))?;
+    let docker = bollard::Docker::connect_with_local_defaults().map_err(|_| {
+        anyhow!("Cannot connect to Docker.\n\nHint: Is Docker running? Try 'docker ps'")
+    })?;
 
     docker.ping().await.map_err(|_| {
         anyhow!("Docker not responding.\n\nHint: Is Docker daemon running? Try 'docker ps'")
@@ -216,7 +221,7 @@ async fn main() -> Result<()> {
         let target = if let Some(web_target) = targets.web_targets().first() {
             match &web_target.target_type {
                 feroxmute_core::targets::TargetType::Web { url } => url.clone(),
-                _ => args.target[0].clone(),
+                _ => args.target.first().cloned().unwrap_or_default(),
             }
         } else {
             // No web targets, might be SAST-only
@@ -247,7 +252,10 @@ async fn main() -> Result<()> {
         ));
         app.add_feed(tui::FeedEntry::new(
             "system",
-            format!("Provider: {:?} | Model: {}", provider_config.name, provider_config.model),
+            format!(
+                "Provider: {:?} | Model: {}",
+                provider_config.name, provider_config.model
+            ),
         ));
 
         // If we have linked sources, add info about them
@@ -272,12 +280,21 @@ async fn main() -> Result<()> {
         }
 
         // Start the Kali container
-        app.add_feed(tui::FeedEntry::new("system", "Starting Docker container..."));
+        app.add_feed(tui::FeedEntry::new(
+            "system",
+            "Starting Docker container...",
+        ));
         let mut container = ContainerManager::new(container_config).await.map_err(|e| {
-            anyhow!("Failed to create container manager: {}\n\nHint: Is Docker running?", e)
+            anyhow!(
+                "Failed to create container manager: {}\n\nHint: Is Docker running?",
+                e
+            )
         })?;
         container.start().await.map_err(|e| {
-            anyhow!("Failed to start container: {}\n\nHint: Run 'docker compose build' first", e)
+            anyhow!(
+                "Failed to start container: {}\n\nHint: Run 'docker compose build' first",
+                e
+            )
         })?;
         app.add_feed(tui::FeedEntry::new("system", "Docker container started"));
 

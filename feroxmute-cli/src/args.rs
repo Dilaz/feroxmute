@@ -86,6 +86,7 @@ pub struct Args {
 
 impl Args {
     /// Parse ports string into Vec<u16>
+    #[allow(dead_code)]
     pub fn parse_ports(&self) -> Vec<u16> {
         self.ports
             .as_ref()

@@ -27,7 +27,6 @@ pub enum AgentStatus {
     Failed,
 }
 
-
 /// Task status
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -38,7 +37,6 @@ pub enum TaskStatus {
     Completed,
     Failed,
 }
-
 
 /// A task for an agent to execute
 #[derive(Debug, Clone, Serialize, Deserialize)]

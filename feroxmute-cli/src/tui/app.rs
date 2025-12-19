@@ -2,10 +2,10 @@
 
 use std::time::{Duration, Instant};
 
-use tokio::sync::mpsc;
+use super::channel::AgentEvent;
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
 use feroxmute_core::state::models::CodeFinding;
-use super::channel::AgentEvent;
+use tokio::sync::mpsc;
 
 /// Active view in the TUI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -46,6 +46,7 @@ pub struct VulnCounts {
 }
 
 impl VulnCounts {
+    #[allow(dead_code)]
     pub fn total(&self) -> u32 {
         self.critical + self.high + self.medium + self.low + self.info
     }
@@ -60,6 +61,7 @@ pub struct CodeFindingCounts {
 }
 
 impl CodeFindingCounts {
+    #[allow(dead_code)]
     pub fn total(&self) -> u32 {
         self.dependencies + self.sast + self.secrets
     }
@@ -77,6 +79,7 @@ pub struct AgentStatuses {
 /// Activity feed entry
 #[derive(Debug, Clone)]
 pub struct FeedEntry {
+    #[allow(dead_code)]
     pub timestamp: Instant,
     pub agent: String,
     pub message: String,
@@ -226,11 +229,13 @@ impl App {
     }
 
     /// Set current thinking
+    #[allow(dead_code)]
     pub fn set_thinking(&mut self, thinking: Option<String>) {
         self.current_thinking = thinking;
     }
 
     /// Update metrics
+    #[allow(dead_code)]
     pub fn update_metrics(&mut self, input: u64, output: u64, cache_read: u64, tool_calls: u64) {
         self.metrics.input_tokens += input;
         self.metrics.output_tokens += output;
@@ -281,6 +286,7 @@ impl App {
     }
 
     /// Reset feed scroll
+    #[allow(dead_code)]
     pub fn reset_feed_scroll(&mut self) {
         self.feed_scroll_x = 0;
     }

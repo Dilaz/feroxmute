@@ -1,5 +1,7 @@
 //! TUI main loop runner
 
+#![allow(clippy::indexing_slicing)]
+
 use std::io::{self, stdout};
 use std::time::Duration;
 
@@ -9,7 +11,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Frame, Terminal};
 
-use super::app::{AgentView, App, View};
+use super::app::{App, View};
 use super::channel::AgentEvent;
 use super::events::{handle_event, poll_event, EventResult};
 use super::widgets::{agent_detail, dashboard};
@@ -213,7 +215,11 @@ fn drain_events(app: &mut App) {
 
     for event in events {
         match event {
-            AgentEvent::Feed { agent, message, is_error } => {
+            AgentEvent::Feed {
+                agent,
+                message,
+                is_error,
+            } => {
                 if is_error {
                     app.add_feed(super::app::FeedEntry::error(&agent, &message));
                 } else {
@@ -226,7 +232,11 @@ fn drain_events(app: &mut App) {
             AgentEvent::Status { agent, status } => {
                 app.update_agent_status(&agent, status);
             }
-            AgentEvent::Metrics { input, output, cache_read } => {
+            AgentEvent::Metrics {
+                input,
+                output,
+                cache_read,
+            } => {
                 app.metrics.input_tokens += input;
                 app.metrics.output_tokens += output;
                 app.metrics.cache_read_tokens += cache_read;

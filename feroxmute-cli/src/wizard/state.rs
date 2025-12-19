@@ -442,6 +442,7 @@ impl WizardState {
             Scope::Full => "full",
         };
 
+        #[allow(clippy::unnecessary_lazy_evaluations)]
         let model = self
             .data
             .model
@@ -460,7 +461,7 @@ impl WizardState {
             });
 
         let mut toml = String::new();
-        toml.push_str(&format!("# feroxmute configuration\n"));
+        toml.push_str("# feroxmute configuration\n");
         toml.push_str(&format!(
             "# Generated: {}\n\n",
             chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
@@ -473,7 +474,7 @@ impl WizardState {
         if let Some(ref base_url) = self.data.base_url {
             toml.push_str(&format!("base_url = \"{}\"\n", base_url));
         }
-        toml.push_str("\n");
+        toml.push('\n');
 
         toml.push_str("[target]\n");
         toml.push_str(&format!("scope = \"{}\"\n\n", scope_name));
@@ -487,7 +488,7 @@ impl WizardState {
         } else {
             toml.push_str("# rate_limit = 10\n");
         }
-        toml.push_str("\n");
+        toml.push('\n');
 
         toml.push_str("[output]\n");
         toml.push_str(&format!("export_html = {}\n", self.data.export_html));

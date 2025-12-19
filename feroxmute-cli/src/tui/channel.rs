@@ -13,12 +13,14 @@ pub enum AgentEvent {
     },
 
     /// Update the thinking panel
+    #[allow(dead_code)]
     Thinking(Option<String>),
 
     /// Update agent status
     Status { agent: String, status: AgentStatus },
 
     /// Update token metrics
+    #[allow(dead_code)]
     Metrics {
         input: u64,
         output: u64,

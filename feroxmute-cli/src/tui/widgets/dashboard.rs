@@ -1,5 +1,7 @@
 //! Dashboard widget for the main TUI view
 
+#![allow(clippy::indexing_slicing)]
+
 use feroxmute_core::agents::AgentStatus;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -198,7 +200,10 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
             if scroll_x < prefix_char_len {
                 let visible_prefix_len = prefix_char_len.saturating_sub(scroll_x);
                 let display_char_count = display_text.chars().count();
-                let visible_prefix: String = display_text.chars().take(visible_prefix_len.min(display_char_count)).collect();
+                let visible_prefix: String = display_text
+                    .chars()
+                    .take(visible_prefix_len.min(display_char_count))
+                    .collect();
                 let visible_message: String = if display_char_count > visible_prefix_len {
                     display_text.chars().skip(visible_prefix_len).collect()
                 } else {

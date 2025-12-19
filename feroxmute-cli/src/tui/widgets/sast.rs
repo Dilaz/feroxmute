@@ -1,6 +1,7 @@
 //! SAST agent detail widget
 
-use feroxmute_core::state::models::{CodeFinding, FindingType, Severity};
+#![allow(clippy::indexing_slicing)]
+
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

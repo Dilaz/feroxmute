@@ -1,5 +1,7 @@
 //! Agent detail widget for viewing individual agent status and output
 
+#![allow(clippy::indexing_slicing)]
+
 use feroxmute_core::agents::AgentStatus;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
