@@ -29,8 +29,8 @@ RUN go install -v github.com/projectdiscovery/pdtm/cmd/pdtm@latest \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 
-# Install Python packages with uv
-RUN uv pip install --system playwright \
+# Install Python packages with uv (bypass externally managed check)
+RUN uv pip install --system --break-system-packages playwright \
     && playwright install chromium --with-deps
 
 # SAST tools
