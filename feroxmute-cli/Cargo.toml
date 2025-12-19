@@ -19,6 +19,7 @@ ratatui.workspace = true
 crossterm.workspace = true
 clap.workspace = true
 uuid.workspace = true
+chrono = "0.4"
 
 [lints]
 workspace = true

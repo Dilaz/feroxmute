@@ -1,5 +1,6 @@
 mod args;
 mod tui;
+mod wizard;
 
 use anyhow::Result;
 use args::Args;
