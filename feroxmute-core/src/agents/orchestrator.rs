@@ -131,58 +131,53 @@ impl OrchestratorAgent {
     fn build_tools(&self) -> Vec<ToolDefinition> {
         let mut tools = vec![
             ToolDefinition {
-                name: "delegate_recon".to_string(),
-                description: "Delegate a reconnaissance task to the recon agent".to_string(),
+                name: "spawn_agent".to_string(),
+                description: "Spawn a new agent to run a task in the background. Returns immediately.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
-                        "task_description": {
+                        "agent_type": {
                             "type": "string",
-                            "description": "Description of the reconnaissance task"
+                            "enum": ["recon", "scanner", "report"],
+                            "description": "Type of agent to spawn"
                         },
-                        "context": {
+                        "name": {
                             "type": "string",
-                            "description": "Additional context for the task"
-                        }
-                    },
-                    "required": ["task_description"]
-                }),
-            },
-            ToolDefinition {
-                name: "delegate_scanner".to_string(),
-                description: "Delegate a scanning task to the scanner agent".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "task_description": {
-                            "type": "string",
-                            "description": "Description of the scanning task"
+                            "description": "Unique name for this agent instance (e.g., 'subdomain-enum', 'port-scan')"
                         },
-                        "context": {
+                        "instructions": {
                             "type": "string",
-                            "description": "Additional context including targets from recon"
+                            "description": "Task-specific instructions for the agent"
                         }
                     },
-                    "required": ["task_description"]
+                    "required": ["agent_type", "name", "instructions"]
                 }),
             },
             ToolDefinition {
-                name: "advance_phase".to_string(),
-                description: "Move to the next engagement phase".to_string(),
+                name: "wait_for_agent".to_string(),
+                description: "Wait for a specific agent to complete and get its results.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
-                        "reason": {
+                        "name": {
                             "type": "string",
-                            "description": "Reason for advancing to the next phase"
+                            "description": "Name of the agent to wait for"
                         }
                     },
-                    "required": ["reason"]
+                    "required": ["name"]
                 }),
             },
             ToolDefinition {
-                name: "get_status".to_string(),
-                description: "Get the current engagement status and findings".to_string(),
+                name: "wait_for_any".to_string(),
+                description: "Wait for any running agent to complete and get its results.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            },
+            ToolDefinition {
+                name: "list_agents".to_string(),
+                description: "List all spawned agents and their current status.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {}
@@ -190,7 +185,7 @@ impl OrchestratorAgent {
             },
             ToolDefinition {
                 name: "record_finding".to_string(),
-                description: "Record an important finding or insight".to_string(),
+                description: "Record an important finding or insight.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -208,7 +203,7 @@ impl OrchestratorAgent {
             },
             ToolDefinition {
                 name: "complete_engagement".to_string(),
-                description: "Mark the engagement as complete and generate summary".to_string(),
+                description: "Mark the engagement as complete and generate summary.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -222,31 +217,29 @@ impl OrchestratorAgent {
             },
         ];
 
-        // Add SAST delegation tool if SAST agent is available
+        // Add SAST to spawn options if source target available
         if self.has_source_target {
-            tools.insert(
-                2,
-                ToolDefinition {
-                    name: "delegate_sast".to_string(),
-                    description:
-                        "Delegate static analysis task to the SAST agent for source code scanning"
-                            .to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "task_description": {
-                                "type": "string",
-                                "description": "Description of the SAST task"
-                            },
-                            "context": {
-                                "type": "string",
-                                "description": "Additional context for the analysis"
-                            }
+            if let Some(spawn_tool) = tools.iter_mut().find(|t| t.name == "spawn_agent") {
+                spawn_tool.parameters = json!({
+                    "type": "object",
+                    "properties": {
+                        "agent_type": {
+                            "type": "string",
+                            "enum": ["recon", "scanner", "sast", "report"],
+                            "description": "Type of agent to spawn"
                         },
-                        "required": ["task_description"]
-                    }),
-                },
-            );
+                        "name": {
+                            "type": "string",
+                            "description": "Unique name for this agent instance"
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "Task-specific instructions for the agent"
+                        }
+                    },
+                    "required": ["agent_type", "name", "instructions"]
+                });
+            }
         }
 
         tools
@@ -582,11 +575,18 @@ mod tests {
         let agent = OrchestratorAgent::new();
         let tools = agent.tools();
 
-        assert!(tools.iter().any(|t| t.name == "delegate_recon"));
-        assert!(tools.iter().any(|t| t.name == "delegate_scanner"));
-        assert!(tools.iter().any(|t| t.name == "advance_phase"));
-        assert!(tools.iter().any(|t| t.name == "get_status"));
+        assert!(tools.iter().any(|t| t.name == "spawn_agent"));
+        assert!(tools.iter().any(|t| t.name == "wait_for_agent"));
+        assert!(tools.iter().any(|t| t.name == "wait_for_any"));
+        assert!(tools.iter().any(|t| t.name == "list_agents"));
+        assert!(tools.iter().any(|t| t.name == "record_finding"));
         assert!(tools.iter().any(|t| t.name == "complete_engagement"));
+    }
+
+    #[test]
+    fn test_orchestrator_with_source_target() {
+        let agent = OrchestratorAgent::new().with_source_target();
+        assert!(agent.has_source_target());
     }
 
     #[test]
