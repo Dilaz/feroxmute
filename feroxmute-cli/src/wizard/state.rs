@@ -53,6 +53,7 @@ pub struct WizardState {
     pub data: WizardData,
     pub selected_index: usize,
     pub text_input: String,
+    pub cursor_position: usize,
     pub show_advanced: bool,
     pub error_message: Option<String>,
 }
@@ -64,6 +65,7 @@ impl WizardState {
             data: WizardData::default(),
             selected_index: 0,
             text_input: String::new(),
+            cursor_position: 0,
             show_advanced: false,
             error_message: None,
         }
@@ -73,62 +75,207 @@ impl WizardState {
     pub fn render(&self, frame: &mut Frame) {
         match self.screen {
             WizardScreen::Welcome => screens::render_welcome(frame, self),
-            _ => {
-                use ratatui::widgets::{Block, Borders, Paragraph};
-                let block = Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Feroxmute Setup ");
-                let text = format!("Screen: {:?}\nPress Enter to continue, Esc to go back", self.screen);
-                let para = Paragraph::new(text).block(block);
-                frame.render_widget(para, frame.area());
-            }
+            WizardScreen::Provider => screens::render_provider(frame, self),
+            WizardScreen::ApiKey => screens::render_api_key(frame, self),
+            WizardScreen::Scope => screens::render_scope(frame, self),
+            WizardScreen::Constraints => screens::render_constraints(frame, self),
+            WizardScreen::AdvancedPrompt => screens::render_advanced_prompt(frame, self),
+            WizardScreen::Advanced => screens::render_advanced(frame, self),
+            WizardScreen::Review => screens::render_review(frame, self),
         }
     }
 
     /// Handle key events
     pub fn handle_key(&mut self, key: KeyEvent) -> WizardAction {
-        match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => WizardAction::Quit,
-            KeyCode::Enter => {
-                if self.screen == WizardScreen::Review {
-                    match self.save_config() {
-                        Ok(path) => WizardAction::Complete(path),
-                        Err(e) => {
-                            self.error_message = Some(format!("Failed to save config: {}", e));
-                            WizardAction::Continue
+        use crossterm::event::KeyModifiers;
+
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return WizardAction::Quit;
+        }
+
+        match self.screen {
+            WizardScreen::Welcome => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Enter => return self.next_screen(),
+                    _ => {}
+                }
+            }
+            WizardScreen::Provider => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.selected_index = self.selected_index.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.selected_index = (self.selected_index + 1).min(2);
+                    }
+                    KeyCode::Enter => {
+                        self.data.provider = match self.selected_index {
+                            0 => ProviderName::Anthropic,
+                            1 => ProviderName::OpenAi,
+                            _ => ProviderName::LiteLlm,
+                        };
+                        self.selected_index = 0;
+                        return self.next_screen();
+                    }
+                    KeyCode::Esc => return self.prev_screen(),
+                    _ => {}
+                }
+            }
+            WizardScreen::ApiKey => {
+                match key.code {
+                    KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
+                    KeyCode::Char(c) => {
+                        self.text_input.insert(self.cursor_position, c);
+                        self.cursor_position += 1;
+                    }
+                    KeyCode::Backspace => {
+                        if self.cursor_position > 0 {
+                            self.cursor_position -= 1;
+                            self.text_input.remove(self.cursor_position);
                         }
                     }
-                } else {
-                    self.next_screen();
-                    WizardAction::Continue
+                    KeyCode::Delete => {
+                        if self.cursor_position < self.text_input.len() {
+                            self.text_input.remove(self.cursor_position);
+                        }
+                    }
+                    KeyCode::Left => {
+                        self.cursor_position = self.cursor_position.saturating_sub(1);
+                    }
+                    KeyCode::Right => {
+                        self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                    }
+                    KeyCode::Home => self.cursor_position = 0,
+                    KeyCode::End => self.cursor_position = self.text_input.len(),
+                    KeyCode::Enter => {
+                        if !self.text_input.is_empty() {
+                            self.data.api_key = self.text_input.clone();
+                            self.text_input.clear();
+                            self.cursor_position = 0;
+                            self.selected_index = 0;
+                            return self.next_screen();
+                        }
+                    }
+                    KeyCode::Esc => {
+                        self.text_input.clear();
+                        self.cursor_position = 0;
+                        return self.prev_screen();
+                    }
+                    _ => {}
                 }
             }
-            KeyCode::Backspace => {
-                if !self.text_input.is_empty() {
-                    self.text_input.pop();
+            WizardScreen::Scope => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.selected_index = self.selected_index.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.selected_index = (self.selected_index + 1).min(2);
+                    }
+                    KeyCode::Enter => {
+                        self.data.scope = match self.selected_index {
+                            0 => Scope::Web,
+                            1 => Scope::Network,
+                            _ => Scope::Full,
+                        };
+                        self.selected_index = 0;
+                        return self.next_screen();
+                    }
+                    KeyCode::Esc => return self.prev_screen(),
+                    _ => {}
                 }
-                WizardAction::Continue
             }
-            KeyCode::Char(c) => {
-                self.text_input.push(c);
-                WizardAction::Continue
-            }
-            KeyCode::Up => {
-                if self.selected_index > 0 {
-                    self.selected_index -= 1;
+            WizardScreen::Constraints => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.selected_index = self.selected_index.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.selected_index = (self.selected_index + 1).min(2);
+                    }
+                    KeyCode::Char(' ') => {
+                        match self.selected_index {
+                            0 => self.data.passive = !self.data.passive,
+                            1 => self.data.no_exploit = !self.data.no_exploit,
+                            2 => self.data.no_portscan = !self.data.no_portscan,
+                            _ => {}
+                        }
+                    }
+                    KeyCode::Enter => {
+                        self.selected_index = 0;
+                        return self.next_screen();
+                    }
+                    KeyCode::Esc => return self.prev_screen(),
+                    _ => {}
                 }
-                WizardAction::Continue
             }
-            KeyCode::Down => {
-                self.selected_index += 1;
-                WizardAction::Continue
+            WizardScreen::AdvancedPrompt => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.selected_index = self.selected_index.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.selected_index = (self.selected_index + 1).min(1);
+                    }
+                    KeyCode::Enter => {
+                        self.show_advanced = self.selected_index == 1;
+                        self.selected_index = 0;
+                        return self.next_screen();
+                    }
+                    KeyCode::Esc => return self.prev_screen(),
+                    _ => {}
+                }
             }
-            _ => WizardAction::Continue,
+            WizardScreen::Advanced => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        self.selected_index = self.selected_index.saturating_sub(1);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.selected_index = (self.selected_index + 1).min(1);
+                    }
+                    KeyCode::Char(' ') => {
+                        match self.selected_index {
+                            0 => self.data.export_html = !self.data.export_html,
+                            1 => self.data.export_pdf = !self.data.export_pdf,
+                            _ => {}
+                        }
+                    }
+                    KeyCode::Enter => {
+                        self.selected_index = 0;
+                        return self.next_screen();
+                    }
+                    KeyCode::Esc => return self.prev_screen(),
+                    _ => {}
+                }
+            }
+            WizardScreen::Review => {
+                match key.code {
+                    KeyCode::Char('q') => return WizardAction::Quit,
+                    KeyCode::Enter => {
+                        match self.save_config() {
+                            Ok(path) => return WizardAction::Complete(path),
+                            Err(e) => {
+                                self.error_message = Some(e.to_string());
+                            }
+                        }
+                    }
+                    KeyCode::Esc => return self.prev_screen(),
+                    _ => {}
+                }
+            }
         }
+        WizardAction::Continue
     }
 
     /// Move to next screen
-    fn next_screen(&mut self) {
+    fn next_screen(&mut self) -> WizardAction {
         self.screen = match self.screen {
             WizardScreen::Welcome => WizardScreen::Provider,
             WizardScreen::Provider => WizardScreen::ApiKey,
@@ -145,11 +292,11 @@ impl WizardState {
             WizardScreen::Advanced => WizardScreen::Review,
             WizardScreen::Review => WizardScreen::Review,
         };
+        WizardAction::Continue
     }
 
     /// Move to previous screen
-    #[allow(dead_code)]
-    fn prev_screen(&mut self) {
+    fn prev_screen(&mut self) -> WizardAction {
         self.screen = match self.screen {
             WizardScreen::Welcome => WizardScreen::Welcome,
             WizardScreen::Provider => WizardScreen::Welcome,
@@ -166,6 +313,7 @@ impl WizardState {
                 }
             }
         };
+        WizardAction::Continue
     }
 
     /// Save configuration to file

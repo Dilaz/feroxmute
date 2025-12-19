@@ -119,3 +119,267 @@ pub fn render_footer(frame: &mut Frame, area: Rect, can_go_back: bool) {
         .style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, area);
 }
+
+/// Render the provider selection screen
+pub fn render_provider(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 1: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Select LLM Provider", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let providers = ["Anthropic (Recommended)", "OpenAI", "LiteLLM (Local proxy)"];
+    let list = SelectList::new(&providers, state.selected_index)
+        .focused(true)
+        .label("Provider");
+
+    let list_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 1,
+        width: content_area.width.saturating_sub(4),
+        height: 5,
+    };
+    list.render(frame, list_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the API key input screen
+pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let provider_name = match state.data.provider {
+        feroxmute_core::config::ProviderName::Anthropic => "Anthropic",
+        feroxmute_core::config::ProviderName::OpenAi => "OpenAI",
+        feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
+        feroxmute_core::config::ProviderName::Cohere => "Cohere",
+    };
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 2: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(format!("Enter {} API Key", provider_name), Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let warning_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y,
+        width: content_area.width.saturating_sub(4),
+        height: 2,
+    };
+    let warning = Paragraph::new(Line::from(vec![
+        Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
+        Span::styled("API key will be stored in config. Ensure ~/.feroxmute/ is not shared.", Style::default().fg(Color::Yellow)),
+    ]));
+    frame.render_widget(warning, warning_area);
+
+    let input_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 3,
+        width: content_area.width.saturating_sub(4),
+        height: 3,
+    };
+
+    let placeholder = match state.data.provider {
+        feroxmute_core::config::ProviderName::Anthropic => "sk-ant-...",
+        feroxmute_core::config::ProviderName::OpenAi => "sk-...",
+        feroxmute_core::config::ProviderName::LiteLlm => "your-api-key",
+        _ => "api-key",
+    };
+
+    let input = TextInput::new(&state.text_input, state.cursor_position)
+        .placeholder(placeholder)
+        .masked(true)
+        .focused(true)
+        .label("API Key");
+    input.render(frame, input_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the scope selection screen
+pub fn render_scope(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 3: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Default Testing Scope", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let scopes = ["Web (HTTP/HTTPS only)", "Network (ports, services)", "Full (web + network)"];
+    let list = SelectList::new(&scopes, state.selected_index)
+        .focused(true)
+        .label("Scope");
+
+    let list_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 1,
+        width: content_area.width.saturating_sub(4),
+        height: 5,
+    };
+    list.render(frame, list_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the constraints selection screen
+pub fn render_constraints(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 4: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Default Constraints", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let items = [
+        ("Passive only (no active probing)", state.data.passive),
+        ("No exploitation (recon/scan only)", state.data.no_exploit),
+        ("No port scanning", state.data.no_portscan),
+    ];
+    let checkbox = CheckboxGroup::new(&items, state.selected_index)
+        .focused(true)
+        .label("Constraints (Space to toggle)");
+
+    let list_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 1,
+        width: content_area.width.saturating_sub(4),
+        height: 5,
+    };
+    checkbox.render(frame, list_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the advanced prompt screen
+pub fn render_advanced_prompt(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 5: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Advanced Options", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let options = ["Skip (use defaults)", "Configure advanced options"];
+    let list = SelectList::new(&options, state.selected_index)
+        .focused(true)
+        .label("Advanced Configuration");
+
+    let list_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 1,
+        width: content_area.width.saturating_sub(4),
+        height: 4,
+    };
+    list.render(frame, list_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the advanced options screen
+pub fn render_advanced(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 5: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Advanced Options", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let items = [
+        ("Export HTML reports", state.data.export_html),
+        ("Export PDF reports", state.data.export_pdf),
+    ];
+    let checkbox = CheckboxGroup::new(&items, state.selected_index)
+        .focused(true)
+        .label("Output Options (Space to toggle)");
+
+    let list_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 1,
+        width: content_area.width.saturating_sub(4),
+        height: 4,
+    };
+    checkbox.render(frame, list_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the review screen
+pub fn render_review(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Review: ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Configuration Summary", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let provider_name = match state.data.provider {
+        feroxmute_core::config::ProviderName::Anthropic => "Anthropic",
+        feroxmute_core::config::ProviderName::OpenAi => "OpenAI",
+        feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
+        feroxmute_core::config::ProviderName::Cohere => "Cohere",
+    };
+
+    let scope_name = match state.data.scope {
+        feroxmute_core::config::Scope::Web => "Web",
+        feroxmute_core::config::Scope::Network => "Network",
+        feroxmute_core::config::Scope::Full => "Full",
+    };
+
+    let api_key_display = if state.data.api_key.len() > 8 {
+        format!("{}...{}", &state.data.api_key[..4], &state.data.api_key[state.data.api_key.len()-4..])
+    } else {
+        "****".to_string()
+    };
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("  Provider:    ", Style::default().fg(Color::DarkGray)),
+            Span::raw(provider_name),
+        ]),
+        Line::from(vec![
+            Span::styled("  API Key:     ", Style::default().fg(Color::DarkGray)),
+            Span::raw(api_key_display),
+        ]),
+        Line::from(vec![
+            Span::styled("  Scope:       ", Style::default().fg(Color::DarkGray)),
+            Span::raw(scope_name),
+        ]),
+        Line::from(vec![
+            Span::styled("  Passive:     ", Style::default().fg(Color::DarkGray)),
+            Span::raw(if state.data.passive { "Yes" } else { "No" }),
+        ]),
+        Line::from(vec![
+            Span::styled("  No Exploit:  ", Style::default().fg(Color::DarkGray)),
+            Span::raw(if state.data.no_exploit { "Yes" } else { "No" }),
+        ]),
+        Line::from(vec![
+            Span::styled("  No Portscan: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(if state.data.no_portscan { "Yes" } else { "No" }),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("  Config will be saved to: ", Style::default().fg(Color::DarkGray))),
+        Line::from(Span::styled("  ~/.feroxmute/config.toml", Style::default().fg(Color::Yellow))),
+    ];
+
+    let summary = Paragraph::new(lines);
+    frame.render_widget(summary, content_area);
+
+    let footer = Paragraph::new(Line::from(vec![
+        Span::styled("Enter", Style::default().fg(Color::Green)),
+        Span::raw(" save config  "),
+        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+        Span::raw(" back  "),
+        Span::styled("q", Style::default().fg(Color::Red)),
+        Span::raw(" quit"),
+    ]))
+    .style(Style::default().fg(Color::DarkGray));
+    frame.render_widget(footer, footer_area);
+}
