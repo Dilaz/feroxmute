@@ -28,8 +28,22 @@ fn main() -> Result<()> {
     tracing::info!("feroxmute v{}", env!("CARGO_PKG_VERSION"));
 
     if args.wizard {
-        println!("Interactive wizard not yet implemented");
-        return Ok(());
+        match wizard::run_wizard() {
+            Ok(path) => {
+                println!("\n✓ Configuration saved to: {}", path.display());
+                println!("\nYou can now run feroxmute with:");
+                println!("  feroxmute --target example.com");
+                return Ok(());
+            }
+            Err(e) => {
+                if e.to_string().contains("cancelled") {
+                    println!("\nWizard cancelled.");
+                } else {
+                    eprintln!("\nError: {}", e);
+                }
+                return Ok(());
+            }
+        }
     }
 
     if let Some(ref session) = args.resume {
