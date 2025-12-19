@@ -1,8 +1,11 @@
 //! Provider trait definitions
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::docker::ContainerManager;
 use crate::state::MetricsTracker;
 use crate::Result;
 
@@ -140,6 +143,18 @@ pub trait LlmProvider: Send + Sync {
 
     /// Complete a request
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse>;
+
+    /// Complete with shell tool access (uses rig's built-in tool loop)
+    async fn complete_with_shell(
+        &self,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _container: Arc<ContainerManager>,
+    ) -> Result<String> {
+        Err(crate::Error::Provider(
+            "Shell tool not supported by this provider".to_string(),
+        ))
+    }
 
     /// Get the metrics tracker
     fn metrics(&self) -> &MetricsTracker;
