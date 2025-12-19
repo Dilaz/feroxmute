@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 
+use feroxmute_core::config::{ProviderName, Scope};
+
 /// Wizard screens in order
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WizardScreen {
@@ -19,36 +21,20 @@ pub enum WizardScreen {
     Review,
 }
 
-/// Wizard data collected from user
-#[derive(Debug, Clone)]
+/// Form data collected by the wizard
+#[derive(Debug, Clone, Default)]
 pub struct WizardData {
-    pub provider: usize,
+    pub provider: ProviderName,
     pub api_key: String,
-    pub scope: usize,
-    pub max_depth: String,
-    pub max_time: String,
-    pub max_cost: String,
-    pub custom_prompt: String,
-    pub advanced_shown: bool,
-    pub docker_image: String,
-    pub session_dir: String,
-}
-
-impl Default for WizardData {
-    fn default() -> Self {
-        Self {
-            provider: 0,
-            api_key: String::new(),
-            scope: 0,
-            max_depth: "3".to_string(),
-            max_time: "60".to_string(),
-            max_cost: "10.00".to_string(),
-            custom_prompt: String::new(),
-            advanced_shown: false,
-            docker_image: "feroxmute-kali:latest".to_string(),
-            session_dir: "~/.feroxmute/sessions".to_string(),
-        }
-    }
+    pub model: Option<String>,
+    pub base_url: Option<String>,
+    pub scope: Scope,
+    pub passive: bool,
+    pub no_exploit: bool,
+    pub no_portscan: bool,
+    pub rate_limit: Option<u32>,
+    pub export_html: bool,
+    pub export_pdf: bool,
 }
 
 /// Actions returned from key handler
@@ -234,9 +220,27 @@ impl WizardState {
 
     /// Generate TOML content
     fn generate_toml(&self) -> anyhow::Result<String> {
-        let provider_name = provider_name_str(self.data.provider);
-        let scope_name = scope_str(self.data.scope);
-        let default_model = default_model(self.data.provider);
+        let provider_name = match self.data.provider {
+            ProviderName::Anthropic => "anthropic",
+            ProviderName::OpenAi => "openai",
+            ProviderName::Cohere => "cohere",
+            ProviderName::LiteLlm => "litellm",
+        };
+
+        let scope_name = match self.data.scope {
+            Scope::Web => "web",
+            Scope::Network => "network",
+            Scope::Full => "full",
+        };
+
+        let model = self.data.model.as_deref().unwrap_or_else(|| {
+            match self.data.provider {
+                ProviderName::Anthropic => "claude-sonnet-4-20250514",
+                ProviderName::OpenAi => "gpt-4o",
+                ProviderName::Cohere => "command-r-plus",
+                ProviderName::LiteLlm => "openai/gpt-4o",
+            }
+        });
 
         let mut toml = String::new();
         toml.push_str(&format!("# feroxmute configuration\n"));
@@ -245,55 +249,30 @@ impl WizardState {
         toml.push_str("[provider]\n");
         toml.push_str(&format!("name = \"{}\"\n", provider_name));
         toml.push_str(&format!("api_key = \"{}\"\n", self.data.api_key));
-        toml.push_str(&format!("default_model = \"{}\"\n\n", default_model));
+        toml.push_str(&format!("model = \"{}\"\n", model));
+        if let Some(ref base_url) = self.data.base_url {
+            toml.push_str(&format!("base_url = \"{}\"\n", base_url));
+        }
+        toml.push_str("\n");
 
-        toml.push_str("[scope]\n");
-        toml.push_str(&format!("level = \"{}\"\n\n", scope_name));
+        toml.push_str("[target]\n");
+        toml.push_str(&format!("scope = \"{}\"\n\n", scope_name));
 
         toml.push_str("[constraints]\n");
-        toml.push_str(&format!("max_depth = {}\n", self.data.max_depth));
-        toml.push_str(&format!("max_time_minutes = {}\n", self.data.max_time));
-        toml.push_str(&format!("max_cost_dollars = {}\n", self.data.max_cost));
-
-        if !self.data.custom_prompt.is_empty() {
-            toml.push_str(&format!("\n[prompts]\n"));
-            toml.push_str(&format!("custom = \"\"\"\n{}\n\"\"\"\n", self.data.custom_prompt));
+        toml.push_str(&format!("passive = {}\n", self.data.passive));
+        toml.push_str(&format!("no_exploit = {}\n", self.data.no_exploit));
+        toml.push_str(&format!("no_portscan = {}\n", self.data.no_portscan));
+        if let Some(rate_limit) = self.data.rate_limit {
+            toml.push_str(&format!("rate_limit = {}\n", rate_limit));
+        } else {
+            toml.push_str("# rate_limit = 10\n");
         }
+        toml.push_str("\n");
 
-        if self.data.advanced_shown {
-            toml.push_str(&format!("\n[docker]\n"));
-            toml.push_str(&format!("image = \"{}\"\n\n", self.data.docker_image));
-            toml.push_str(&format!("[session]\n"));
-            toml.push_str(&format!("base_dir = \"{}\"\n", self.data.session_dir));
-        }
+        toml.push_str("[output]\n");
+        toml.push_str(&format!("export_html = {}\n", self.data.export_html));
+        toml.push_str(&format!("export_pdf = {}\n", self.data.export_pdf));
 
         Ok(toml)
-    }
-}
-
-fn provider_name_str(index: usize) -> &'static str {
-    match index {
-        0 => "anthropic",
-        1 => "openai",
-        2 => "litellm",
-        _ => "anthropic",
-    }
-}
-
-fn scope_str(index: usize) -> &'static str {
-    match index {
-        0 => "passive",
-        1 => "active",
-        2 => "aggressive",
-        _ => "passive",
-    }
-}
-
-fn default_model(provider_index: usize) -> &'static str {
-    match provider_index {
-        0 => "claude-sonnet-4-20250514",
-        1 => "gpt-4o",
-        2 => "openai/gpt-4o",
-        _ => "claude-sonnet-4-20250514",
     }
 }
