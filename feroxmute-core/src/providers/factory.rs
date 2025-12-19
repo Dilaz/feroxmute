@@ -6,7 +6,10 @@ use crate::config::{ProviderConfig, ProviderName};
 use crate::state::MetricsTracker;
 use crate::{Error, Result};
 
-use super::{AnthropicProvider, LlmProvider, OpenAiProvider};
+use super::{
+    AnthropicProvider, AzureProvider, CohereProvider, DeepSeekProvider, GeminiProvider,
+    LlmProvider, MiraProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
+};
 
 /// Create a provider from configuration
 pub fn create_provider(
@@ -54,9 +57,79 @@ pub fn create_provider(
                 OpenAiProvider::with_base_url(api_key, base_url, &config.model, metrics)?;
             Ok(Arc::new(provider))
         }
-        ProviderName::Cohere => Err(Error::Provider(
-            "Cohere provider not implemented".to_string(),
-        )),
+        ProviderName::Cohere => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("COHERE_API_KEY").ok())
+                .ok_or_else(|| Error::Provider("COHERE_API_KEY not set".to_string()))?;
+            let provider = CohereProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Perplexity => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("PERPLEXITY_API_KEY").ok())
+                .ok_or_else(|| Error::Provider("PERPLEXITY_API_KEY not set".to_string()))?;
+            let provider = PerplexityProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Gemini => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("GEMINI_API_KEY").ok())
+                .or_else(|| std::env::var("GOOGLE_API_KEY").ok())
+                .ok_or_else(|| {
+                    Error::Provider("GEMINI_API_KEY or GOOGLE_API_KEY not set".to_string())
+                })?;
+            let provider = GeminiProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Xai => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("XAI_API_KEY").ok())
+                .ok_or_else(|| Error::Provider("XAI_API_KEY not set".to_string()))?;
+            let provider = XaiProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::DeepSeek => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("DEEPSEEK_API_KEY").ok())
+                .ok_or_else(|| Error::Provider("DEEPSEEK_API_KEY not set".to_string()))?;
+            let provider = DeepSeekProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Azure => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("AZURE_OPENAI_API_KEY").ok())
+                .ok_or_else(|| Error::Provider("AZURE_OPENAI_API_KEY not set".to_string()))?;
+            let endpoint = config
+                .base_url
+                .clone()
+                .or_else(|| std::env::var("AZURE_OPENAI_ENDPOINT").ok())
+                .ok_or_else(|| {
+                    Error::Provider("Azure requires base_url (endpoint) to be set".to_string())
+                })?;
+            let provider = AzureProvider::with_api_key(api_key, endpoint, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Mira => {
+            let api_key = config
+                .api_key
+                .clone()
+                .or_else(|| std::env::var("MIRA_API_KEY").ok())
+                .ok_or_else(|| Error::Provider("MIRA_API_KEY not set".to_string()))?;
+            let provider = MiraProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
     }
 }
 
@@ -105,17 +178,47 @@ mod tests {
     }
 
     #[test]
-    fn test_cohere_not_implemented() {
+    fn test_cohere_requires_api_key() {
+        let original = std::env::var("COHERE_API_KEY").ok();
+        std::env::remove_var("COHERE_API_KEY");
+
         let config = ProviderConfig {
             name: ProviderName::Cohere,
-            model: "command".to_string(),
+            model: "command-r-plus".to_string(),
             api_key: None,
             base_url: None,
         };
         let result = create_provider(&config, MetricsTracker::new());
         assert!(result.is_err());
+
+        if let Some(key) = original {
+            std::env::set_var("COHERE_API_KEY", key);
+        }
+    }
+
+    #[test]
+    fn test_azure_requires_endpoint() {
+        let original_key = std::env::var("AZURE_OPENAI_API_KEY").ok();
+        let original_endpoint = std::env::var("AZURE_OPENAI_ENDPOINT").ok();
+        std::env::remove_var("AZURE_OPENAI_ENDPOINT");
+
+        let config = ProviderConfig {
+            name: ProviderName::Azure,
+            model: "gpt-4o".to_string(),
+            api_key: Some("test-key".to_string()),
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new());
+        assert!(result.is_err());
         let err = result.err().unwrap();
-        assert!(err.to_string().contains("not implemented"));
+        assert!(err.to_string().contains("base_url"));
+
+        if let Some(key) = original_key {
+            std::env::set_var("AZURE_OPENAI_API_KEY", key);
+        }
+        if let Some(endpoint) = original_endpoint {
+            std::env::set_var("AZURE_OPENAI_ENDPOINT", endpoint);
+        }
     }
 
     #[test]

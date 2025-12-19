@@ -33,6 +33,13 @@ pub enum ProviderName {
     OpenAi,
     Cohere,
     LiteLlm,
+    Perplexity,
+    Gemini,
+    #[serde(rename = "xai")]
+    Xai,
+    DeepSeek,
+    Azure,
+    Mira,
 }
 
 /// Target configuration

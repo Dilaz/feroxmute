@@ -21,6 +21,7 @@ pub enum WizardScreen {
     ConfirmOverwrite,
     Provider,
     ApiKey,
+    AzureEndpoint,
     Scope,
     Constraints,
     AdvancedPrompt,
@@ -91,6 +92,7 @@ impl WizardState {
             WizardScreen::ConfirmOverwrite => screens::render_confirm_overwrite(frame, self),
             WizardScreen::Provider => screens::render_provider(frame, self),
             WizardScreen::ApiKey => screens::render_api_key(frame, self),
+            WizardScreen::AzureEndpoint => screens::render_azure_endpoint(frame, self),
             WizardScreen::Scope => screens::render_scope(frame, self),
             WizardScreen::Constraints => screens::render_constraints(frame, self),
             WizardScreen::AdvancedPrompt => screens::render_advanced_prompt(frame, self),
@@ -142,12 +144,19 @@ impl WizardState {
                     self.selected_index = self.selected_index.saturating_sub(1);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    self.selected_index = (self.selected_index + 1).min(2);
+                    self.selected_index = (self.selected_index + 1).min(9);
                 }
                 KeyCode::Enter => {
                     self.data.provider = match self.selected_index {
                         0 => ProviderName::Anthropic,
                         1 => ProviderName::OpenAi,
+                        2 => ProviderName::Gemini,
+                        3 => ProviderName::Xai,
+                        4 => ProviderName::DeepSeek,
+                        5 => ProviderName::Perplexity,
+                        6 => ProviderName::Cohere,
+                        7 => ProviderName::Azure,
+                        8 => ProviderName::Mira,
                         _ => ProviderName::LiteLlm,
                     };
                     self.selected_index = 0;
@@ -184,6 +193,47 @@ impl WizardState {
                 KeyCode::Enter => {
                     if !self.text_input.is_empty() {
                         self.data.api_key = self.text_input.clone();
+                        self.text_input.clear();
+                        self.cursor_position = 0;
+                        self.selected_index = 0;
+                        return self.next_screen();
+                    }
+                }
+                KeyCode::Esc => {
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    return self.prev_screen();
+                }
+                _ => {}
+            },
+            WizardScreen::AzureEndpoint => match key.code {
+                KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
+                KeyCode::Char(c) => {
+                    self.text_input.insert(self.cursor_position, c);
+                    self.cursor_position += 1;
+                }
+                KeyCode::Backspace => {
+                    if self.cursor_position > 0 {
+                        self.cursor_position -= 1;
+                        self.text_input.remove(self.cursor_position);
+                    }
+                }
+                KeyCode::Delete => {
+                    if self.cursor_position < self.text_input.len() {
+                        self.text_input.remove(self.cursor_position);
+                    }
+                }
+                KeyCode::Left => {
+                    self.cursor_position = self.cursor_position.saturating_sub(1);
+                }
+                KeyCode::Right => {
+                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                }
+                KeyCode::Home => self.cursor_position = 0,
+                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::Enter => {
+                    if !self.text_input.is_empty() {
+                        self.data.base_url = Some(self.text_input.clone());
                         self.text_input.clear();
                         self.cursor_position = 0;
                         self.selected_index = 0;
@@ -295,7 +345,14 @@ impl WizardState {
             WizardScreen::ConfirmOverwrite => WizardScreen::Welcome,
             WizardScreen::Welcome => WizardScreen::Provider,
             WizardScreen::Provider => WizardScreen::ApiKey,
-            WizardScreen::ApiKey => WizardScreen::Scope,
+            WizardScreen::ApiKey => {
+                if self.data.provider == ProviderName::Azure {
+                    WizardScreen::AzureEndpoint
+                } else {
+                    WizardScreen::Scope
+                }
+            }
+            WizardScreen::AzureEndpoint => WizardScreen::Scope,
             WizardScreen::Scope => WizardScreen::Constraints,
             WizardScreen::Constraints => WizardScreen::AdvancedPrompt,
             WizardScreen::AdvancedPrompt => {
@@ -318,7 +375,14 @@ impl WizardState {
             WizardScreen::Welcome => return WizardAction::Quit,
             WizardScreen::Provider => WizardScreen::Welcome,
             WizardScreen::ApiKey => WizardScreen::Provider,
-            WizardScreen::Scope => WizardScreen::ApiKey,
+            WizardScreen::AzureEndpoint => WizardScreen::ApiKey,
+            WizardScreen::Scope => {
+                if self.data.provider == ProviderName::Azure {
+                    WizardScreen::AzureEndpoint
+                } else {
+                    WizardScreen::ApiKey
+                }
+            }
             WizardScreen::Constraints => WizardScreen::Scope,
             WizardScreen::AdvancedPrompt => WizardScreen::Constraints,
             WizardScreen::Advanced => WizardScreen::AdvancedPrompt,
@@ -362,7 +426,13 @@ impl WizardState {
         let provider_name = match self.data.provider {
             ProviderName::Anthropic => "anthropic",
             ProviderName::OpenAi => "openai",
+            ProviderName::Gemini => "gemini",
+            ProviderName::Xai => "xai",
+            ProviderName::DeepSeek => "deepseek",
+            ProviderName::Perplexity => "perplexity",
             ProviderName::Cohere => "cohere",
+            ProviderName::Azure => "azure",
+            ProviderName::Mira => "mira",
             ProviderName::LiteLlm => "litellm",
         };
 
@@ -379,7 +449,13 @@ impl WizardState {
             .unwrap_or_else(|| match self.data.provider {
                 ProviderName::Anthropic => "claude-sonnet-4-20250514",
                 ProviderName::OpenAi => "gpt-4o",
+                ProviderName::Gemini => "gemini-1.5-pro",
+                ProviderName::Xai => "grok-2",
+                ProviderName::DeepSeek => "deepseek-chat",
+                ProviderName::Perplexity => "sonar-pro",
                 ProviderName::Cohere => "command-r-plus",
+                ProviderName::Azure => "gpt-4o",
+                ProviderName::Mira => "mira-chat",
                 ProviderName::LiteLlm => "openai/gpt-4o",
             });
 

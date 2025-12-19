@@ -175,7 +175,18 @@ pub fn render_provider(frame: &mut Frame, state: &WizardState) {
     ]));
     frame.render_widget(title, title_area);
 
-    let providers = ["Anthropic (Recommended)", "OpenAI", "LiteLLM (Local proxy)"];
+    let providers = [
+        "Anthropic (Recommended)",
+        "OpenAI",
+        "Google Gemini",
+        "xAI (Grok)",
+        "DeepSeek",
+        "Perplexity",
+        "Cohere",
+        "Azure OpenAI",
+        "Mira",
+        "LiteLLM (Local proxy)",
+    ];
     let list = SelectList::new(&providers, state.selected_index)
         .focused(true)
         .label("Provider");
@@ -184,7 +195,7 @@ pub fn render_provider(frame: &mut Frame, state: &WizardState) {
         x: content_area.x + 2,
         y: content_area.y + 1,
         width: content_area.width.saturating_sub(4),
-        height: 5,
+        height: 12,
     };
     list.render(frame, list_area);
 
@@ -198,8 +209,14 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
     let provider_name = match state.data.provider {
         feroxmute_core::config::ProviderName::Anthropic => "Anthropic",
         feroxmute_core::config::ProviderName::OpenAi => "OpenAI",
-        feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
+        feroxmute_core::config::ProviderName::Gemini => "Google Gemini",
+        feroxmute_core::config::ProviderName::Xai => "xAI",
+        feroxmute_core::config::ProviderName::DeepSeek => "DeepSeek",
+        feroxmute_core::config::ProviderName::Perplexity => "Perplexity",
         feroxmute_core::config::ProviderName::Cohere => "Cohere",
+        feroxmute_core::config::ProviderName::Azure => "Azure OpenAI",
+        feroxmute_core::config::ProviderName::Mira => "Mira",
+        feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -236,8 +253,14 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
     let placeholder = match state.data.provider {
         feroxmute_core::config::ProviderName::Anthropic => "sk-ant-...",
         feroxmute_core::config::ProviderName::OpenAi => "sk-...",
+        feroxmute_core::config::ProviderName::Gemini => "AIza...",
+        feroxmute_core::config::ProviderName::Xai => "xai-...",
+        feroxmute_core::config::ProviderName::DeepSeek => "sk-...",
+        feroxmute_core::config::ProviderName::Perplexity => "pplx-...",
+        feroxmute_core::config::ProviderName::Cohere => "your-cohere-key",
+        feroxmute_core::config::ProviderName::Azure => "your-azure-key",
+        feroxmute_core::config::ProviderName::Mira => "your-mira-key",
         feroxmute_core::config::ProviderName::LiteLlm => "your-api-key",
-        _ => "api-key",
     };
 
     let input = TextInput::new(&state.text_input, state.cursor_position)
@@ -245,6 +268,50 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
         .masked(true)
         .focused(true)
         .label("API Key");
+    input.render(frame, input_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the Azure endpoint input screen
+pub fn render_azure_endpoint(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 2b: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Enter Azure OpenAI Endpoint",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let info_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y,
+        width: content_area.width.saturating_sub(4),
+        height: 2,
+    };
+    let info = Paragraph::new(Line::from(vec![
+        Span::styled(
+            "Azure OpenAI requires a resource-specific endpoint URL.",
+            Style::default().fg(Color::DarkGray),
+        ),
+    ]));
+    frame.render_widget(info, info_area);
+
+    let input_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 3,
+        width: content_area.width.saturating_sub(4),
+        height: 3,
+    };
+
+    let input = TextInput::new(&state.text_input, state.cursor_position)
+        .placeholder("https://your-resource.openai.azure.com")
+        .masked(false)
+        .focused(true)
+        .label("Endpoint URL");
     input.render(frame, input_area);
 
     render_footer(frame, footer_area, true);
@@ -393,8 +460,14 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
     let provider_name = match state.data.provider {
         feroxmute_core::config::ProviderName::Anthropic => "Anthropic",
         feroxmute_core::config::ProviderName::OpenAi => "OpenAI",
-        feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
+        feroxmute_core::config::ProviderName::Gemini => "Google Gemini",
+        feroxmute_core::config::ProviderName::Xai => "xAI",
+        feroxmute_core::config::ProviderName::DeepSeek => "DeepSeek",
+        feroxmute_core::config::ProviderName::Perplexity => "Perplexity",
         feroxmute_core::config::ProviderName::Cohere => "Cohere",
+        feroxmute_core::config::ProviderName::Azure => "Azure OpenAI",
+        feroxmute_core::config::ProviderName::Mira => "Mira",
+        feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
     };
 
     let scope_name = match state.data.scope {
