@@ -1,11 +1,15 @@
 //! OpenAI provider implementation using rig-core
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::openai;
 
+use crate::docker::ContainerManager;
 use crate::state::MetricsTracker;
+use crate::tools::DockerShellTool;
 use crate::{Error, Result};
 
 use super::{CompletionRequest, CompletionResponse, LlmProvider, StopReason, TokenUsage};
@@ -128,6 +132,30 @@ impl LlmProvider for OpenAiProvider {
                 cache_creation_tokens: 0,
             },
         })
+    }
+
+    async fn complete_with_shell(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        container: Arc<ContainerManager>,
+    ) -> Result<String> {
+        let tool = DockerShellTool::new(container);
+
+        let agent = self
+            .client
+            .agent(&self.model)
+            .preamble(system_prompt)
+            .max_tokens(4096)
+            .tool(tool)
+            .build();
+
+        let response = agent
+            .prompt(user_prompt)
+            .await
+            .map_err(|e| Error::Provider(format!("OpenAI completion failed: {}", e)))?;
+
+        Ok(response)
     }
 
     fn metrics(&self) -> &MetricsTracker {
