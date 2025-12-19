@@ -560,6 +560,7 @@ dependencies = [
  "feroxmute-core",
  "miette",
  "ratatui",
+ "rusqlite",
  "serde",
  "tokio",
  "tokio-util",
