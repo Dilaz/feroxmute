@@ -137,6 +137,8 @@ pub struct App {
     pub log_scroll: usize,
     /// Selected feed item
     pub selected_feed: usize,
+    /// Horizontal scroll offset for feed
+    pub feed_scroll_x: u16,
     /// Source path for SAST analysis
     pub source_path: Option<String>,
     /// Detected programming languages
@@ -173,6 +175,7 @@ impl App {
             current_thinking: None,
             log_scroll: 0,
             selected_feed: 0,
+            feed_scroll_x: 0,
             source_path: None,
             detected_languages: Vec::new(),
             code_findings: Vec::new(),
@@ -266,6 +269,21 @@ impl App {
     pub fn select_prev(&mut self) {
         self.selected_feed = self.selected_feed.saturating_sub(1);
     }
+
+    /// Scroll feed left
+    pub fn scroll_feed_left(&mut self) {
+        self.feed_scroll_x = self.feed_scroll_x.saturating_sub(4);
+    }
+
+    /// Scroll feed right
+    pub fn scroll_feed_right(&mut self) {
+        self.feed_scroll_x = self.feed_scroll_x.saturating_add(4);
+    }
+
+    /// Reset feed scroll
+    pub fn reset_feed_scroll(&mut self) {
+        self.feed_scroll_x = 0;
+    }
 }
 
 #[cfg(test)]
@@ -313,5 +331,23 @@ mod tests {
 
         app.navigate(View::AgentDetail(AgentView::Recon));
         assert_eq!(app.view, View::AgentDetail(AgentView::Recon));
+    }
+
+    #[test]
+    fn test_feed_scroll() {
+        let mut app = App::new("test.com", "test-session", None);
+        assert_eq!(app.feed_scroll_x, 0);
+
+        app.scroll_feed_right();
+        assert_eq!(app.feed_scroll_x, 4);
+
+        app.scroll_feed_right();
+        assert_eq!(app.feed_scroll_x, 8);
+
+        app.scroll_feed_left();
+        assert_eq!(app.feed_scroll_x, 4);
+
+        app.reset_feed_scroll();
+        assert_eq!(app.feed_scroll_x, 0);
     }
 }
