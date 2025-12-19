@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
-use crate::{Error, Result};
+use crate::Result;
 
 use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts};
 
@@ -279,90 +279,45 @@ impl Agent for OrchestratorAgent {
 
         // Build initial message
         let task_message = format!(
-            "Target: {}\nEngagement Task: {}\nCurrent Phase: {:?}\n\nContext: {}",
+            "Target: {}\nEngagement Task: {}\n\nYou have the following tools:\n\
+            - spawn_agent: Spawn agents (recon, scanner{}, report) to run tasks concurrently\n\
+            - wait_for_agent: Wait for a specific agent by name\n\
+            - wait_for_any: Wait for any agent to complete\n\
+            - list_agents: See status of all agents\n\
+            - record_finding: Record important findings\n\
+            - complete_engagement: Finish the engagement\n\n\
+            Start by spawning appropriate agents for reconnaissance.",
             ctx.target,
             task.description,
-            self.current_phase,
-            task.context.as_deref().unwrap_or("None")
+            if self.has_source_target { ", sast" } else { "" }
         );
 
-        let mut messages = vec![Message::user(&task_message)];
-        let mut result = String::new();
-        let max_iterations = 20; // Orchestrator may need more iterations
+        let messages = vec![Message::user(&task_message)];
 
-        for iteration in 0..max_iterations {
-            self.thinking = Some(format!(
-                "Phase: {:?} | Iteration {}: Planning next action...",
-                self.current_phase,
-                iteration + 1
-            ));
+        // Make single completion request - tool handling done by runner
+        let request = CompletionRequest::new(messages)
+            .with_system(self.system_prompt())
+            .with_tools(self.tools())
+            .with_max_tokens(4096);
 
-            // Make completion request
-            let request = CompletionRequest::new(messages.clone())
-                .with_system(self.system_prompt())
-                .with_tools(self.tools())
-                .with_max_tokens(4096);
+        let response = ctx.provider.complete(request).await?;
 
-            let response = ctx.provider.complete(request).await?;
-
-            // Handle response
-            if !response.tool_calls.is_empty() {
-                for tool_call in &response.tool_calls {
-                    self.thinking = Some(format!("Executing: {}", tool_call.name));
-
-                    let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
-                        .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
-
-                    let tool_result = match tool_call.name.as_str() {
-                        "delegate_recon" => self.handle_delegate_recon(&args, task, ctx).await?,
-                        "delegate_scanner" => {
-                            self.handle_delegate_scanner(&args, task, ctx).await?
-                        }
-                        "delegate_sast" => self.handle_delegate_sast(&args, task, ctx).await?,
-                        "advance_phase" => self.handle_advance_phase(&args),
-                        "get_status" => self.handle_get_status(),
-                        "record_finding" => self.handle_record_finding(&args),
-                        "complete_engagement" => {
-                            result.push_str(&self.handle_complete_engagement(&args));
-                            self.status = AgentStatus::Completed;
-                            break;
-                        }
-                        _ => "Unknown tool".to_string(),
-                    };
-
-                    result.push_str(&format!("\n## {}\n{}\n", tool_call.name, tool_result));
-                    messages.push(Message::assistant(format!(
-                        "Tool {} result: {}",
-                        tool_call.name, tool_result
-                    )));
-                    messages.push(Message::user("Continue orchestrating the engagement."));
-                }
-            } else if let Some(content) = response.content {
-                self.thinking = Some("Analyzing engagement progress...".to_string());
-                result.push_str(&format!("\n## Orchestrator Analysis\n{}\n", content));
-
-                if self.current_phase == EngagementPhase::Complete {
-                    break;
-                }
-
-                messages.push(Message::assistant(&content));
-                messages.push(Message::user("Continue with the engagement."));
-            } else {
-                break;
-            }
-
-            // Check if engagement is complete
-            if self.current_phase == EngagementPhase::Complete {
-                break;
-            }
+        // Return the response content or tool calls as JSON for runner to handle
+        if !response.tool_calls.is_empty() {
+            let tool_calls_json: Vec<serde_json::Value> = response
+                .tool_calls
+                .iter()
+                .map(|tc| {
+                    json!({
+                        "name": tc.name,
+                        "arguments": tc.arguments
+                    })
+                })
+                .collect();
+            Ok(serde_json::to_string_pretty(&tool_calls_json).unwrap_or_default())
+        } else {
+            Ok(response.content.unwrap_or_default())
         }
-
-        if self.status != AgentStatus::Completed {
-            self.status = AgentStatus::Completed;
-        }
-        self.thinking = Some("Engagement orchestration completed".to_string());
-
-        Ok(result)
     }
 
     fn thinking(&self) -> Option<&str> {
@@ -375,102 +330,8 @@ impl Agent for OrchestratorAgent {
 }
 
 impl OrchestratorAgent {
-    /// Handle delegation to recon agent (STUB - will be removed in Task 5)
-    async fn handle_delegate_recon(
-        &mut self,
-        args: &serde_json::Value,
-        _parent_task: &AgentTask,
-        _ctx: &AgentContext<'_>,
-    ) -> Result<String> {
-        let description = args
-            .get("task_description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Perform reconnaissance");
-
-        // Stub implementation - agents will be spawned dynamically in Task 5
-        self.findings.push(format!("Recon: {}", description));
-        Ok("Recon task delegated (stub)".to_string())
-    }
-
-    /// Handle delegation to scanner agent (STUB - will be removed in Task 5)
-    async fn handle_delegate_scanner(
-        &mut self,
-        args: &serde_json::Value,
-        _parent_task: &AgentTask,
-        _ctx: &AgentContext<'_>,
-    ) -> Result<String> {
-        let description = args
-            .get("task_description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Perform vulnerability scanning");
-
-        // Stub implementation - agents will be spawned dynamically in Task 5
-        self.findings.push(format!("Scan: {}", description));
-        Ok("Scanner task delegated (stub)".to_string())
-    }
-
-    /// Handle delegation to SAST agent (STUB - will be removed in Task 5)
-    async fn handle_delegate_sast(
-        &mut self,
-        args: &serde_json::Value,
-        _parent_task: &AgentTask,
-        _ctx: &AgentContext<'_>,
-    ) -> Result<String> {
-        let description = args
-            .get("task_description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Perform static analysis");
-
-        // Stub implementation - agents will be spawned dynamically in Task 5
-        if self.has_source_target {
-            self.findings.push(format!("SAST: {}", description));
-            Ok("SAST task delegated (stub)".to_string())
-        } else {
-            Ok("SAST agent not available (no source target configured)".to_string())
-        }
-    }
-
-    /// Handle phase advancement
-    fn handle_advance_phase(&mut self, args: &serde_json::Value) -> String {
-        let reason = args
-            .get("reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Phase objectives complete");
-
-        let old_phase = self.current_phase;
-        if let Some(next_phase) = self.current_phase.next_with_config(self.has_source_target) {
-            self.current_phase = next_phase;
-            format!(
-                "Advanced from {:?} to {:?}. Reason: {}",
-                old_phase, next_phase, reason
-            )
-        } else {
-            "Already at final phase (Complete)".to_string()
-        }
-    }
-
-    /// Handle status request
-    fn handle_get_status(&self) -> String {
-        let findings_summary = if self.findings.is_empty() {
-            "No findings recorded yet".to_string()
-        } else {
-            self.findings.join("\n- ")
-        };
-
-        format!(
-            "Current Phase: {:?}\n\
-            Agent Status: {:?}\n\
-            Findings Count: {}\n\
-            Recent Findings:\n- {}",
-            self.current_phase,
-            self.status,
-            self.findings.len(),
-            findings_summary
-        )
-    }
-
     /// Handle recording a finding
-    fn handle_record_finding(&mut self, args: &serde_json::Value) -> String {
+    pub fn handle_record_finding(&mut self, args: &serde_json::Value) -> String {
         let finding = args
             .get("finding")
             .and_then(|v| v.as_str())
@@ -487,7 +348,7 @@ impl OrchestratorAgent {
     }
 
     /// Handle engagement completion
-    fn handle_complete_engagement(&mut self, args: &serde_json::Value) -> String {
+    pub fn handle_complete_engagement(&mut self, args: &serde_json::Value) -> String {
         let summary = args
             .get("summary")
             .and_then(|v| v.as_str())
@@ -527,47 +388,10 @@ mod tests {
             Some(EngagementPhase::StaticAnalysis)
         );
         assert_eq!(
-            EngagementPhase::StaticAnalysis.next(),
-            Some(EngagementPhase::Reconnaissance)
-        );
-        assert_eq!(
             EngagementPhase::Reconnaissance.next(),
             Some(EngagementPhase::Scanning)
         );
-        assert_eq!(
-            EngagementPhase::Scanning.next(),
-            Some(EngagementPhase::Exploitation)
-        );
-        assert_eq!(
-            EngagementPhase::Exploitation.next(),
-            Some(EngagementPhase::Reporting)
-        );
-        assert_eq!(
-            EngagementPhase::Reporting.next(),
-            Some(EngagementPhase::Complete)
-        );
         assert_eq!(EngagementPhase::Complete.next(), None);
-    }
-
-    #[test]
-    fn test_phase_progression_with_config() {
-        // With source target, should go to StaticAnalysis
-        assert_eq!(
-            EngagementPhase::Setup.next_with_config(true),
-            Some(EngagementPhase::StaticAnalysis)
-        );
-
-        // Without source target, should skip to Reconnaissance
-        assert_eq!(
-            EngagementPhase::Setup.next_with_config(false),
-            Some(EngagementPhase::Reconnaissance)
-        );
-
-        // Other phases should behave the same
-        assert_eq!(
-            EngagementPhase::StaticAnalysis.next_with_config(true),
-            Some(EngagementPhase::Reconnaissance)
-        );
     }
 
     #[test]
@@ -587,35 +411,6 @@ mod tests {
     fn test_orchestrator_with_source_target() {
         let agent = OrchestratorAgent::new().with_source_target();
         assert!(agent.has_source_target());
-    }
-
-    #[test]
-    fn test_advance_phase_without_sast() {
-        let mut agent = OrchestratorAgent::new();
-        assert_eq!(agent.current_phase(), EngagementPhase::Setup);
-        assert!(!agent.has_source_target());
-
-        // Without source target, should skip StaticAnalysis and go to Reconnaissance
-        let result = agent.handle_advance_phase(&json!({"reason": "Setup complete"}));
-        assert!(result.contains("Reconnaissance"));
-        assert_eq!(agent.current_phase(), EngagementPhase::Reconnaissance);
-    }
-
-    #[test]
-    fn test_advance_phase_with_sast() {
-        let mut agent = OrchestratorAgent::new().with_source_target();
-        assert_eq!(agent.current_phase(), EngagementPhase::Setup);
-        assert!(agent.has_source_target());
-
-        // With source target, should go to StaticAnalysis
-        let result = agent.handle_advance_phase(&json!({"reason": "Setup complete"}));
-        assert!(result.contains("StaticAnalysis"));
-        assert_eq!(agent.current_phase(), EngagementPhase::StaticAnalysis);
-
-        // Then from StaticAnalysis to Reconnaissance
-        let result = agent.handle_advance_phase(&json!({"reason": "SAST complete"}));
-        assert!(result.contains("Reconnaissance"));
-        assert_eq!(agent.current_phase(), EngagementPhase::Reconnaissance);
     }
 
     #[test]
