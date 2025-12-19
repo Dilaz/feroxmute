@@ -164,8 +164,11 @@ fn agent_row<'a>(name: &'a str, status: AgentStatus, key: &'a str) -> Row<'a> {
     ])
 }
 
-/// Render activity feed
+/// Render activity feed with horizontal scrolling
 fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
+    let inner_width = area.width.saturating_sub(2) as usize; // account for borders
+    let scroll_x = app.feed_scroll_x as usize;
+
     let items: Vec<ListItem> = app
         .feed
         .iter()
@@ -177,22 +180,55 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
             } else {
                 Style::default()
             };
-            let line = Line::from(vec![
-                Span::styled(
-                    format!("[{}] ", entry.agent),
-                    Style::default().fg(Color::Cyan),
-                ),
-                Span::styled(&entry.message, style),
-            ]);
-            ListItem::new(line)
+
+            let prefix = format!("[{}] ", entry.agent);
+            let full_text = format!("{}{}", prefix, entry.message);
+
+            // Apply horizontal scroll
+            let display_text = if scroll_x < full_text.len() {
+                let end = (scroll_x + inner_width).min(full_text.len());
+                full_text[scroll_x..end].to_string()
+            } else {
+                String::new()
+            };
+
+            // Color the prefix portion if visible
+            let prefix_len = prefix.len();
+            if scroll_x < prefix_len {
+                let visible_prefix_end = prefix_len.saturating_sub(scroll_x);
+                let visible_prefix = display_text[..visible_prefix_end.min(display_text.len())].to_string();
+                let visible_message = if display_text.len() > visible_prefix_end {
+                    display_text[visible_prefix_end..].to_string()
+                } else {
+                    String::new()
+                };
+
+                let line = Line::from(vec![
+                    Span::styled(visible_prefix, Style::default().fg(Color::Cyan)),
+                    Span::styled(visible_message, style),
+                ]);
+                ListItem::new(line)
+            } else {
+                ListItem::new(Line::from(Span::styled(display_text, style)))
+            }
         })
         .collect();
 
-    let feed = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Activity Feed "),
-    );
+    // Check if content extends beyond visible area
+    let has_more_right = app.feed.iter().any(|e| {
+        let full_len = format!("[{}] {}", e.agent, e.message).len();
+        scroll_x + inner_width < full_len
+    });
+    let has_more_left = scroll_x > 0;
+
+    let title = match (has_more_left, has_more_right) {
+        (true, true) => " ← Activity Feed → ",
+        (true, false) => " ← Activity Feed ",
+        (false, true) => " Activity Feed → ",
+        (false, false) => " Activity Feed ",
+    };
+
+    let feed = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
 
     frame.render_widget(feed, area);
 }
