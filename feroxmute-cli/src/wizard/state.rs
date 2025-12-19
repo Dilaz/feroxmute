@@ -8,6 +8,8 @@ use ratatui::Frame;
 
 use feroxmute_core::config::{ProviderName, Scope};
 
+use super::screens;
+
 /// Wizard screens in order
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WizardScreen {
@@ -67,48 +69,20 @@ impl WizardState {
         }
     }
 
-    /// Render the current screen (placeholder for now)
-    pub fn render(&mut self, frame: &mut Frame) {
-        use ratatui::layout::{Alignment, Constraint, Direction, Layout};
-        use ratatui::style::{Color, Style};
-        use ratatui::text::{Line, Span};
-        use ratatui::widgets::{Block, Borders, Paragraph};
-
-        let screen_name = match self.screen {
-            WizardScreen::Welcome => "Welcome",
-            WizardScreen::Provider => "Provider Selection",
-            WizardScreen::ApiKey => "API Key",
-            WizardScreen::Scope => "Scope Selection",
-            WizardScreen::Constraints => "Constraints",
-            WizardScreen::AdvancedPrompt => "Advanced Options",
-            WizardScreen::Advanced => "Advanced Settings",
-            WizardScreen::Review => "Review Configuration",
-        };
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(3),
-            ])
-            .split(frame.area());
-
-        let title = Paragraph::new(format!("feroxmute Configuration Wizard - {}", screen_name))
-            .style(Style::default().fg(Color::Cyan))
-            .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
-
-        let content = Paragraph::new("Screen content will be implemented next...")
-            .alignment(Alignment::Center);
-
-        let help = Paragraph::new("Press 'q' to quit")
-            .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center);
-
-        frame.render_widget(title, chunks[0]);
-        frame.render_widget(content, chunks[1]);
-        frame.render_widget(help, chunks[2]);
+    /// Render the current screen
+    pub fn render(&self, frame: &mut Frame) {
+        match self.screen {
+            WizardScreen::Welcome => screens::render_welcome(frame, self),
+            _ => {
+                use ratatui::widgets::{Block, Borders, Paragraph};
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Feroxmute Setup ");
+                let text = format!("Screen: {:?}\nPress Enter to continue, Esc to go back", self.screen);
+                let para = Paragraph::new(text).block(block);
+                frame.render_widget(para, frame.area());
+            }
+        }
     }
 
     /// Handle key events

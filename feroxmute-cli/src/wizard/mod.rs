@@ -1,5 +1,6 @@
 //! Configuration wizard for feroxmute
 
+mod screens;
 mod state;
 mod widgets;
 
