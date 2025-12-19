@@ -80,6 +80,8 @@ pub struct ProviderConfig {
     pub name: ProviderName,
     pub model: String,
     #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
     pub base_url: Option<String>,
 }
 
@@ -88,6 +90,7 @@ impl Default for ProviderConfig {
         Self {
             name: ProviderName::Anthropic,
             model: "claude-sonnet-4-20250514".to_string(),
+            api_key: None,
             base_url: None,
         }
     }
@@ -223,5 +226,24 @@ token = "${TEST_TOKEN}"
         config.expand_env_vars();
         assert_eq!(config.auth.token, Some("expanded_value".to_string()));
         std::env::remove_var("TEST_TOKEN");
+    }
+
+    #[test]
+    fn test_parse_config_with_api_key() {
+        let toml = r#"
+[target]
+host = "example.com"
+
+[provider]
+name = "anthropic"
+model = "claude-sonnet-4-20250514"
+api_key = "sk-ant-test123"
+"#;
+        let config = EngagementConfig::from_str(toml).unwrap();
+        assert_eq!(config.provider.name, ProviderName::Anthropic);
+        assert_eq!(
+            config.provider.api_key,
+            Some("sk-ant-test123".to_string())
+        );
     }
 }
