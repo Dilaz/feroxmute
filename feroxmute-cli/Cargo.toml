@@ -21,6 +21,7 @@ clap.workspace = true
 uuid.workspace = true
 chrono = "0.4"
 dirs.workspace = true
+tokio-util = { version = "0.7.17", features = ["rt"] }
 
 [lints]
 workspace = true
