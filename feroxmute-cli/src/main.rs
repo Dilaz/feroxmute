@@ -7,7 +7,7 @@ use anyhow::{anyhow, Result};
 use args::Args;
 use clap::Parser;
 use feroxmute_core::config::{EngagementConfig, ProviderConfig, ProviderName};
-use feroxmute_core::docker::ContainerConfig;
+use feroxmute_core::docker::{ContainerConfig, ContainerManager};
 use feroxmute_core::providers::create_provider;
 use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
@@ -225,8 +225,14 @@ async fn main() -> Result<()> {
         // Create session ID
         let session_id = Uuid::new_v4().to_string()[..8].to_string();
 
-        // Create TUI app
-        let mut app = tui::App::new(&target, &session_id, None);
+        // Create channel for agent events
+        let (tx, rx) = mpsc::channel::<tui::AgentEvent>(100);
+
+        // Create cancellation token
+        let cancel = CancellationToken::new();
+
+        // Create TUI app with receiver
+        let mut app = tui::App::new(&target, &session_id, Some(rx));
 
         // Add initial feed entries
         app.add_feed(tui::FeedEntry::new(
@@ -235,7 +241,7 @@ async fn main() -> Result<()> {
         ));
         app.add_feed(tui::FeedEntry::new(
             "system",
-            format!("Provider: {} | Scope: {}", args.provider, args.scope),
+            format!("Provider: {} | Model: {}", args.provider, provider_config.model),
         ));
 
         // If we have linked sources, add info about them
@@ -251,7 +257,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        // If we have standalone sources (not linked), note them
+        // If we have standalone sources, note them
         for source in &targets.standalone_sources {
             app.add_feed(tui::FeedEntry::new(
                 "system",
@@ -259,8 +265,59 @@ async fn main() -> Result<()> {
             ));
         }
 
-        // Run TUI
-        tui::run(&mut app)?;
+        // Start the Kali container
+        app.add_feed(tui::FeedEntry::new("system", "Starting Docker container..."));
+        let mut container = ContainerManager::new(container_config).await.map_err(|e| {
+            anyhow!("Failed to create container manager: {}\n\nHint: Is Docker running?", e)
+        })?;
+        container.start().await.map_err(|e| {
+            anyhow!("Failed to start container: {}\n\nHint: Run 'docker compose build' first", e)
+        })?;
+        app.add_feed(tui::FeedEntry::new("system", "Docker container started"));
+
+        // Create database connection (in-memory for demo)
+        let conn = rusqlite::Connection::open_in_memory()?;
+        feroxmute_core::state::run_migrations(&conn)?;
+
+        // Create a LocalSet to run !Send futures
+        let local = tokio::task::LocalSet::new();
+
+        // Spawn agent task on LocalSet
+        let agent_target = target.clone();
+        let agent_cancel = cancel.clone();
+        let agent_handle = local.spawn_local(async move {
+            runner::run_recon_agent(
+                agent_target,
+                provider,
+                container,
+                metrics,
+                conn,
+                tx,
+                agent_cancel,
+            )
+            .await
+        });
+
+        // Spawn TUI in blocking task
+        let tui_cancel = cancel.clone();
+        let tui_handle = tokio::task::spawn_blocking(move || {
+            let result = tui::run(&mut app);
+            tui_cancel.cancel();
+            result
+        });
+
+        // Run the LocalSet until agent completes or is cancelled
+        local
+            .run_until(async move {
+                tokio::select! {
+                    _ = agent_handle => {},
+                    _ = cancel.cancelled() => {},
+                }
+            })
+            .await;
+
+        // Wait for TUI to finish
+        tui_handle.await??;
     } else {
         println!("No target specified. Use --target or --wizard");
     }
