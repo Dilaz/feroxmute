@@ -108,13 +108,11 @@ impl WizardState {
         }
 
         match self.screen {
-            WizardScreen::Welcome => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Enter => return self.next_screen(),
-                    _ => {}
-                }
-            }
+            WizardScreen::Welcome => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Enter => return self.next_screen(),
+                _ => {}
+            },
             WizardScreen::ConfirmOverwrite => {
                 match key.code {
                     KeyCode::Char('q') => return WizardAction::Quit,
@@ -138,175 +136,155 @@ impl WizardState {
                     _ => {}
                 }
             }
-            WizardScreen::Provider => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.selected_index = self.selected_index.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.selected_index = (self.selected_index + 1).min(2);
-                    }
-                    KeyCode::Enter => {
-                        self.data.provider = match self.selected_index {
-                            0 => ProviderName::Anthropic,
-                            1 => ProviderName::OpenAi,
-                            _ => ProviderName::LiteLlm,
-                        };
-                        self.selected_index = 0;
-                        return self.next_screen();
-                    }
-                    KeyCode::Esc => return self.prev_screen(),
-                    _ => {}
+            WizardScreen::Provider => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.selected_index = self.selected_index.saturating_sub(1);
                 }
-            }
-            WizardScreen::ApiKey => {
-                match key.code {
-                    KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
-                    KeyCode::Char(c) => {
-                        self.text_input.insert(self.cursor_position, c);
-                        self.cursor_position += 1;
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.selected_index = (self.selected_index + 1).min(2);
+                }
+                KeyCode::Enter => {
+                    self.data.provider = match self.selected_index {
+                        0 => ProviderName::Anthropic,
+                        1 => ProviderName::OpenAi,
+                        _ => ProviderName::LiteLlm,
+                    };
+                    self.selected_index = 0;
+                    return self.next_screen();
+                }
+                KeyCode::Esc => return self.prev_screen(),
+                _ => {}
+            },
+            WizardScreen::ApiKey => match key.code {
+                KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
+                KeyCode::Char(c) => {
+                    self.text_input.insert(self.cursor_position, c);
+                    self.cursor_position += 1;
+                }
+                KeyCode::Backspace => {
+                    if self.cursor_position > 0 {
+                        self.cursor_position -= 1;
+                        self.text_input.remove(self.cursor_position);
                     }
-                    KeyCode::Backspace => {
-                        if self.cursor_position > 0 {
-                            self.cursor_position -= 1;
-                            self.text_input.remove(self.cursor_position);
-                        }
+                }
+                KeyCode::Delete => {
+                    if self.cursor_position < self.text_input.len() {
+                        self.text_input.remove(self.cursor_position);
                     }
-                    KeyCode::Delete => {
-                        if self.cursor_position < self.text_input.len() {
-                            self.text_input.remove(self.cursor_position);
-                        }
-                    }
-                    KeyCode::Left => {
-                        self.cursor_position = self.cursor_position.saturating_sub(1);
-                    }
-                    KeyCode::Right => {
-                        self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
-                    }
-                    KeyCode::Home => self.cursor_position = 0,
-                    KeyCode::End => self.cursor_position = self.text_input.len(),
-                    KeyCode::Enter => {
-                        if !self.text_input.is_empty() {
-                            self.data.api_key = self.text_input.clone();
-                            self.text_input.clear();
-                            self.cursor_position = 0;
-                            self.selected_index = 0;
-                            return self.next_screen();
-                        }
-                    }
-                    KeyCode::Esc => {
+                }
+                KeyCode::Left => {
+                    self.cursor_position = self.cursor_position.saturating_sub(1);
+                }
+                KeyCode::Right => {
+                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                }
+                KeyCode::Home => self.cursor_position = 0,
+                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::Enter => {
+                    if !self.text_input.is_empty() {
+                        self.data.api_key = self.text_input.clone();
                         self.text_input.clear();
                         self.cursor_position = 0;
-                        return self.prev_screen();
-                    }
-                    _ => {}
-                }
-            }
-            WizardScreen::Scope => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.selected_index = self.selected_index.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.selected_index = (self.selected_index + 1).min(2);
-                    }
-                    KeyCode::Enter => {
-                        self.data.scope = match self.selected_index {
-                            0 => Scope::Web,
-                            1 => Scope::Network,
-                            _ => Scope::Full,
-                        };
                         self.selected_index = 0;
                         return self.next_screen();
                     }
-                    KeyCode::Esc => return self.prev_screen(),
-                    _ => {}
                 }
-            }
-            WizardScreen::Constraints => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.selected_index = self.selected_index.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.selected_index = (self.selected_index + 1).min(2);
-                    }
-                    KeyCode::Char(' ') => {
-                        match self.selected_index {
-                            0 => self.data.passive = !self.data.passive,
-                            1 => self.data.no_exploit = !self.data.no_exploit,
-                            2 => self.data.no_portscan = !self.data.no_portscan,
-                            _ => {}
-                        }
-                    }
-                    KeyCode::Enter => {
-                        self.selected_index = 0;
-                        return self.next_screen();
-                    }
-                    KeyCode::Esc => return self.prev_screen(),
-                    _ => {}
+                KeyCode::Esc => {
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    return self.prev_screen();
                 }
-            }
-            WizardScreen::AdvancedPrompt => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.selected_index = self.selected_index.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.selected_index = (self.selected_index + 1).min(1);
-                    }
-                    KeyCode::Enter => {
-                        self.show_advanced = self.selected_index == 1;
-                        self.selected_index = 0;
-                        return self.next_screen();
-                    }
-                    KeyCode::Esc => return self.prev_screen(),
-                    _ => {}
+                _ => {}
+            },
+            WizardScreen::Scope => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.selected_index = self.selected_index.saturating_sub(1);
                 }
-            }
-            WizardScreen::Advanced => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.selected_index = self.selected_index.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.selected_index = (self.selected_index + 1).min(1);
-                    }
-                    KeyCode::Char(' ') => {
-                        match self.selected_index {
-                            0 => self.data.export_html = !self.data.export_html,
-                            1 => self.data.export_pdf = !self.data.export_pdf,
-                            _ => {}
-                        }
-                    }
-                    KeyCode::Enter => {
-                        self.selected_index = 0;
-                        return self.next_screen();
-                    }
-                    KeyCode::Esc => return self.prev_screen(),
-                    _ => {}
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.selected_index = (self.selected_index + 1).min(2);
                 }
-            }
-            WizardScreen::Review => {
-                match key.code {
-                    KeyCode::Char('q') => return WizardAction::Quit,
-                    KeyCode::Enter => {
-                        match self.save_config() {
-                            Ok(path) => return WizardAction::Complete(path),
-                            Err(e) => {
-                                self.error_message = Some(e.to_string());
-                            }
-                        }
-                    }
-                    KeyCode::Esc => return self.prev_screen(),
-                    _ => {}
+                KeyCode::Enter => {
+                    self.data.scope = match self.selected_index {
+                        0 => Scope::Web,
+                        1 => Scope::Network,
+                        _ => Scope::Full,
+                    };
+                    self.selected_index = 0;
+                    return self.next_screen();
                 }
-            }
+                KeyCode::Esc => return self.prev_screen(),
+                _ => {}
+            },
+            WizardScreen::Constraints => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.selected_index = self.selected_index.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.selected_index = (self.selected_index + 1).min(2);
+                }
+                KeyCode::Char(' ') => match self.selected_index {
+                    0 => self.data.passive = !self.data.passive,
+                    1 => self.data.no_exploit = !self.data.no_exploit,
+                    2 => self.data.no_portscan = !self.data.no_portscan,
+                    _ => {}
+                },
+                KeyCode::Enter => {
+                    self.selected_index = 0;
+                    return self.next_screen();
+                }
+                KeyCode::Esc => return self.prev_screen(),
+                _ => {}
+            },
+            WizardScreen::AdvancedPrompt => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.selected_index = self.selected_index.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.selected_index = (self.selected_index + 1).min(1);
+                }
+                KeyCode::Enter => {
+                    self.show_advanced = self.selected_index == 1;
+                    self.selected_index = 0;
+                    return self.next_screen();
+                }
+                KeyCode::Esc => return self.prev_screen(),
+                _ => {}
+            },
+            WizardScreen::Advanced => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.selected_index = self.selected_index.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.selected_index = (self.selected_index + 1).min(1);
+                }
+                KeyCode::Char(' ') => match self.selected_index {
+                    0 => self.data.export_html = !self.data.export_html,
+                    1 => self.data.export_pdf = !self.data.export_pdf,
+                    _ => {}
+                },
+                KeyCode::Enter => {
+                    self.selected_index = 0;
+                    return self.next_screen();
+                }
+                KeyCode::Esc => return self.prev_screen(),
+                _ => {}
+            },
+            WizardScreen::Review => match key.code {
+                KeyCode::Char('q') => return WizardAction::Quit,
+                KeyCode::Enter => match self.save_config() {
+                    Ok(path) => return WizardAction::Complete(path),
+                    Err(e) => {
+                        self.error_message = Some(e.to_string());
+                    }
+                },
+                KeyCode::Esc => return self.prev_screen(),
+                _ => {}
+            },
         }
         WizardAction::Continue
     }
@@ -394,18 +372,23 @@ impl WizardState {
             Scope::Full => "full",
         };
 
-        let model = self.data.model.as_deref().unwrap_or_else(|| {
-            match self.data.provider {
+        let model = self
+            .data
+            .model
+            .as_deref()
+            .unwrap_or_else(|| match self.data.provider {
                 ProviderName::Anthropic => "claude-sonnet-4-20250514",
                 ProviderName::OpenAi => "gpt-4o",
                 ProviderName::Cohere => "command-r-plus",
                 ProviderName::LiteLlm => "openai/gpt-4o",
-            }
-        });
+            });
 
         let mut toml = String::new();
         toml.push_str(&format!("# feroxmute configuration\n"));
-        toml.push_str(&format!("# Generated: {}\n\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S")));
+        toml.push_str(&format!(
+            "# Generated: {}\n\n",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        ));
 
         toml.push_str("[provider]\n");
         toml.push_str(&format!("name = \"{}\"\n", provider_name));

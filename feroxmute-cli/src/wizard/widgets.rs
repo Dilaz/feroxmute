@@ -131,7 +131,9 @@ impl<'a> SelectList<'a> {
             .map(|(i, item)| {
                 let prefix = if i == self.selected { "› " } else { "  " };
                 let style = if i == self.selected {
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default()
                 };
@@ -196,7 +198,10 @@ impl<'a> CheckboxGroup<'a> {
                 } else {
                     Style::default()
                 };
-                Line::from(Span::styled(format!("{}{} {}", prefix, checkbox, label), style))
+                Line::from(Span::styled(
+                    format!("{}{} {}", prefix, checkbox, label),
+                    style,
+                ))
             })
             .collect();
 

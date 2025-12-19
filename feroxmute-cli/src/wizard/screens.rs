@@ -65,7 +65,9 @@ pub fn render_welcome(frame: &mut Frame, _state: &WizardState) {
         Line::from(""),
         Line::from(Span::styled(
             "  Welcome to Feroxmute!",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from("  This wizard will help you create a configuration file"),
@@ -156,8 +158,7 @@ pub fn render_footer(frame: &mut Frame, area: Rect, can_go_back: bool) {
         Span::raw(" quit"),
     ]);
 
-    let footer = Paragraph::new(Line::from(spans))
-        .style(Style::default().fg(Color::DarkGray));
+    let footer = Paragraph::new(Line::from(spans)).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, area);
 }
 
@@ -167,7 +168,10 @@ pub fn render_provider(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 1: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Select LLM Provider", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Select LLM Provider",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
@@ -200,7 +204,10 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 2: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(format!("Enter {} API Key", provider_name), Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("Enter {} API Key", provider_name),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
@@ -212,7 +219,10 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
     };
     let warning = Paragraph::new(Line::from(vec![
         Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
-        Span::styled("API key will be stored in config. Ensure ~/.feroxmute/ is not shared.", Style::default().fg(Color::Yellow)),
+        Span::styled(
+            "API key will be stored in config. Ensure ~/.feroxmute/ is not shared.",
+            Style::default().fg(Color::Yellow),
+        ),
     ]));
     frame.render_widget(warning, warning_area);
 
@@ -246,11 +256,18 @@ pub fn render_scope(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 3: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Default Testing Scope", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Default Testing Scope",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
-    let scopes = ["Web (HTTP/HTTPS only)", "Network (ports, services)", "Full (web + network)"];
+    let scopes = [
+        "Web (HTTP/HTTPS only)",
+        "Network (ports, services)",
+        "Full (web + network)",
+    ];
     let list = SelectList::new(&scopes, state.selected_index)
         .focused(true)
         .label("Scope");
@@ -272,7 +289,10 @@ pub fn render_constraints(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 4: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Default Constraints", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Default Constraints",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
@@ -302,7 +322,10 @@ pub fn render_advanced_prompt(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 5: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Advanced Options", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Advanced Options",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
@@ -328,7 +351,10 @@ pub fn render_advanced(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 5: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Advanced Options", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Advanced Options",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
@@ -357,7 +383,10 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Review: ", Style::default().fg(Color::DarkGray)),
-        Span::styled("Configuration Summary", Style::default().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "Configuration Summary",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
     ]));
     frame.render_widget(title, title_area);
 
@@ -375,7 +404,11 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
     };
 
     let api_key_display = if state.data.api_key.len() > 8 {
-        format!("{}...{}", &state.data.api_key[..4], &state.data.api_key[state.data.api_key.len()-4..])
+        format!(
+            "{}...{}",
+            &state.data.api_key[..4],
+            &state.data.api_key[state.data.api_key.len() - 4..]
+        )
     } else {
         "****".to_string()
     };
@@ -406,8 +439,14 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
             Span::raw(if state.data.no_portscan { "Yes" } else { "No" }),
         ]),
         Line::from(""),
-        Line::from(Span::styled("  Config will be saved to: ", Style::default().fg(Color::DarkGray))),
-        Line::from(Span::styled("  ~/.feroxmute/config.toml", Style::default().fg(Color::Yellow))),
+        Line::from(Span::styled(
+            "  Config will be saved to: ",
+            Style::default().fg(Color::DarkGray),
+        )),
+        Line::from(Span::styled(
+            "  ~/.feroxmute/config.toml",
+            Style::default().fg(Color::Yellow),
+        )),
     ];
 
     let summary = Paragraph::new(lines);

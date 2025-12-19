@@ -278,10 +278,7 @@ api_key = "sk-ant-test123"
 "#;
         let config = EngagementConfig::from_str(toml).unwrap();
         assert_eq!(config.provider.name, ProviderName::Anthropic);
-        assert_eq!(
-            config.provider.api_key,
-            Some("sk-ant-test123".to_string())
-        );
+        assert_eq!(config.provider.api_key, Some("sk-ant-test123".to_string()));
     }
 
     #[test]

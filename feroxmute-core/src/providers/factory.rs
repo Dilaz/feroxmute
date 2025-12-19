@@ -23,7 +23,9 @@ pub fn create_provider(
             Ok(Arc::new(provider))
         }
         ProviderName::OpenAi => {
-            let api_key = config.api_key.clone()
+            let api_key = config
+                .api_key
+                .clone()
                 .or_else(|| std::env::var("OPENAI_API_KEY").ok())
                 .ok_or_else(|| Error::Provider("OPENAI_API_KEY not set".to_string()))?;
 
@@ -40,10 +42,14 @@ pub fn create_provider(
                 .base_url
                 .clone()
                 .unwrap_or_else(|| "http://localhost:4000".to_string());
-            let api_key = config.api_key.clone()
+            let api_key = config
+                .api_key
+                .clone()
                 .or_else(|| std::env::var("LITELLM_API_KEY").ok())
                 .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-                .ok_or_else(|| Error::Provider("LITELLM_API_KEY or OPENAI_API_KEY not set".to_string()))?;
+                .ok_or_else(|| {
+                    Error::Provider("LITELLM_API_KEY or OPENAI_API_KEY not set".to_string())
+                })?;
             let provider =
                 OpenAiProvider::with_base_url(api_key, base_url, &config.model, metrics)?;
             Ok(Arc::new(provider))
