@@ -150,6 +150,43 @@ impl EngagementConfig {
         Ok(toml::from_str(content)?)
     }
 
+    /// Load configuration from default locations with cascade:
+    /// 1. ./feroxmute.toml (local override)
+    /// 2. ~/.feroxmute/config.toml (global defaults)
+    /// 3. Built-in defaults
+    pub fn load_default() -> Self {
+        // Try local config first
+        if let Ok(config) = Self::from_file("feroxmute.toml") {
+            return config;
+        }
+
+        // Try global config
+        if let Some(home) = dirs::home_dir() {
+            let global_path = home.join(".feroxmute").join("config.toml");
+            if let Ok(config) = Self::from_file(&global_path) {
+                return config;
+            }
+        }
+
+        // Fall back to defaults (requires a target, so this is partial)
+        Self {
+            target: TargetConfig {
+                host: String::new(),
+                scope: Scope::default(),
+                ports: Vec::new(),
+            },
+            constraints: Constraints::default(),
+            auth: AuthConfig::default(),
+            provider: ProviderConfig::default(),
+            output: OutputConfig::default(),
+        }
+    }
+
+    /// Get the path to the global config file
+    pub fn global_config_path() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join(".feroxmute").join("config.toml"))
+    }
+
     /// Expand environment variables in token fields
     pub fn expand_env_vars(&mut self) {
         if let Some(ref token) = self.auth.token {
@@ -245,5 +282,13 @@ api_key = "sk-ant-test123"
             config.provider.api_key,
             Some("sk-ant-test123".to_string())
         );
+    }
+
+    #[test]
+    fn test_global_config_path() {
+        let path = EngagementConfig::global_config_path();
+        assert!(path.is_some());
+        let path = path.unwrap();
+        assert!(path.ends_with(".feroxmute/config.toml"));
     }
 }
