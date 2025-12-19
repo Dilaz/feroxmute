@@ -562,6 +562,7 @@ dependencies = [
  "ratatui",
  "rusqlite",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-util",
  "tracing",

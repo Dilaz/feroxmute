@@ -12,6 +12,7 @@ use feroxmute_core::providers::create_provider;
 use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
 use std::io::{self, Write};
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
@@ -286,8 +287,20 @@ async fn main() -> Result<()> {
         // Spawn agent task on LocalSet
         let agent_target = target.clone();
         let agent_cancel = cancel.clone();
+        let has_source = !targets.standalone_sources.is_empty()
+            || targets.groups.iter().any(|g| g.source_target.is_some());
+        let container = Arc::new(container);
+
         let agent_handle = local.spawn_local(async move {
-            runner::run_recon_agent(agent_target, provider, container, tx, agent_cancel).await
+            runner::run_orchestrator(
+                agent_target,
+                provider,
+                container,
+                tx,
+                agent_cancel,
+                has_source,
+            )
+            .await
         });
 
         // Spawn TUI in blocking task
