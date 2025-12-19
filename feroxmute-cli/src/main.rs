@@ -131,7 +131,10 @@ async fn main() -> Result<()> {
             tracing::info!("Docker image '{}' found", container_config.image);
         }
         Err(_) => {
-            println!("Docker image '{}' not found. Building...", container_config.image);
+            println!(
+                "Docker image '{}' not found. Building...",
+                container_config.image
+            );
 
             // Find the docker directory
             let docker_dir = find_docker_dir().map_err(|e| {
@@ -142,17 +145,18 @@ async fn main() -> Result<()> {
             })?;
 
             // Create a temporary ContainerManager to build the image
-            let temp_container = ContainerManager::new(ContainerConfig::default()).await.map_err(|e| {
-                anyhow!("Failed to create container manager for building: {}", e)
-            })?;
+            let temp_container = ContainerManager::new(ContainerConfig::default())
+                .await
+                .map_err(|e| anyhow!("Failed to create container manager for building: {}", e))?;
 
             // Build the image with progress output
-            temp_container.build_image(&docker_dir, |msg| {
-                print!("{}", msg);
-                io::stdout().flush().ok();
-            }).await.map_err(|e| {
-                anyhow!("Failed to build Docker image: {}", e)
-            })?;
+            temp_container
+                .build_image(&docker_dir, |msg| {
+                    print!("{}", msg);
+                    io::stdout().flush().ok();
+                })
+                .await
+                .map_err(|e| anyhow!("Failed to build Docker image: {}", e))?;
 
             println!("\nDocker image built successfully!");
         }

@@ -25,9 +25,7 @@ pub fn find_docker_dir() -> Result<PathBuf> {
         if let Some(exe_parent) = exe.parent() {
             let dev_docker = exe_parent.join("../../docker");
             if dev_docker.join("Dockerfile").exists() {
-                return Ok(dev_docker
-                    .canonicalize()
-                    .unwrap_or(dev_docker));
+                return Ok(dev_docker.canonicalize().unwrap_or(dev_docker));
             }
         }
     }
@@ -71,14 +69,12 @@ pub fn create_build_context(docker_dir: &Path) -> Result<Vec<u8>> {
             }
 
             // Get the file name
-            let file_name = path
-                .file_name()
-                .ok_or_else(|| {
-                    crate::Error::Config(format!(
-                        "Invalid file name in docker directory: {}",
-                        path.display()
-                    ))
-                })?;
+            let file_name = path.file_name().ok_or_else(|| {
+                crate::Error::Config(format!(
+                    "Invalid file name in docker directory: {}",
+                    path.display()
+                ))
+            })?;
 
             // Add file to archive with just the filename (no directory prefix)
             let mut file = fs::File::open(&path)?;
