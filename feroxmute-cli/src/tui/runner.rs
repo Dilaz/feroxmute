@@ -10,6 +10,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Frame, Terminal};
 
 use super::app::{AgentView, App, View};
+use super::channel::AgentEvent;
 use super::events::{handle_event, poll_event, EventResult};
 use super::widgets::{agent_detail, dashboard};
 
@@ -201,6 +202,47 @@ fn render_help(frame: &mut Frame) {
     frame.render_widget(footer, chunks[1]);
 }
 
+/// Drain pending events from the channel
+fn drain_events(app: &mut App) {
+    let mut events = Vec::new();
+    if let Some(ref mut rx) = app.event_rx {
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+    }
+
+    for event in events {
+        match event {
+            AgentEvent::Feed { agent, message, is_error } => {
+                if is_error {
+                    app.add_feed(super::app::FeedEntry::error(&agent, &message));
+                } else {
+                    app.add_feed(super::app::FeedEntry::new(&agent, &message));
+                }
+            }
+            AgentEvent::Thinking(thinking) => {
+                app.current_thinking = thinking;
+            }
+            AgentEvent::Status { agent, status } => {
+                app.update_agent_status(&agent, status);
+            }
+            AgentEvent::Metrics { input, output, cache_read } => {
+                app.metrics.input_tokens += input;
+                app.metrics.output_tokens += output;
+                app.metrics.cache_read_tokens += cache_read;
+            }
+            AgentEvent::Finished { success, message } => {
+                let agent = "system";
+                if success {
+                    app.add_feed(super::app::FeedEntry::new(agent, &message));
+                } else {
+                    app.add_feed(super::app::FeedEntry::error(agent, &message));
+                }
+            }
+        }
+    }
+}
+
 /// Run the TUI application
 pub fn run(app: &mut App) -> io::Result<()> {
     // Setup terminal
@@ -239,6 +281,9 @@ fn run_loop(
                 EventResult::Continue => {}
             }
         }
+
+        // Drain agent events
+        drain_events(app);
 
         // Check for quit
         if app.should_quit {
