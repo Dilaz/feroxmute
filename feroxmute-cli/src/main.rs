@@ -2,15 +2,22 @@ mod args;
 mod tui;
 mod wizard;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use args::Args;
 use clap::Parser;
+use feroxmute_core::config::{EngagementConfig, ProviderConfig, ProviderName};
+use feroxmute_core::docker::ContainerConfig;
+use feroxmute_core::providers::create_provider;
+use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
 use std::io::{self, Write};
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Set up tracing based on verbosity
@@ -50,6 +57,74 @@ fn main() -> Result<()> {
         println!("Resuming session: {}", session.display());
         return Ok(());
     }
+
+    // Load configuration
+    let config = EngagementConfig::load_default();
+
+    // Build provider config from CLI args
+    let provider_name = match args.provider.to_lowercase().as_str() {
+        "anthropic" => ProviderName::Anthropic,
+        "openai" => ProviderName::OpenAi,
+        "litellm" => ProviderName::LiteLlm,
+        "cohere" => ProviderName::Cohere,
+        "gemini" => ProviderName::Gemini,
+        "xai" => ProviderName::Xai,
+        "deepseek" => ProviderName::DeepSeek,
+        "azure" => ProviderName::Azure,
+        "perplexity" => ProviderName::Perplexity,
+        "mira" => ProviderName::Mira,
+        _ => ProviderName::Anthropic,
+    };
+
+    let provider_config = ProviderConfig {
+        name: provider_name,
+        model: args.model.clone().unwrap_or_else(|| config.provider.model.clone()),
+        api_key: config.provider.api_key.clone(),
+        base_url: config.provider.base_url.clone(),
+    };
+
+    // Validate LLM provider - fail fast
+    let metrics = MetricsTracker::new();
+    let provider = create_provider(&provider_config, metrics.clone()).map_err(|e| {
+        anyhow!(
+            "LLM provider error: {}\n\nHint: Set API key in ~/.feroxmute/config.toml or {} environment variable",
+            e,
+            match provider_config.name {
+                ProviderName::Anthropic => "ANTHROPIC_API_KEY",
+                ProviderName::OpenAi => "OPENAI_API_KEY",
+                ProviderName::Cohere => "COHERE_API_KEY",
+                ProviderName::Gemini => "GEMINI_API_KEY or GOOGLE_API_KEY",
+                ProviderName::Xai => "XAI_API_KEY",
+                ProviderName::DeepSeek => "DEEPSEEK_API_KEY",
+                ProviderName::Azure => "AZURE_OPENAI_API_KEY",
+                ProviderName::Perplexity => "PERPLEXITY_API_KEY",
+                ProviderName::Mira => "MIRA_API_KEY",
+                ProviderName::LiteLlm => "LITELLM_API_KEY",
+            }
+        )
+    })?;
+
+    // Check Docker connectivity - fail fast
+    let docker = bollard::Docker::connect_with_local_defaults()
+        .map_err(|_| anyhow!("Cannot connect to Docker.\n\nHint: Is Docker running? Try 'docker ps'"))?;
+
+    docker.ping().await.map_err(|_| {
+        anyhow!("Docker not responding.\n\nHint: Is Docker daemon running? Try 'docker ps'")
+    })?;
+
+    // Check if Kali image exists
+    let container_config = ContainerConfig::default();
+    match docker.inspect_image(&container_config.image).await {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(anyhow!(
+                "Docker image '{}' not found.\n\nHint: Run 'docker compose build' first",
+                container_config.image
+            ));
+        }
+    }
+
+    tracing::info!("Docker and LLM provider validated successfully");
 
     if !args.target.is_empty() {
         // Parse all targets into a TargetCollection
