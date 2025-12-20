@@ -12,9 +12,15 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
+use chrono::Utc;
+
 use crate::agents::{AgentRegistry, AgentResult, AgentStatus, Prompts};
 use crate::docker::ContainerManager;
+use crate::limitations::EngagementLimitations;
 use crate::providers::LlmProvider;
+use crate::reports::Report;
+use crate::state::{MetricsTracker, Severity};
+use crate::tools::report::ReportContext;
 
 /// Errors from orchestrator tools
 #[derive(Debug, Error)]
@@ -30,7 +36,11 @@ pub trait EventSender: Send + Sync {
     /// Send a feed message
     fn send_feed(&self, agent: &str, message: &str, is_error: bool);
     /// Send a status update
-    fn send_status(&self, agent: &str, status: AgentStatus);
+    fn send_status(&self, agent: &str, agent_type: &str, status: AgentStatus);
+    /// Send metrics update
+    fn send_metrics(&self, input_tokens: u64, output_tokens: u64, cache_read_tokens: u64);
+    /// Send vulnerability found
+    fn send_vulnerability(&self, severity: Severity, title: &str);
 }
 
 /// Shared context for all orchestrator tools
@@ -43,6 +53,8 @@ pub struct OrchestratorContext {
     pub prompts: Prompts,
     pub target: String,
     pub findings: Arc<Mutex<Vec<String>>>,
+    /// Engagement scope limitations
+    pub limitations: Arc<EngagementLimitations>,
 }
 
 // ============================================================================
@@ -130,7 +142,7 @@ impl Tool for SpawnAgentTool {
         );
         self.context
             .events
-            .send_status(&args.agent_type, AgentStatus::Running);
+            .send_status(&args.name, &args.agent_type, AgentStatus::Running);
 
         // Spawn agent task
         let result_tx = registry.result_sender();
@@ -140,30 +152,71 @@ impl Tool for SpawnAgentTool {
         let provider = Arc::clone(&self.context.provider);
         let container = Arc::clone(&self.context.container);
         let events = Arc::clone(&self.context.events);
+        let findings = Arc::clone(&self.context.findings);
 
-        let handle = tokio::spawn(async move {
-            let start = std::time::Instant::now();
+        let handle = if agent_type == "report" {
+            // Report agents use specialized report tools
+            tokio::spawn(async move {
+                let start = std::time::Instant::now();
 
-            let output = match provider
-                .complete_with_shell(&full_prompt, &target, container, events, &agent_name)
-                .await
-            {
-                Ok(out) => out,
-                Err(e) => format!("Error: {}", e),
-            };
+                // Create report context with findings from orchestrator
+                let report_context = Arc::new(ReportContext {
+                    events: Arc::clone(&events),
+                    target: target.clone(),
+                    session_id: "session".to_string(),
+                    scope: "web".to_string(),
+                    start_time: Utc::now(),
+                    metrics: MetricsTracker::new(),
+                    findings,
+                    report: Arc::new(Mutex::new(None::<Report>)),
+                });
 
-            let success = !output.starts_with("Error:");
+                let output = match provider
+                    .complete_with_report(&full_prompt, &target, report_context)
+                    .await
+                {
+                    Ok(out) => out,
+                    Err(e) => format!("Error: {}", e),
+                };
 
-            let _ = result_tx
-                .send(AgentResult {
-                    name: agent_name.clone(),
-                    agent_type,
-                    success,
-                    output,
-                    duration: start.elapsed(),
-                })
-                .await;
-        });
+                let success = !output.starts_with("Error:");
+
+                let _ = result_tx
+                    .send(AgentResult {
+                        name: agent_name.clone(),
+                        agent_type,
+                        success,
+                        output,
+                        duration: start.elapsed(),
+                    })
+                    .await;
+            })
+        } else {
+            // Other agents use shell tool
+            tokio::spawn(async move {
+                let start = std::time::Instant::now();
+
+                let output = match provider
+                    .complete_with_shell(&full_prompt, &target, container, events, &agent_name)
+                    .await
+                {
+                    Ok(out) => out,
+                    Err(e) => format!("Error: {}", e),
+                };
+
+                let success = !output.starts_with("Error:");
+
+                let _ = result_tx
+                    .send(AgentResult {
+                        name: agent_name.clone(),
+                        agent_type,
+                        success,
+                        output,
+                        duration: start.elapsed(),
+                    })
+                    .await;
+            })
+        };
 
         registry.register(
             args.name.clone(),
@@ -240,6 +293,7 @@ impl Tool for WaitForAgentTool {
         match registry.wait_for_agent(&args.name).await {
             Some(result) => {
                 self.context.events.send_status(
+                    &result.name,
                     &result.agent_type,
                     if result.success {
                         AgentStatus::Completed
@@ -318,6 +372,7 @@ impl Tool for WaitForAnyTool {
         match registry.wait_for_any().await {
             Some(result) => {
                 self.context.events.send_status(
+                    &result.name,
                     &result.agent_type,
                     if result.success {
                         AgentStatus::Completed
