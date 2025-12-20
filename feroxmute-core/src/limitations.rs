@@ -147,6 +147,111 @@ impl EngagementLimitations {
         lines.push("\nCommands violating these limitations will be blocked.".into());
         lines.join("\n")
     }
+
+    /// Create limitations for web scope
+    pub fn for_web_scope(no_discovery: bool, no_exploit: bool, _no_portscan: bool) -> Self {
+        use ToolCategory::*;
+        let mut allowed = HashSet::new();
+
+        // Web app testing always allowed
+        allowed.insert(WebCrawl);
+        allowed.insert(WebScan);
+        allowed.insert(Report);
+
+        // Conditional
+        if !no_exploit {
+            allowed.insert(WebExploit);
+        }
+        if !no_discovery {
+            allowed.insert(SubdomainEnum);
+            allowed.insert(AssetDiscovery);
+        }
+        // Web scope doesn't include portscan by default
+
+        Self {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        }
+    }
+
+    /// Create limitations for network scope
+    pub fn for_network_scope(no_discovery: bool, no_exploit: bool, no_portscan: bool) -> Self {
+        use ToolCategory::*;
+        let mut limits = Self::for_web_scope(no_discovery, no_exploit, no_portscan);
+
+        if !no_portscan {
+            limits.allowed_categories.insert(PortScan);
+        }
+        limits.allowed_categories.insert(NetworkScan);
+
+        if !no_exploit {
+            limits.allowed_categories.insert(NetworkExploit);
+        }
+
+        limits
+    }
+
+    /// Create limitations for full scope
+    pub fn for_full_scope() -> Self {
+        use ToolCategory::*;
+        let allowed: HashSet<_> = [
+            SubdomainEnum,
+            PortScan,
+            AssetDiscovery,
+            WebCrawl,
+            WebScan,
+            WebExploit,
+            NetworkScan,
+            NetworkExploit,
+            Sast,
+            Report,
+        ]
+        .into_iter()
+        .collect();
+
+        Self {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        }
+    }
+
+    /// Create limitations for SAST only
+    pub fn for_sast_only() -> Self {
+        use ToolCategory::*;
+        let allowed: HashSet<_> = [Sast, Report].into_iter().collect();
+
+        Self {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        }
+    }
+
+    /// Create limitations for passive mode
+    pub fn for_passive() -> Self {
+        use ToolCategory::*;
+        let allowed: HashSet<_> = [AssetDiscovery, Report].into_iter().collect();
+
+        Self {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        }
+    }
+
+    /// Set target ports restriction
+    pub fn with_ports(mut self, ports: Vec<u16>) -> Self {
+        self.target_ports = Some(ports);
+        self
+    }
+
+    /// Set rate limit
+    pub fn with_rate_limit(mut self, rate: u32) -> Self {
+        self.rate_limit = Some(rate);
+        self
+    }
 }
 
 #[cfg(test)]
@@ -254,5 +359,49 @@ mod tests {
         let prompt = limits.to_prompt_section();
         assert!(prompt.contains("10 requests/second"));
         assert!(prompt.contains("80") && prompt.contains("443"));
+    }
+
+    #[test]
+    fn test_web_scope_defaults() {
+        use ToolCategory::*;
+        let limits = EngagementLimitations::for_web_scope(false, false, false);
+
+        assert!(limits.is_allowed(WebCrawl));
+        assert!(limits.is_allowed(WebScan));
+        assert!(limits.is_allowed(WebExploit));
+        assert!(limits.is_allowed(SubdomainEnum));
+        assert!(limits.is_allowed(Report));
+        assert!(!limits.is_allowed(PortScan));
+        assert!(!limits.is_allowed(NetworkScan));
+    }
+
+    #[test]
+    fn test_web_scope_no_discovery() {
+        use ToolCategory::*;
+        let limits = EngagementLimitations::for_web_scope(true, false, false);
+
+        assert!(limits.is_allowed(WebScan));
+        assert!(!limits.is_allowed(SubdomainEnum));
+        assert!(!limits.is_allowed(AssetDiscovery));
+    }
+
+    #[test]
+    fn test_web_scope_no_exploit() {
+        use ToolCategory::*;
+        let limits = EngagementLimitations::for_web_scope(false, true, false);
+
+        assert!(limits.is_allowed(WebScan));
+        assert!(!limits.is_allowed(WebExploit));
+    }
+
+    #[test]
+    fn test_sast_only() {
+        use ToolCategory::*;
+        let limits = EngagementLimitations::for_sast_only();
+
+        assert!(limits.is_allowed(Sast));
+        assert!(limits.is_allowed(Report));
+        assert!(!limits.is_allowed(WebScan));
+        assert!(!limits.is_allowed(PortScan));
     }
 }
