@@ -10,7 +10,7 @@ use rig::providers::gemini;
 use crate::docker::ContainerManager;
 use crate::state::MetricsTracker;
 use crate::tools::{
-    CompleteEngagementTool, DockerShellTool, ListAgentsTool, OrchestratorContext,
+    CompleteEngagementTool, DockerShellTool, EventSender, ListAgentsTool, OrchestratorContext,
     RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
@@ -116,13 +116,15 @@ impl LlmProvider for GeminiProvider {
         system_prompt: &str,
         user_prompt: &str,
         container: Arc<ContainerManager>,
+        events: Arc<dyn EventSender>,
+        agent_name: &str,
     ) -> Result<String> {
         let agent = self
             .client
             .agent(&self.model)
             .preamble(system_prompt)
             .max_tokens(4096)
-            .tool(DockerShellTool::new(container))
+            .tool(DockerShellTool::new(container, events, agent_name.to_string()))
             .build();
 
         // multi_turn enables tool loop with max 50 iterations
