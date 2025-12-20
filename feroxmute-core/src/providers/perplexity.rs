@@ -7,10 +7,11 @@ use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::perplexity;
 
+use crate::docker::ContainerManager;
 use crate::state::MetricsTracker;
 use crate::tools::{
-    CompleteEngagementTool, ListAgentsTool, OrchestratorContext, RecordFindingTool, SpawnAgentTool,
-    WaitForAgentTool, WaitForAnyTool,
+    CompleteEngagementTool, DockerShellTool, ListAgentsTool, OrchestratorContext,
+    RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
 
@@ -107,6 +108,28 @@ impl LlmProvider for PerplexityProvider {
                 cache_creation_tokens: 0,
             },
         })
+    }
+
+    async fn complete_with_shell(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        container: Arc<ContainerManager>,
+    ) -> Result<String> {
+        let agent = self
+            .client
+            .agent(&self.model)
+            .preamble(system_prompt)
+            .max_tokens(4096)
+            .tool(DockerShellTool::new(container))
+            .build();
+
+        // multi_turn enables tool loop with max 50 iterations
+        agent
+            .prompt(user_prompt)
+            .multi_turn(50)
+            .await
+            .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))
     }
 
     async fn complete_with_orchestrator(

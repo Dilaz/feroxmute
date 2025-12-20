@@ -143,22 +143,20 @@ impl LlmProvider for OpenAiProvider {
         user_prompt: &str,
         container: Arc<ContainerManager>,
     ) -> Result<String> {
-        let tool = DockerShellTool::new(container);
-
         let agent = self
             .client
             .agent(&self.model)
             .preamble(system_prompt)
             .max_tokens(4096)
-            .tool(tool)
+            .tool(DockerShellTool::new(container))
             .build();
 
-        let response = agent
+        // multi_turn enables tool loop with max 50 iterations
+        agent
             .prompt(user_prompt)
+            .multi_turn(50)
             .await
-            .map_err(|e| Error::Provider(format!("OpenAI completion failed: {}", e)))?;
-
-        Ok(response)
+            .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))
     }
 
     async fn complete_with_orchestrator(
