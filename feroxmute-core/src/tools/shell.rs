@@ -9,6 +9,7 @@ use serde_json::json;
 use thiserror::Error;
 
 use crate::docker::ContainerManager;
+use crate::tools::EventSender;
 
 /// Arguments for the shell tool
 #[derive(Debug, Deserialize)]
@@ -38,12 +39,22 @@ pub enum ShellError {
 /// Shell tool that executes commands in a Docker container
 pub struct DockerShellTool {
     container: Arc<ContainerManager>,
+    events: Arc<dyn EventSender>,
+    agent_name: String,
 }
 
 impl DockerShellTool {
     /// Create a new Docker shell tool
-    pub fn new(container: Arc<ContainerManager>) -> Self {
-        Self { container }
+    pub fn new(
+        container: Arc<ContainerManager>,
+        events: Arc<dyn EventSender>,
+        agent_name: String,
+    ) -> Self {
+        Self {
+            container,
+            events,
+            agent_name,
+        }
     }
 }
 
