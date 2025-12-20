@@ -151,6 +151,8 @@ pub trait LlmProvider: Send + Sync {
         _system_prompt: &str,
         _user_prompt: &str,
         _container: Arc<ContainerManager>,
+        _events: Arc<dyn crate::tools::EventSender>,
+        _agent_name: &str,
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Shell tool not supported by this provider".to_string(),
