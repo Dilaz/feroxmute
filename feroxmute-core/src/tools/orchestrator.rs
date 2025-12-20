@@ -139,12 +139,13 @@ impl Tool for SpawnAgentTool {
         let target = self.context.target.clone();
         let provider = Arc::clone(&self.context.provider);
         let container = Arc::clone(&self.context.container);
+        let events = Arc::clone(&self.context.events);
 
         let handle = tokio::spawn(async move {
             let start = std::time::Instant::now();
 
             let output = match provider
-                .complete_with_shell(&full_prompt, &target, container)
+                .complete_with_shell(&full_prompt, &target, container, events, &agent_name)
                 .await
             {
                 Ok(out) => out,
