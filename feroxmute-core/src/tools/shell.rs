@@ -9,6 +9,8 @@ use serde_json::json;
 use thiserror::Error;
 
 use crate::docker::ContainerManager;
+use crate::limitations::{EngagementLimitations, ToolRegistry};
+use crate::tools::sast::{GitleaksOutput, GrypeOutput, SastToolOutput, SemgrepOutput};
 use crate::tools::EventSender;
 
 /// Arguments for the shell tool
@@ -41,6 +43,8 @@ pub struct DockerShellTool {
     container: Arc<ContainerManager>,
     events: Arc<dyn EventSender>,
     agent_name: String,
+    limitations: Arc<EngagementLimitations>,
+    tool_registry: ToolRegistry,
 }
 
 impl DockerShellTool {
@@ -49,11 +53,14 @@ impl DockerShellTool {
         container: Arc<ContainerManager>,
         events: Arc<dyn EventSender>,
         agent_name: String,
+        limitations: Arc<EngagementLimitations>,
     ) -> Self {
         Self {
             container,
             events,
             agent_name,
+            limitations,
+            tool_registry: ToolRegistry::new(),
         }
     }
 }
@@ -103,8 +110,13 @@ impl Tool for DockerShellTool {
             .await
             .map_err(|e| ShellError::Docker(e.to_string()))?;
 
+        let output = result.output();
+
+        // Parse SAST tool outputs and send vulnerability events
+        self.parse_sast_findings(&args.command, &output);
+
         // Report result summary (indented)
-        let line_count = result.output().lines().count();
+        let line_count = output.lines().count();
         self.events.send_feed(
             &self.agent_name,
             &format!(
@@ -115,8 +127,45 @@ impl Tool for DockerShellTool {
         );
 
         Ok(ShellOutput {
-            output: result.output(),
+            output,
             exit_code: result.exit_code,
         })
+    }
+}
+
+impl DockerShellTool {
+    /// Parse SAST tool output and send vulnerability events
+    fn parse_sast_findings(&self, command: &str, output: &str) {
+        let cmd_lower = command.to_lowercase();
+
+        // Try to parse grype output
+        if cmd_lower.starts_with("grype") && cmd_lower.contains("-o json") {
+            if let Ok(grype_output) = GrypeOutput::parse(output) {
+                for finding in grype_output.to_code_findings() {
+                    self.events
+                        .send_vulnerability(finding.severity, &finding.title);
+                }
+            }
+        }
+
+        // Try to parse semgrep output
+        if cmd_lower.starts_with("semgrep") && cmd_lower.contains("--json") {
+            if let Ok(semgrep_output) = SemgrepOutput::parse(output) {
+                for finding in semgrep_output.to_code_findings() {
+                    self.events
+                        .send_vulnerability(finding.severity, &finding.title);
+                }
+            }
+        }
+
+        // Try to parse gitleaks output
+        if cmd_lower.starts_with("gitleaks") && cmd_lower.contains("json") {
+            if let Ok(gitleaks_output) = GitleaksOutput::parse(output) {
+                for finding in gitleaks_output.to_code_findings() {
+                    self.events
+                        .send_vulnerability(finding.severity, &finding.title);
+                }
+            }
+        }
     }
 }
