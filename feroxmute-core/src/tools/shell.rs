@@ -15,6 +15,8 @@ use crate::docker::ContainerManager;
 pub struct ShellArgs {
     /// The shell command to execute
     pub command: String,
+    /// Brief explanation shown to user in real-time
+    pub reason: String,
 }
 
 /// Output from the shell tool
@@ -62,9 +64,13 @@ impl Tool for DockerShellTool {
                     "command": {
                         "type": "string",
                         "description": "The shell command to execute (e.g., 'subfinder -d example.com -json')"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of what this command does and why. This is shown to the user in real-time so they can follow your progress."
                     }
                 },
-                "required": ["command"]
+                "required": ["command", "reason"]
             }),
         }
     }
