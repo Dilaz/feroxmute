@@ -87,6 +87,13 @@ impl Tool for DockerShellTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Report what we're about to do
+        self.events.send_feed(&self.agent_name, &args.reason, false);
+
+        // Report the actual command (indented)
+        self.events
+            .send_feed(&self.agent_name, &format!("  -> {}", args.command), false);
+
         // Wrap command to capture both stdout and stderr
         let wrapped_cmd = format!("{} 2>&1", args.command);
 
@@ -95,6 +102,14 @@ impl Tool for DockerShellTool {
             .exec(vec!["sh", "-c", &wrapped_cmd], None)
             .await
             .map_err(|e| ShellError::Docker(e.to_string()))?;
+
+        // Report result summary (indented)
+        let line_count = result.output().lines().count();
+        self.events.send_feed(
+            &self.agent_name,
+            &format!("  -> exit {}, {} lines output", result.exit_code, line_count),
+            result.exit_code != 0,
+        );
 
         Ok(ShellOutput {
             output: result.output(),
