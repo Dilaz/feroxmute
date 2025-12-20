@@ -84,6 +84,36 @@ impl ToolRegistry {
     }
 }
 
+/// Engagement scope limitations derived from CLI args
+#[derive(Debug, Clone)]
+pub struct EngagementLimitations {
+    /// Categories of tools allowed in this engagement
+    pub allowed_categories: HashSet<ToolCategory>,
+    /// Restrict testing to specific ports (None = any port)
+    pub target_ports: Option<Vec<u16>>,
+    /// Maximum requests per second
+    pub rate_limit: Option<u32>,
+}
+
+impl Default for EngagementLimitations {
+    fn default() -> Self {
+        let mut allowed = HashSet::new();
+        allowed.insert(ToolCategory::Report);
+        Self {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        }
+    }
+}
+
+impl EngagementLimitations {
+    /// Check if a tool category is allowed
+    pub fn is_allowed(&self, category: ToolCategory) -> bool {
+        self.allowed_categories.contains(&category)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +162,28 @@ mod tests {
         let registry = ToolRegistry::new();
         assert_eq!(registry.categorize("curl http://example.com"), None);
         assert_eq!(registry.categorize("python3 script.py"), None);
+    }
+
+    #[test]
+    fn test_limitations_default_allows_report() {
+        let limits = EngagementLimitations::default();
+        assert!(limits.is_allowed(ToolCategory::Report));
+    }
+
+    #[test]
+    fn test_limitations_check_category() {
+        let mut allowed = HashSet::new();
+        allowed.insert(ToolCategory::WebScan);
+        allowed.insert(ToolCategory::Report);
+
+        let limits = EngagementLimitations {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        };
+
+        assert!(limits.is_allowed(ToolCategory::WebScan));
+        assert!(limits.is_allowed(ToolCategory::Report));
+        assert!(!limits.is_allowed(ToolCategory::PortScan));
     }
 }
