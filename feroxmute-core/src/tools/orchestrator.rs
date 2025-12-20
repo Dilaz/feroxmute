@@ -16,7 +16,7 @@ use chrono::Utc;
 
 use crate::agents::{AgentRegistry, AgentResult, AgentStatus, Prompts};
 use crate::docker::ContainerManager;
-use crate::limitations::EngagementLimitations;
+use crate::limitations::{EngagementLimitations, ToolCategory};
 use crate::providers::LlmProvider;
 use crate::reports::Report;
 use crate::state::{MetricsTracker, Severity};
@@ -60,6 +60,19 @@ pub struct OrchestratorContext {
 // ============================================================================
 // SpawnAgentTool
 // ============================================================================
+
+/// Get required categories for an agent type
+fn agent_required_categories(agent_type: &str) -> Vec<ToolCategory> {
+    use ToolCategory::*;
+    match agent_type {
+        "recon" => vec![SubdomainEnum, AssetDiscovery, PortScan, WebCrawl],
+        "scanner" => vec![WebScan, NetworkScan],
+        "exploit" => vec![WebExploit, NetworkExploit],
+        "sast" => vec![Sast],
+        "report" => vec![Report],
+        _ => vec![],
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct SpawnAgentArgs {
@@ -119,6 +132,24 @@ impl Tool for SpawnAgentTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Check if agent type is allowed by limitations
+        let required = agent_required_categories(&args.agent_type);
+        let has_any_allowed = required
+            .iter()
+            .any(|c| self.context.limitations.is_allowed(*c));
+
+        if !has_any_allowed && !required.is_empty() {
+            let msg = format!(
+                "Cannot spawn '{}' agent: no allowed capabilities for current engagement scope",
+                args.agent_type
+            );
+            self.context.events.send_feed("orchestrator", &msg, true);
+            return Ok(SpawnAgentOutput {
+                success: false,
+                message: msg,
+            });
+        }
+
         let mut registry = self.context.registry.lock().await;
 
         if registry.has_agent(&args.name) {
