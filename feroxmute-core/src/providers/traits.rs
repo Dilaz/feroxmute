@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::docker::ContainerManager;
 use crate::state::MetricsTracker;
+use crate::tools::OrchestratorContext;
 use crate::Result;
 
 /// A message in a conversation
@@ -153,6 +154,19 @@ pub trait LlmProvider: Send + Sync {
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Shell tool not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Complete with orchestrator tools (spawn_agent, wait_for_agent, etc.)
+    /// Uses rig's built-in tool loop with orchestrator-specific tools
+    async fn complete_with_orchestrator(
+        &self,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _context: Arc<OrchestratorContext>,
+    ) -> Result<String> {
+        Err(crate::Error::Provider(
+            "Orchestrator tools not supported by this provider".to_string(),
         ))
     }
 

@@ -9,7 +9,10 @@ use rig::providers::openai;
 
 use crate::docker::ContainerManager;
 use crate::state::MetricsTracker;
-use crate::tools::DockerShellTool;
+use crate::tools::{
+    CompleteEngagementTool, DockerShellTool, ListAgentsTool, OrchestratorContext,
+    RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+};
 use crate::{Error, Result};
 
 use super::{CompletionRequest, CompletionResponse, LlmProvider, StopReason, TokenUsage};
@@ -156,6 +159,38 @@ impl LlmProvider for OpenAiProvider {
             .map_err(|e| Error::Provider(format!("OpenAI completion failed: {}", e)))?;
 
         Ok(response)
+    }
+
+    async fn complete_with_orchestrator(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        context: Arc<OrchestratorContext>,
+    ) -> Result<String> {
+        let agent = self
+            .client
+            .agent(&self.model)
+            .preamble(system_prompt)
+            .max_tokens(4096)
+            .tool(SpawnAgentTool::new(Arc::clone(&context)))
+            .tool(WaitForAgentTool::new(Arc::clone(&context)))
+            .tool(WaitForAnyTool::new(Arc::clone(&context)))
+            .tool(ListAgentsTool::new(Arc::clone(&context)))
+            .tool(RecordFindingTool::new(Arc::clone(&context)))
+            .tool(CompleteEngagementTool::new(Arc::clone(&context)))
+            .build();
+
+        // Run with cancellation support
+        tokio::select! {
+            result = agent.prompt(user_prompt) => {
+                result.map_err(|e| Error::Provider(format!("Orchestrator completion failed: {}", e)))
+            }
+            _ = context.cancel.cancelled() => {
+                // Engagement was completed via complete_engagement tool
+                let findings = context.findings.lock().await;
+                Ok(format!("Engagement completed with {} findings", findings.len()))
+            }
+        }
     }
 
     fn metrics(&self) -> &MetricsTracker {
