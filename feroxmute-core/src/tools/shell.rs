@@ -94,6 +94,14 @@ impl Tool for DockerShellTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Check if command is allowed by limitations
+        if let Err(msg) = self.check_command_allowed(&args.command) {
+            return Ok(ShellOutput {
+                output: msg,
+                exit_code: 1,
+            });
+        }
+
         // Report what we're about to do
         self.events.send_feed(&self.agent_name, &args.reason, false);
 
@@ -134,6 +142,34 @@ impl Tool for DockerShellTool {
 }
 
 impl DockerShellTool {
+    /// Check if a command is allowed by engagement limitations
+    fn check_command_allowed(&self, command: &str) -> Result<(), String> {
+        let category = self.tool_registry.categorize(command);
+
+        match category {
+            Some(cat) if !self.limitations.is_allowed(cat) => {
+                let tool = command.split_whitespace().next().unwrap_or("unknown");
+                let msg = format!(
+                    "Blocked: '{}' requires {:?} which is not allowed in current scope",
+                    tool, cat
+                );
+                self.events.send_feed(&self.agent_name, &msg, true);
+                Err(msg)
+            }
+            None => {
+                // Unknown command - allow with warning
+                let tool = command.split_whitespace().next().unwrap_or("unknown");
+                self.events.send_feed(
+                    &self.agent_name,
+                    &format!("Warning: unrecognized command '{}' - allowing", tool),
+                    false,
+                );
+                Ok(())
+            }
+            Some(_) => Ok(()),
+        }
+    }
+
     /// Parse SAST tool output and send vulnerability events
     fn parse_sast_findings(&self, command: &str, output: &str) {
         let cmd_lower = command.to_lowercase();
