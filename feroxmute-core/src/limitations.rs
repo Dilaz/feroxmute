@@ -112,6 +112,41 @@ impl EngagementLimitations {
     pub fn is_allowed(&self, category: ToolCategory) -> bool {
         self.allowed_categories.contains(&category)
     }
+
+    /// Generate a prompt section describing limitations for LLM awareness
+    pub fn to_prompt_section(&self) -> String {
+        use ToolCategory::*;
+        let mut lines = vec!["## Engagement Limitations".to_string()];
+
+        if !self.is_allowed(SubdomainEnum) && !self.is_allowed(AssetDiscovery) {
+            lines.push(
+                "- NO subdomain enumeration or asset discovery - test only the specified target"
+                    .into(),
+            );
+        }
+        if !self.is_allowed(PortScan) {
+            lines.push("- NO port scanning - target ports are already known".into());
+        }
+        if !self.is_allowed(WebExploit) && !self.is_allowed(NetworkExploit) {
+            lines.push("- NO exploitation - reconnaissance and scanning only".into());
+        }
+        if !self.is_allowed(NetworkScan) {
+            lines.push("- Web application testing only - no network-level scanning".into());
+        }
+        if let Some(ports) = &self.target_ports {
+            lines.push(format!("- Restrict testing to ports: {:?}", ports));
+        }
+        if let Some(rate) = self.rate_limit {
+            lines.push(format!("- Rate limit: {} requests/second maximum", rate));
+        }
+
+        if lines.len() == 1 {
+            lines.push("- No restrictions - full scope authorized".into());
+        }
+
+        lines.push("\nCommands violating these limitations will be blocked.".into());
+        lines.join("\n")
+    }
 }
 
 #[cfg(test)]
@@ -185,5 +220,39 @@ mod tests {
         assert!(limits.is_allowed(ToolCategory::WebScan));
         assert!(limits.is_allowed(ToolCategory::Report));
         assert!(!limits.is_allowed(ToolCategory::PortScan));
+    }
+
+    #[test]
+    fn test_prompt_section_no_portscan() {
+        let mut allowed = HashSet::new();
+        allowed.insert(ToolCategory::WebScan);
+        allowed.insert(ToolCategory::Report);
+
+        let limits = EngagementLimitations {
+            allowed_categories: allowed,
+            target_ports: None,
+            rate_limit: None,
+        };
+
+        let prompt = limits.to_prompt_section();
+        assert!(prompt.contains("NO port scanning"));
+        assert!(prompt.contains("Engagement Limitations"));
+    }
+
+    #[test]
+    fn test_prompt_section_with_rate_limit() {
+        let mut allowed = HashSet::new();
+        allowed.insert(ToolCategory::WebScan);
+        allowed.insert(ToolCategory::Report);
+
+        let limits = EngagementLimitations {
+            allowed_categories: allowed,
+            target_ports: Some(vec![80, 443]),
+            rate_limit: Some(10),
+        };
+
+        let prompt = limits.to_prompt_section();
+        assert!(prompt.contains("10 requests/second"));
+        assert!(prompt.contains("80") && prompt.contains("443"));
     }
 }
