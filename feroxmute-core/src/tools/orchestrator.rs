@@ -184,6 +184,7 @@ impl Tool for SpawnAgentTool {
         let container = Arc::clone(&self.context.container);
         let events = Arc::clone(&self.context.events);
         let findings = Arc::clone(&self.context.findings);
+        let limitations = Arc::clone(&self.context.limitations);
 
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
@@ -228,7 +229,14 @@ impl Tool for SpawnAgentTool {
                 let start = std::time::Instant::now();
 
                 let output = match provider
-                    .complete_with_shell(&full_prompt, &target, container, events, &agent_name)
+                    .complete_with_shell(
+                        &full_prompt,
+                        &target,
+                        container,
+                        events,
+                        &agent_name,
+                        limitations,
+                    )
                     .await
                 {
                     Ok(out) => out,
