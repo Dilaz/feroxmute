@@ -2,6 +2,8 @@
 
 use std::time::{Duration, Instant};
 
+use chrono::{DateTime, Local};
+
 use super::channel::AgentEvent;
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
 use feroxmute_core::state::models::CodeFinding;
@@ -87,8 +89,7 @@ pub struct AgentDisplayInfo {
 /// Activity feed entry
 #[derive(Debug, Clone)]
 pub struct FeedEntry {
-    #[allow(dead_code)]
-    pub timestamp: Instant,
+    pub timestamp: DateTime<Local>,
     pub agent: String,
     pub message: String,
     pub is_error: bool,
@@ -97,7 +98,7 @@ pub struct FeedEntry {
 impl FeedEntry {
     pub fn new(agent: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
-            timestamp: Instant::now(),
+            timestamp: Local::now(),
             agent: agent.into(),
             message: message.into(),
             is_error: false,
@@ -106,7 +107,7 @@ impl FeedEntry {
 
     pub fn error(agent: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
-            timestamp: Instant::now(),
+            timestamp: Local::now(),
             agent: agent.into(),
             message: message.into(),
             is_error: true,
