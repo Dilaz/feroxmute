@@ -129,8 +129,9 @@ impl LlmProvider for GeminiProvider {
             .tool(CompleteEngagementTool::new(Arc::clone(&context)))
             .build();
 
+        // multi_turn enables tool loop with max 50 iterations
         tokio::select! {
-            result = agent.prompt(user_prompt) => {
+            result = agent.prompt(user_prompt).multi_turn(50) => {
                 result.map_err(|e| Error::Provider(format!("Orchestrator completion failed: {}", e)))
             }
             _ = context.cancel.cancelled() => {
