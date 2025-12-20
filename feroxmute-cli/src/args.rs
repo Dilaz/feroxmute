@@ -51,6 +51,10 @@ pub struct Args {
     #[arg(long)]
     pub passive: bool,
 
+    /// Skip subdomain enumeration and asset discovery (webapp-only testing)
+    #[arg(long)]
+    pub no_discovery: bool,
+
     /// Limit port range (comma-separated)
     #[arg(long)]
     pub ports: Option<String>,
@@ -82,15 +86,4 @@ pub struct Args {
     /// Verbose output
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
-}
-
-impl Args {
-    /// Parse ports string into Vec<u16>
-    #[allow(dead_code)]
-    pub fn parse_ports(&self) -> Vec<u16> {
-        self.ports
-            .as_ref()
-            .map(|p| p.split(',').filter_map(|s| s.trim().parse().ok()).collect())
-            .unwrap_or_default()
-    }
 }
