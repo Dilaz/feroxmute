@@ -1,11 +1,17 @@
 //! Cohere provider implementation using rig-core
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::providers::cohere;
 
 use crate::state::MetricsTracker;
+use crate::tools::{
+    CompleteEngagementTool, ListAgentsTool, OrchestratorContext, RecordFindingTool, SpawnAgentTool,
+    WaitForAgentTool, WaitForAnyTool,
+};
 use crate::{Error, Result};
 
 use super::{CompletionRequest, CompletionResponse, LlmProvider, StopReason, TokenUsage};
@@ -101,6 +107,36 @@ impl LlmProvider for CohereProvider {
                 cache_creation_tokens: 0,
             },
         })
+    }
+
+    async fn complete_with_orchestrator(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        context: Arc<OrchestratorContext>,
+    ) -> Result<String> {
+        let agent = self
+            .client
+            .agent(&self.model)
+            .preamble(system_prompt)
+            .max_tokens(4096)
+            .tool(SpawnAgentTool::new(Arc::clone(&context)))
+            .tool(WaitForAgentTool::new(Arc::clone(&context)))
+            .tool(WaitForAnyTool::new(Arc::clone(&context)))
+            .tool(ListAgentsTool::new(Arc::clone(&context)))
+            .tool(RecordFindingTool::new(Arc::clone(&context)))
+            .tool(CompleteEngagementTool::new(Arc::clone(&context)))
+            .build();
+
+        tokio::select! {
+            result = agent.prompt(user_prompt) => {
+                result.map_err(|e| Error::Provider(format!("Orchestrator completion failed: {}", e)))
+            }
+            _ = context.cancel.cancelled() => {
+                let findings = context.findings.lock().await;
+                Ok(format!("Engagement completed with {} findings", findings.len()))
+            }
+        }
     }
 
     fn metrics(&self) -> &MetricsTracker {
