@@ -82,18 +82,27 @@ fn render_logs(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .split(frame.area());
 
+    let visible_height = chunks[0].height.saturating_sub(2) as usize;
+
+    // Show newest at bottom, apply scroll from bottom
     let items: Vec<ListItem> = app
         .feed
         .iter()
         .rev()
         .skip(app.log_scroll)
+        .take(visible_height)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
         .map(|entry| {
             let style = if entry.is_error {
                 Style::default().fg(Color::Red)
             } else {
                 Style::default()
             };
+            let time_str = entry.timestamp.format("%H:%M:%S").to_string();
             let line = Line::from(vec![
+                Span::styled(format!("{} ", time_str), Style::default().fg(Color::DarkGray)),
                 Span::styled(
                     format!("[{}] ", entry.agent),
                     Style::default().fg(Color::Cyan),

@@ -195,16 +195,21 @@ fn agent_row_with_activity<'a>(
     ])
 }
 
-/// Render activity feed with horizontal scrolling
+/// Render activity feed with timestamps (newest at bottom)
 fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
-    let inner_width = area.width.saturating_sub(2) as usize; // account for borders
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let inner_width = area.width.saturating_sub(2) as usize;
     let scroll_x = app.feed_scroll_x as usize;
 
+    // Take last N entries (newest at bottom)
     let items: Vec<ListItem> = app
         .feed
         .iter()
         .rev()
-        .take(area.height as usize - 2)
+        .take(visible_height)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
         .map(|entry| {
             let style = if entry.is_error {
                 Style::default().fg(Color::Red)
@@ -212,20 +217,23 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
                 Style::default()
             };
 
-            let prefix = format!("[{}] ", entry.agent);
+            let time_str = entry.timestamp.format("%H:%M:%S").to_string();
+            let prefix = format!("{} [{}] ", time_str, entry.agent);
             let full_text = format!("{}{}", prefix, entry.message);
 
-            // Apply horizontal scroll (UTF-8 safe character slicing)
+            // Apply horizontal scroll
             let full_text_len = full_text.chars().count();
-            let display_text = if scroll_x < full_text_len {
+            let display_text: String = if scroll_x < full_text_len {
                 let take_count = inner_width.min(full_text_len - scroll_x);
                 full_text.chars().skip(scroll_x).take(take_count).collect()
             } else {
                 String::new()
             };
 
-            // Color the prefix portion if visible (UTF-8 safe character slicing)
+            // Color the timestamp and agent prefix
+            let time_len: usize = 8; // "HH:MM:SS"
             let prefix_char_len = prefix.chars().count();
+
             if scroll_x < prefix_char_len {
                 let visible_prefix_len = prefix_char_len.saturating_sub(scroll_x);
                 let display_char_count = display_text.chars().count();
@@ -239,8 +247,13 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
                     String::new()
                 };
 
+                // Split prefix into time and agent parts for coloring
+                let time_part: String = visible_prefix.chars().take(time_len.saturating_sub(scroll_x)).collect();
+                let agent_part: String = visible_prefix.chars().skip(time_len.saturating_sub(scroll_x)).collect();
+
                 let line = Line::from(vec![
-                    Span::styled(visible_prefix, Style::default().fg(Color::Cyan)),
+                    Span::styled(time_part, Style::default().fg(Color::DarkGray)),
+                    Span::styled(agent_part, Style::default().fg(Color::Cyan)),
                     Span::styled(visible_message, style),
                 ]);
                 ListItem::new(line)
@@ -250,17 +263,24 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    // Check if content extends beyond visible area (UTF-8 safe character counting)
+    // Check if content extends beyond visible area
     let has_more_right = app.feed.iter().any(|e| {
-        let full_len = format!("[{}] {}", e.agent, e.message).chars().count();
+        let full_len = format!(
+            "{} [{}] {}",
+            e.timestamp.format("%H:%M:%S"),
+            e.agent,
+            e.message
+        )
+        .chars()
+        .count();
         scroll_x + inner_width < full_len
     });
     let has_more_left = scroll_x > 0;
 
     let title = match (has_more_left, has_more_right) {
-        (true, true) => " ← Activity Feed → ",
-        (true, false) => " ← Activity Feed ",
-        (false, true) => " Activity Feed → ",
+        (true, true) => " <- Activity Feed -> ",
+        (true, false) => " <- Activity Feed ",
+        (false, true) => " Activity Feed -> ",
         (false, false) => " Activity Feed ",
     };
 
