@@ -20,7 +20,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3), // Header
             Constraint::Length(5), // Metrics
-            Constraint::Length(7), // Agent status table
+            Constraint::Min(5),    // Agent status table (dynamic height)
             Constraint::Min(5),    // Feed
             Constraint::Length(1), // Footer
         ])
@@ -114,24 +114,41 @@ fn render_metrics(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Render agent status table
 fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
-    let header = Row::new(vec!["Agent", "Status", ""]).style(
+    let header = Row::new(vec!["Agent", "Status", "Activity"]).style(
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
     );
 
-    let rows = vec![
-        agent_row("Orchestrator", app.agent_statuses.orchestrator, "[1]"),
-        agent_row("Recon", app.agent_statuses.recon, "[2]"),
-        agent_row("Scanner", app.agent_statuses.scanner, "[3]"),
-    ];
+    // Always show orchestrator first
+    let mut rows = vec![agent_row_with_activity(
+        "orchestrator",
+        "Orchestrator",
+        app.agent_statuses.orchestrator,
+        app.agents
+            .get("orchestrator")
+            .map(|a| a.activity.as_str())
+            .unwrap_or("-"),
+    )];
+
+    // Add dynamically spawned agents
+    for (name, info) in &app.agents {
+        if name != "orchestrator" {
+            rows.push(agent_row_with_activity(
+                name,
+                name,
+                info.status,
+                &info.activity,
+            ));
+        }
+    }
 
     let table = Table::new(
         rows,
         [
-            Constraint::Length(15),
+            Constraint::Length(20),
             Constraint::Length(12),
-            Constraint::Length(5),
+            Constraint::Min(20),
         ],
     )
     .header(header)
@@ -140,8 +157,13 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(table, area);
 }
 
-/// Create a row for an agent
-fn agent_row<'a>(name: &'a str, status: AgentStatus, key: &'a str) -> Row<'a> {
+/// Create a row for an agent with activity
+fn agent_row_with_activity<'a>(
+    _key: &'a str,
+    name: &'a str,
+    status: AgentStatus,
+    activity: &'a str,
+) -> Row<'a> {
     let (status_text, status_style) = match status {
         AgentStatus::Idle => ("Idle", Style::default().fg(Color::Gray)),
         AgentStatus::Planning => ("Planning", Style::default().fg(Color::Blue)),
@@ -159,10 +181,17 @@ fn agent_row<'a>(name: &'a str, status: AgentStatus, key: &'a str) -> Row<'a> {
         ),
     };
 
+    // Truncate activity to fit
+    let activity_display = if activity.len() > 40 {
+        format!("{}...", &activity[..37])
+    } else {
+        activity.to_string()
+    };
+
     Row::new(vec![
         Cell::from(name),
         Cell::from(status_text).style(status_style),
-        Cell::from(key).style(Style::default().fg(Color::DarkGray)),
+        Cell::from(activity_display).style(Style::default().fg(Color::DarkGray)),
     ])
 }
 
