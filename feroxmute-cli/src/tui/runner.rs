@@ -220,6 +220,11 @@ fn drain_events(app: &mut App) {
                 message,
                 is_error,
             } => {
+                // Track activity for non-indented messages
+                if !message.starts_with("  ") {
+                    app.update_agent_activity(&agent, &message);
+                }
+
                 if is_error {
                     app.add_feed(super::app::FeedEntry::error(&agent, &message));
                 } else {
@@ -231,6 +236,7 @@ fn drain_events(app: &mut App) {
             }
             AgentEvent::Status { agent, status } => {
                 app.update_agent_status(&agent, status);
+                app.update_spawned_agent_status(&agent, status);
             }
             AgentEvent::Metrics {
                 input,
