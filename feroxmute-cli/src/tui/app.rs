@@ -76,6 +76,14 @@ pub struct AgentStatuses {
     pub sast: Option<String>,
 }
 
+/// Display info for a dynamically spawned agent
+#[derive(Debug, Clone, Default)]
+pub struct AgentDisplayInfo {
+    pub agent_type: String,
+    pub status: AgentStatus,
+    pub activity: String,
+}
+
 /// Activity feed entry
 #[derive(Debug, Clone)]
 pub struct FeedEntry {
@@ -132,6 +140,8 @@ pub struct App {
     pub vuln_counts: VulnCounts,
     /// Agent statuses
     pub agent_statuses: AgentStatuses,
+    /// Dynamically spawned agents (name -> info)
+    pub agents: std::collections::HashMap<String, AgentDisplayInfo>,
     /// Activity feed
     pub feed: Vec<FeedEntry>,
     /// Current thinking text (from active agent)
@@ -174,6 +184,7 @@ impl App {
             metrics: Metrics::default(),
             vuln_counts: VulnCounts::default(),
             agent_statuses: AgentStatuses::default(),
+            agents: std::collections::HashMap::new(),
             feed: Vec::new(),
             current_thinking: None,
             log_scroll: 0,
@@ -225,6 +236,30 @@ impl App {
             "scanner" => self.agent_statuses.scanner = status,
             "sast" => self.agent_statuses.sast = Some(format!("{:?}", status)),
             _ => {}
+        }
+    }
+
+    /// Update agent activity (from non-indented feed messages)
+    pub fn update_agent_activity(&mut self, agent: &str, activity: &str) {
+        if let Some(info) = self.agents.get_mut(agent) {
+            info.activity = activity.to_string();
+        } else if agent != "orchestrator" && agent != "system" {
+            // New agent - add it
+            self.agents.insert(
+                agent.to_string(),
+                AgentDisplayInfo {
+                    agent_type: String::new(), // Will be set from status event
+                    status: AgentStatus::Running,
+                    activity: activity.to_string(),
+                },
+            );
+        }
+    }
+
+    /// Update spawned agent status
+    pub fn update_spawned_agent_status(&mut self, agent: &str, status: AgentStatus) {
+        if let Some(info) = self.agents.get_mut(agent) {
+            info.status = status;
         }
     }
 
