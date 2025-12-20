@@ -8,10 +8,12 @@ use rig::completion::Prompt;
 use rig::providers::anthropic;
 
 use crate::docker::ContainerManager;
+use crate::limitations::EngagementLimitations;
 use crate::state::MetricsTracker;
 use crate::tools::{
-    CompleteEngagementTool, DockerShellTool, EventSender, ListAgentsTool, OrchestratorContext,
-    RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+    AddRecommendationTool, CompleteEngagementTool, DockerShellTool, EventSender, ExportJsonTool,
+    ExportMarkdownTool, GenerateReportTool, ListAgentsTool, OrchestratorContext, RecordFindingTool,
+    ReportContext, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
 
@@ -124,7 +126,9 @@ impl LlmProvider for AnthropicProvider {
         container: Arc<ContainerManager>,
         events: Arc<dyn EventSender>,
         agent_name: &str,
+        limitations: Arc<EngagementLimitations>,
     ) -> Result<String> {
+        let events_clone = Arc::clone(&events);
         let agent = self
             .client
             .agent(&self.model)
@@ -134,15 +138,26 @@ impl LlmProvider for AnthropicProvider {
                 container,
                 events,
                 agent_name.to_string(),
+                limitations,
             ))
             .build();
 
         // multi_turn enables tool loop with max 50 iterations
-        agent
+        // extended_details() gives us real token usage
+        let response = agent
             .prompt(user_prompt)
+            .extended_details()
             .multi_turn(50)
             .await
-            .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))
+            .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
+
+        events_clone.send_metrics(
+            response.total_usage.input_tokens,
+            response.total_usage.output_tokens,
+            0,
+        );
+
+        Ok(response.output)
     }
 
     async fn complete_with_orchestrator(
@@ -151,6 +166,7 @@ impl LlmProvider for AnthropicProvider {
         user_prompt: &str,
         context: Arc<OrchestratorContext>,
     ) -> Result<String> {
+        let events = Arc::clone(&context.events);
         let agent = self
             .client
             .agent(&self.model)
@@ -165,9 +181,20 @@ impl LlmProvider for AnthropicProvider {
             .build();
 
         // Run with cancellation support (multi_turn enables tool loop with max 50 iterations)
+        // extended_details() gives us real token usage
         tokio::select! {
-            result = agent.prompt(user_prompt).multi_turn(50) => {
-                result.map_err(|e| Error::Provider(format!("Orchestrator completion failed: {}", e)))
+            result = agent.prompt(user_prompt).extended_details().multi_turn(50) => {
+                match result {
+                    Ok(response) => {
+                        events.send_metrics(
+                            response.total_usage.input_tokens,
+                            response.total_usage.output_tokens,
+                            0,
+                        );
+                        Ok(response.output)
+                    }
+                    Err(e) => Err(Error::Provider(format!("Orchestrator completion failed: {}", e)))
+                }
             }
             _ = context.cancel.cancelled() => {
                 // Engagement was completed via complete_engagement tool
@@ -175,6 +202,42 @@ impl LlmProvider for AnthropicProvider {
                 Ok(format!("Engagement completed with {} findings", findings.len()))
             }
         }
+    }
+
+    async fn complete_with_report(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        context: Arc<ReportContext>,
+    ) -> Result<String> {
+        let events = Arc::clone(&context.events);
+        let agent = self
+            .client
+            .agent(&self.model)
+            .preamble(system_prompt)
+            .max_tokens(4096)
+            .tool(GenerateReportTool::new(Arc::clone(&context)))
+            .tool(ExportJsonTool::new(Arc::clone(&context)))
+            .tool(ExportMarkdownTool::new(Arc::clone(&context)))
+            .tool(AddRecommendationTool::new(Arc::clone(&context)))
+            .build();
+
+        // multi_turn enables tool loop with max 20 iterations
+        // extended_details() gives us real token usage
+        let response = agent
+            .prompt(user_prompt)
+            .extended_details()
+            .multi_turn(20)
+            .await
+            .map_err(|e| Error::Provider(format!("Report completion failed: {}", e)))?;
+
+        events.send_metrics(
+            response.total_usage.input_tokens,
+            response.total_usage.output_tokens,
+            0,
+        );
+
+        Ok(response.output)
     }
 
     fn metrics(&self) -> &MetricsTracker {

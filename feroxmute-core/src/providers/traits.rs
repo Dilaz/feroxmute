@@ -6,8 +6,9 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::docker::ContainerManager;
+use crate::limitations::EngagementLimitations;
 use crate::state::MetricsTracker;
-use crate::tools::OrchestratorContext;
+use crate::tools::{OrchestratorContext, ReportContext};
 use crate::Result;
 
 /// A message in a conversation
@@ -153,6 +154,7 @@ pub trait LlmProvider: Send + Sync {
         _container: Arc<ContainerManager>,
         _events: Arc<dyn crate::tools::EventSender>,
         _agent_name: &str,
+        _limitations: Arc<EngagementLimitations>,
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Shell tool not supported by this provider".to_string(),
@@ -169,6 +171,19 @@ pub trait LlmProvider: Send + Sync {
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Orchestrator tools not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Complete with report tools (generate_report, export_json, export_markdown, etc.)
+    /// Uses rig's built-in tool loop with report-specific tools
+    async fn complete_with_report(
+        &self,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _context: Arc<ReportContext>,
+    ) -> Result<String> {
+        Err(crate::Error::Provider(
+            "Report tools not supported by this provider".to_string(),
         ))
     }
 
