@@ -248,8 +248,14 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
                 };
 
                 // Split prefix into time and agent parts for coloring
-                let time_part: String = visible_prefix.chars().take(time_len.saturating_sub(scroll_x)).collect();
-                let agent_part: String = visible_prefix.chars().skip(time_len.saturating_sub(scroll_x)).collect();
+                let time_part: String = visible_prefix
+                    .chars()
+                    .take(time_len.saturating_sub(scroll_x))
+                    .collect();
+                let agent_part: String = visible_prefix
+                    .chars()
+                    .skip(time_len.saturating_sub(scroll_x))
+                    .collect();
 
                 let line = Line::from(vec![
                     Span::styled(time_part, Style::default().fg(Color::DarkGray)),

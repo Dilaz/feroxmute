@@ -130,7 +130,11 @@ impl LlmProvider for AnthropicProvider {
             .agent(&self.model)
             .preamble(system_prompt)
             .max_tokens(4096)
-            .tool(DockerShellTool::new(container, events, agent_name.to_string()))
+            .tool(DockerShellTool::new(
+                container,
+                events,
+                agent_name.to_string(),
+            ))
             .build();
 
         // multi_turn enables tool loop with max 50 iterations

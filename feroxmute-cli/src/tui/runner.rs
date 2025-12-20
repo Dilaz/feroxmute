@@ -102,7 +102,10 @@ fn render_logs(frame: &mut Frame, app: &App) {
             };
             let time_str = entry.timestamp.format("%H:%M:%S").to_string();
             let line = Line::from(vec![
-                Span::styled(format!("{} ", time_str), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{} ", time_str),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled(
                     format!("[{}] ", entry.agent),
                     Style::default().fg(Color::Cyan),

@@ -107,7 +107,10 @@ impl Tool for DockerShellTool {
         let line_count = result.output().lines().count();
         self.events.send_feed(
             &self.agent_name,
-            &format!("  -> exit {}, {} lines output", result.exit_code, line_count),
+            &format!(
+                "  -> exit {}, {} lines output",
+                result.exit_code, line_count
+            ),
             result.exit_code != 0,
         );
 
