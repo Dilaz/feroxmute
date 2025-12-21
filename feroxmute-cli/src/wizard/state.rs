@@ -507,9 +507,13 @@ impl WizardState {
         let config_dir = PathBuf::from(home).join(FEROXMUTE_DIR);
         fs::create_dir_all(&config_dir)?;
 
-        let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-        let filename = format!("config_{}.toml", timestamp);
-        let path = config_dir.join(&filename);
+        let path = config_dir.join(CONFIG_FILE);
+
+        // Backup existing config if present
+        if path.exists() {
+            let backup_path = config_dir.join(format!("{}.bak", CONFIG_FILE));
+            fs::rename(&path, &backup_path)?;
+        }
 
         let toml_content = self.generate_toml()?;
         fs::write(&path, toml_content)?;
