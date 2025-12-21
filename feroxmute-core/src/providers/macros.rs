@@ -208,19 +208,37 @@ macro_rules! define_provider {
                 let mut final_text = String::new();
                 let mut total_input_tokens: u64 = 0;
                 let mut total_output_tokens: u64 = 0;
+                let mut tool_call_count: u64 = 0;
 
                 while let Some(item) = stream.next().await {
                     match item {
                         Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
                             match content {
                                 rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                    // Update status to Thinking
+                                    events_clone.send_status(
+                                        &agent_name_owned,
+                                        "",
+                                        $crate::agents::AgentStatus::Thinking,
+                                        None,
+                                    );
                                     let text = reasoning.reasoning.join("");
                                     if !text.is_empty() {
                                         events_clone.send_thinking(&agent_name_owned, Some(text));
                                     }
                                 }
                                 rig::streaming::StreamedAssistantContent::Text(text) => {
+                                    // Update status to Streaming
+                                    events_clone.send_status(
+                                        &agent_name_owned,
+                                        "",
+                                        $crate::agents::AgentStatus::Streaming,
+                                        None,
+                                    );
                                     final_text.push_str(&text.text);
+                                }
+                                rig::streaming::StreamedAssistantContent::ToolCall(_) => {
+                                    tool_call_count += 1;
                                 }
                                 _ => {}
                             }
@@ -249,7 +267,7 @@ macro_rules! define_provider {
                     total_output_tokens,
                 );
 
-                events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost);
+                events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
 
                 Ok(final_text)
             }
@@ -284,6 +302,7 @@ macro_rules! define_provider {
                 let mut final_text = String::new();
                 let mut total_input_tokens: u64 = 0;
                 let mut total_output_tokens: u64 = 0;
+                let mut tool_call_count: u64 = 0;
 
                 loop {
                     tokio::select! {
@@ -292,13 +311,30 @@ macro_rules! define_provider {
                                 Some(Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content))) => {
                                     match content {
                                         rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                            // Update status to Thinking
+                                            events.send_status(
+                                                &agent_name,
+                                                "orchestrator",
+                                                $crate::agents::AgentStatus::Thinking,
+                                                None,
+                                            );
                                             let text = reasoning.reasoning.join("");
                                             if !text.is_empty() {
                                                 events.send_thinking(&agent_name, Some(text));
                                             }
                                         }
                                         rig::streaming::StreamedAssistantContent::Text(text) => {
+                                            // Update status to Streaming
+                                            events.send_status(
+                                                &agent_name,
+                                                "orchestrator",
+                                                $crate::agents::AgentStatus::Streaming,
+                                                None,
+                                            );
                                             final_text.push_str(&text.text);
+                                        }
+                                        rig::streaming::StreamedAssistantContent::ToolCall(_) => {
+                                            tool_call_count += 1;
                                         }
                                         _ => {}
                                     }
@@ -327,7 +363,7 @@ macro_rules! define_provider {
 
                 let pricing = $crate::pricing::PricingConfig::load();
                 let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
-                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost);
+                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
 
                 Ok(final_text)
             }
@@ -360,19 +396,37 @@ macro_rules! define_provider {
                 let mut final_text = String::new();
                 let mut total_input_tokens: u64 = 0;
                 let mut total_output_tokens: u64 = 0;
+                let mut tool_call_count: u64 = 0;
 
                 while let Some(item) = stream.next().await {
                     match item {
                         Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
                             match content {
                                 rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                    // Update status to Thinking
+                                    events.send_status(
+                                        &agent_name,
+                                        "report",
+                                        $crate::agents::AgentStatus::Thinking,
+                                        None,
+                                    );
                                     let text = reasoning.reasoning.join("");
                                     if !text.is_empty() {
                                         events.send_thinking(&agent_name, Some(text));
                                     }
                                 }
                                 rig::streaming::StreamedAssistantContent::Text(text) => {
+                                    // Update status to Streaming
+                                    events.send_status(
+                                        &agent_name,
+                                        "report",
+                                        $crate::agents::AgentStatus::Streaming,
+                                        None,
+                                    );
                                     final_text.push_str(&text.text);
+                                }
+                                rig::streaming::StreamedAssistantContent::ToolCall(_) => {
+                                    tool_call_count += 1;
                                 }
                                 _ => {}
                             }
@@ -393,7 +447,7 @@ macro_rules! define_provider {
 
                 let pricing = $crate::pricing::PricingConfig::load();
                 let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
-                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost);
+                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
 
                 Ok(final_text)
             }

@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use chrono::Utc;
 
-use crate::agents::{AgentRegistry, AgentResult, AgentStatus, Prompts};
+use crate::agents::{AgentRegistry, AgentResult, AgentStatus, EngagementPhase, Prompts};
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolCategory};
 use crate::providers::LlmProvider;
@@ -35,8 +35,14 @@ pub enum OrchestratorToolError {
 pub trait EventSender: Send + Sync {
     /// Send a feed message
     fn send_feed(&self, agent: &str, message: &str, is_error: bool);
-    /// Send a status update
-    fn send_status(&self, agent: &str, agent_type: &str, status: AgentStatus);
+    /// Send a status update with optional current tool info
+    fn send_status(
+        &self,
+        agent: &str,
+        agent_type: &str,
+        status: AgentStatus,
+        current_tool: Option<String>,
+    );
     /// Send metrics update
     fn send_metrics(
         &self,
@@ -44,11 +50,14 @@ pub trait EventSender: Send + Sync {
         output_tokens: u64,
         cache_read_tokens: u64,
         cost_usd: f64,
+        tool_calls: u64,
     );
     /// Send vulnerability found
     fn send_vulnerability(&self, severity: Severity, title: &str);
     /// Send thinking update for an agent
     fn send_thinking(&self, agent: &str, content: Option<String>);
+    /// Send engagement phase update
+    fn send_phase(&self, phase: EngagementPhase);
 }
 
 /// Shared context for all orchestrator tools
@@ -181,7 +190,19 @@ impl Tool for SpawnAgentTool {
         );
         self.context
             .events
-            .send_status(&args.name, &args.agent_type, AgentStatus::Running);
+            .send_status(&args.name, &args.agent_type, AgentStatus::Streaming, None);
+
+        // Update engagement phase based on agent type
+        let phase = match args.agent_type.as_str() {
+            "sast" => Some(EngagementPhase::StaticAnalysis),
+            "recon" => Some(EngagementPhase::Reconnaissance),
+            "scanner" => Some(EngagementPhase::Scanning),
+            "report" => Some(EngagementPhase::Reporting),
+            _ => None,
+        };
+        if let Some(p) = phase {
+            self.context.events.send_phase(p);
+        }
 
         // Spawn agent task
         let result_tx = registry.result_sender();
@@ -336,8 +357,23 @@ impl Tool for WaitForAgentTool {
             false,
         );
 
+        // Update orchestrator status to Waiting while blocked
+        self.context
+            .events
+            .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
+
         let mut registry = self.context.registry.lock().await;
-        match registry.wait_for_agent(&args.name).await {
+        let result = registry.wait_for_agent(&args.name).await;
+
+        // Restore orchestrator status to Running
+        self.context.events.send_status(
+            "orchestrator",
+            "orchestrator",
+            AgentStatus::Streaming,
+            None,
+        );
+
+        match result {
             Some(result) => {
                 self.context.events.send_status(
                     &result.name,
@@ -347,6 +383,7 @@ impl Tool for WaitForAgentTool {
                     } else {
                         AgentStatus::Failed
                     },
+                    None,
                 );
 
                 Ok(WaitForAgentOutput {
@@ -378,6 +415,8 @@ pub struct WaitForAnyOutput {
     pub agent_type: String,
     pub success: bool,
     pub output: String,
+    /// Number of agents still running after this one completed
+    pub remaining_running: usize,
 }
 
 pub struct WaitForAnyTool {
@@ -400,7 +439,7 @@ impl Tool for WaitForAnyTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "wait_for_any".to_string(),
-            description: "Wait for any running agent to complete and get its results.".to_string(),
+            description: "Wait for any running agent to complete. Returns remaining_running count - keep calling until 0 before complete_engagement.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {}
@@ -415,8 +454,23 @@ impl Tool for WaitForAnyTool {
             false,
         );
 
+        // Update orchestrator status to Waiting while blocked
+        self.context
+            .events
+            .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
+
         let mut registry = self.context.registry.lock().await;
-        match registry.wait_for_any().await {
+        let result = registry.wait_for_any().await;
+
+        // Restore orchestrator status to Running
+        self.context.events.send_status(
+            "orchestrator",
+            "orchestrator",
+            AgentStatus::Streaming,
+            None,
+        );
+
+        match result {
             Some(result) => {
                 self.context.events.send_status(
                     &result.name,
@@ -426,7 +480,23 @@ impl Tool for WaitForAnyTool {
                     } else {
                         AgentStatus::Failed
                     },
+                    None,
                 );
+
+                // Count remaining running agents (any active state counts)
+                let remaining_running = registry
+                    .list_agents()
+                    .iter()
+                    .filter(|(_, _, status)| {
+                        matches!(
+                            status,
+                            AgentStatus::Thinking
+                                | AgentStatus::Streaming
+                                | AgentStatus::Executing
+                                | AgentStatus::Processing
+                        )
+                    })
+                    .count();
 
                 Ok(WaitForAnyOutput {
                     found: true,
@@ -434,6 +504,7 @@ impl Tool for WaitForAnyTool {
                     agent_type: result.agent_type,
                     success: result.success,
                     output: truncate_output(&result.output, 2000),
+                    remaining_running,
                 })
             }
             None => Ok(WaitForAnyOutput {
@@ -442,6 +513,7 @@ impl Tool for WaitForAnyTool {
                 agent_type: String::new(),
                 success: false,
                 output: "No running agents".to_string(),
+                remaining_running: 0,
             }),
         }
     }
@@ -619,7 +691,7 @@ impl Tool for CompleteEngagementTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "complete_engagement".to_string(),
-            description: "Mark the engagement as complete and generate summary.".to_string(),
+            description: "Mark the engagement as complete. FAILS if any agents are still running - use wait_for_any until remaining_running is 0 first.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -634,6 +706,38 @@ impl Tool for CompleteEngagementTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Check if there are still running agents (any active state)
+        let registry = self.context.registry.lock().await;
+        let running_agents: Vec<_> = registry
+            .list_agents()
+            .iter()
+            .filter(|(_, _, status)| {
+                matches!(
+                    status,
+                    AgentStatus::Thinking
+                        | AgentStatus::Streaming
+                        | AgentStatus::Executing
+                        | AgentStatus::Processing
+                )
+            })
+            .map(|(name, _, _)| name.to_string())
+            .collect();
+        drop(registry);
+
+        if !running_agents.is_empty() {
+            let msg = format!(
+                "Cannot complete: {} agent(s) still running: {}. Use wait_for_any or wait_for_agent first.",
+                running_agents.len(),
+                running_agents.join(", ")
+            );
+            self.context.events.send_feed("orchestrator", &msg, true);
+            return Ok(CompleteEngagementOutput {
+                completed: false,
+                summary: msg,
+                findings_count: 0,
+            });
+        }
+
         let findings = self.context.findings.lock().await;
         let findings_count = findings.len();
 
@@ -642,6 +746,9 @@ impl Tool for CompleteEngagementTool {
             &format!("Engagement complete: {}", args.summary),
             false,
         );
+
+        // Update phase to Complete
+        self.context.events.send_phase(EngagementPhase::Complete);
 
         // Trigger cancellation to stop the agent loop
         self.context.cancel.cancel();

@@ -238,20 +238,23 @@ fn drain_events(app: &mut App) {
                 agent,
                 agent_type,
                 status,
+                current_tool,
             } => {
                 app.update_agent_status(&agent, status);
-                app.update_spawned_agent_status(&agent, &agent_type, status);
+                app.update_spawned_agent_status(&agent, &agent_type, status, current_tool);
             }
             AgentEvent::Metrics {
                 input,
                 output,
                 cache_read,
                 cost_usd,
+                tool_calls,
             } => {
                 app.metrics.input_tokens += input;
                 app.metrics.output_tokens += output;
                 app.metrics.cache_read_tokens += cache_read;
                 app.metrics.estimated_cost_usd += cost_usd;
+                app.metrics.tool_calls += tool_calls;
             }
             AgentEvent::Vulnerability { severity, title } => {
                 match severity {
@@ -273,6 +276,9 @@ fn drain_events(app: &mut App) {
                 } else {
                     app.add_feed(super::app::FeedEntry::error(agent, &message));
                 }
+            }
+            AgentEvent::Phase { phase } => {
+                app.phase = phase;
             }
         }
     }

@@ -20,6 +20,12 @@ use crate::{Error, Result};
 
 use super::{CompletionRequest, CompletionResponse, LlmProvider, StopReason, TokenUsage};
 
+/// Estimate token count from text (roughly 4 characters per token for English)
+/// This is used as a fallback when Ollama doesn't return actual token counts
+fn estimate_tokens(text: &str) -> u64 {
+    (text.len() as u64 + 3) / 4 // Round up
+}
+
 /// Ollama provider using rig-core
 pub struct OllamaProvider {
     client: ollama::Client,
@@ -161,21 +167,25 @@ impl LlmProvider for OllamaProvider {
             .await
             .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
 
+        // Use actual token counts if available, otherwise estimate
+        // Ollama models may not always report token usage
+        let input_tokens = if response.total_usage.input_tokens > 0 {
+            response.total_usage.input_tokens
+        } else {
+            estimate_tokens(system_prompt) + estimate_tokens(user_prompt)
+        };
+        let output_tokens = if response.total_usage.output_tokens > 0 {
+            response.total_usage.output_tokens
+        } else {
+            estimate_tokens(&response.output)
+        };
+
         // Calculate cost
         let pricing = PricingConfig::load();
-        let cost = pricing.calculate_cost(
-            "ollama",
-            &self.model,
-            response.total_usage.input_tokens,
-            response.total_usage.output_tokens,
-        );
+        let cost = pricing.calculate_cost("ollama", &self.model, input_tokens, output_tokens);
 
-        events_clone.send_metrics(
-            response.total_usage.input_tokens,
-            response.total_usage.output_tokens,
-            0,
-            cost,
-        );
+        // Note: Tool call count not available in non-streaming mode
+        events_clone.send_metrics(input_tokens, output_tokens, 0, cost, 0);
 
         Ok(response.output)
     }
@@ -206,21 +216,25 @@ impl LlmProvider for OllamaProvider {
             result = agent.prompt(user_prompt).extended_details().multi_turn(50) => {
                 match result {
                     Ok(response) => {
+                        // Use actual token counts if available, otherwise estimate
+                        // Ollama models may not always report token usage
+                        let input_tokens = if response.total_usage.input_tokens > 0 {
+                            response.total_usage.input_tokens
+                        } else {
+                            estimate_tokens(system_prompt) + estimate_tokens(user_prompt)
+                        };
+                        let output_tokens = if response.total_usage.output_tokens > 0 {
+                            response.total_usage.output_tokens
+                        } else {
+                            estimate_tokens(&response.output)
+                        };
+
                         // Calculate cost
                         let pricing = PricingConfig::load();
-                        let cost = pricing.calculate_cost(
-                            "ollama",
-                            &self.model,
-                            response.total_usage.input_tokens,
-                            response.total_usage.output_tokens,
-                        );
+                        let cost = pricing.calculate_cost("ollama", &self.model, input_tokens, output_tokens);
 
-                        events.send_metrics(
-                            response.total_usage.input_tokens,
-                            response.total_usage.output_tokens,
-                            0,
-                            cost,
-                        );
+                        // Note: Tool call count not available in non-streaming mode
+                        events.send_metrics(input_tokens, output_tokens, 0, cost, 0);
                         Ok(response.output)
                     }
                     Err(e) => Err(Error::Provider(format!("Orchestrator completion failed: {}", e)))
@@ -261,21 +275,25 @@ impl LlmProvider for OllamaProvider {
             .await
             .map_err(|e| Error::Provider(format!("Report completion failed: {}", e)))?;
 
+        // Use actual token counts if available, otherwise estimate
+        // Ollama models may not always report token usage
+        let input_tokens = if response.total_usage.input_tokens > 0 {
+            response.total_usage.input_tokens
+        } else {
+            estimate_tokens(system_prompt) + estimate_tokens(user_prompt)
+        };
+        let output_tokens = if response.total_usage.output_tokens > 0 {
+            response.total_usage.output_tokens
+        } else {
+            estimate_tokens(&response.output)
+        };
+
         // Calculate cost
         let pricing = PricingConfig::load();
-        let cost = pricing.calculate_cost(
-            "ollama",
-            &self.model,
-            response.total_usage.input_tokens,
-            response.total_usage.output_tokens,
-        );
+        let cost = pricing.calculate_cost("ollama", &self.model, input_tokens, output_tokens);
 
-        events.send_metrics(
-            response.total_usage.input_tokens,
-            response.total_usage.output_tokens,
-            0,
-            cost,
-        );
+        // Note: Tool call count not available in non-streaming mode
+        events.send_metrics(input_tokens, output_tokens, 0, cost, 0);
 
         Ok(response.output)
     }

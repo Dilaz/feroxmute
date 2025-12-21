@@ -80,6 +80,8 @@ pub struct AgentDisplayInfo {
     pub spawn_order: usize,
     pub thinking: Option<String>,
     pub output_buffer: VecDeque<String>,
+    /// Current tool being executed (for Executing status display)
+    pub current_tool: Option<String>,
 }
 
 impl AgentDisplayInfo {
@@ -91,6 +93,7 @@ impl AgentDisplayInfo {
             spawn_order: 0,
             thinking: None,
             output_buffer: VecDeque::with_capacity(100),
+            current_tool: None,
         }
     }
 
@@ -297,11 +300,12 @@ impl App {
                 agent.to_string(),
                 AgentDisplayInfo {
                     agent_type: String::new(), // Will be set from status event
-                    status: AgentStatus::Running,
+                    status: AgentStatus::Streaming,
                     activity: activity.to_string(),
                     spawn_order: self.agent_spawn_counter,
                     thinking: None,
                     output_buffer: VecDeque::with_capacity(100),
+                    current_tool: None,
                 },
             );
         }
@@ -313,9 +317,11 @@ impl App {
         agent: &str,
         agent_type: &str,
         status: AgentStatus,
+        current_tool: Option<String>,
     ) {
         if let Some(info) = self.agents.get_mut(agent) {
             info.status = status;
+            info.current_tool = current_tool;
             if !agent_type.is_empty() {
                 info.agent_type = agent_type.to_string();
             }
@@ -330,6 +336,7 @@ impl App {
                     spawn_order: self.agent_spawn_counter,
                     thinking: None,
                     output_buffer: VecDeque::with_capacity(100),
+                    current_tool,
                 },
             );
         }
@@ -461,10 +468,10 @@ mod tests {
         assert_eq!(app.get_agent_by_key(1), Some("orchestrator".to_string()));
         assert_eq!(app.get_agent_by_key(2), None);
 
-        app.update_spawned_agent_status("recon-1", "recon", AgentStatus::Running);
+        app.update_spawned_agent_status("recon-1", "recon", AgentStatus::Streaming, None);
         assert_eq!(app.get_agent_by_key(2), Some("recon-1".to_string()));
 
-        app.update_spawned_agent_status("scanner-1", "scanner", AgentStatus::Running);
+        app.update_spawned_agent_status("scanner-1", "scanner", AgentStatus::Streaming, None);
         assert_eq!(app.get_agent_by_key(3), Some("scanner-1".to_string()));
     }
 

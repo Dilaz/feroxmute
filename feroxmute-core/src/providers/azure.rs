@@ -165,11 +165,13 @@ impl LlmProvider for AzureProvider {
             response.total_usage.output_tokens,
         );
 
+        // Note: Tool call count not available in non-streaming mode
         events_clone.send_metrics(
             response.total_usage.input_tokens,
             response.total_usage.output_tokens,
             0,
             cost,
+            0,
         );
 
         Ok(response.output)
@@ -210,11 +212,13 @@ impl LlmProvider for AzureProvider {
                             response.total_usage.output_tokens,
                         );
 
+                        // Note: Tool call count not available in non-streaming mode
                         events.send_metrics(
                             response.total_usage.input_tokens,
                             response.total_usage.output_tokens,
                             0,
                             cost,
+                            0,
                         );
                         Ok(response.output)
                     }
@@ -263,11 +267,13 @@ impl LlmProvider for AzureProvider {
             response.total_usage.output_tokens,
         );
 
+        // Note: Tool call count not available in non-streaming mode
         events.send_metrics(
             response.total_usage.input_tokens,
             response.total_usage.output_tokens,
             0,
             cost,
+            0,
         );
 
         Ok(response.output)

@@ -3,7 +3,9 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use feroxmute_core::agents::{Agent, AgentRegistry, AgentStatus, OrchestratorAgent, Prompts};
+use feroxmute_core::agents::{
+    Agent, AgentRegistry, AgentStatus, EngagementPhase, OrchestratorAgent, Prompts,
+};
 use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::LlmProvider;
@@ -42,7 +44,13 @@ impl EventSender for TuiEventSender {
         });
     }
 
-    fn send_status(&self, agent: &str, agent_type: &str, status: AgentStatus) {
+    fn send_status(
+        &self,
+        agent: &str,
+        agent_type: &str,
+        status: AgentStatus,
+        current_tool: Option<String>,
+    ) {
         let tx = self.tx.clone();
         let agent = agent.to_string();
         let agent_type = agent_type.to_string();
@@ -52,12 +60,20 @@ impl EventSender for TuiEventSender {
                     agent,
                     agent_type,
                     status,
+                    current_tool,
                 })
                 .await;
         });
     }
 
-    fn send_metrics(&self, input: u64, output: u64, cache_read: u64, cost_usd: f64) {
+    fn send_metrics(
+        &self,
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        cost_usd: f64,
+        tool_calls: u64,
+    ) {
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let _ = tx
@@ -66,6 +82,7 @@ impl EventSender for TuiEventSender {
                     output,
                     cache_read,
                     cost_usd,
+                    tool_calls,
                 })
                 .await;
         });
@@ -98,6 +115,13 @@ impl EventSender for TuiEventSender {
             let _ = tx.send(AgentEvent::Thinking { agent, content }).await;
         });
     }
+
+    fn send_phase(&self, phase: EngagementPhase) {
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(AgentEvent::Phase { phase }).await;
+        });
+    }
 }
 
 /// Run the orchestrator agent with TUI feedback
@@ -115,7 +139,8 @@ pub async fn run_orchestrator(
         .send(AgentEvent::Status {
             agent: "orchestrator".to_string(),
             agent_type: "orchestrator".to_string(),
-            status: AgentStatus::Running,
+            status: AgentStatus::Streaming,
+            current_tool: None,
         })
         .await;
 
@@ -143,6 +168,7 @@ pub async fn run_orchestrator(
                         agent: "orchestrator".to_string(),
                         agent_type: "orchestrator".to_string(),
                         status: AgentStatus::Completed,
+                        current_tool: None,
                     }).await;
 
                     let _ = tx.send(AgentEvent::Finished {
@@ -155,6 +181,7 @@ pub async fn run_orchestrator(
                         agent: "orchestrator".to_string(),
                         agent_type: "orchestrator".to_string(),
                         status: AgentStatus::Failed,
+                        current_tool: None,
                     }).await;
 
                     let _ = tx.send(AgentEvent::Finished {
@@ -175,6 +202,7 @@ pub async fn run_orchestrator(
                 agent: "orchestrator".to_string(),
                 agent_type: "orchestrator".to_string(),
                 status: AgentStatus::Idle,
+                current_tool: None,
             }).await;
         }
     }
