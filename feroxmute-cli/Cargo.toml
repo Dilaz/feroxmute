@@ -25,6 +25,7 @@ dirs.workspace = true
 tokio-util = { version = "0.7.17", features = ["rt"] }
 bollard.workspace = true
 rusqlite.workspace = true
+tracing-appender = "0.2.4"
 
 [lints]
 workspace = true
