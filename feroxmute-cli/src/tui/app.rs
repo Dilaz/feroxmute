@@ -11,22 +11,13 @@ use feroxmute_core::state::models::CodeFinding;
 use tokio::sync::mpsc;
 
 /// Active view in the TUI
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum View {
     #[default]
     Dashboard,
-    AgentDetail(AgentView),
+    AgentDetail(String),  // Agent name instead of AgentView enum
     Logs,
     Help,
-}
-
-/// Agent-specific views
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AgentView {
-    Orchestrator,
-    Recon,
-    Scanner,
-    Sast,
 }
 
 /// Metrics display
@@ -164,14 +155,16 @@ pub struct App {
     pub metrics: Metrics,
     /// Vulnerability counts
     pub vuln_counts: VulnCounts,
-    /// Agent statuses
+    /// Agent statuses (legacy, kept for orchestrator)
     pub agent_statuses: AgentStatuses,
     /// Dynamically spawned agents (name -> info)
     pub agents: std::collections::HashMap<String, AgentDisplayInfo>,
+    /// Currently selected agent for thinking display
+    pub selected_agent: Option<String>,
+    /// Counter for assigning spawn order
+    pub agent_spawn_counter: usize,
     /// Activity feed
     pub feed: Vec<FeedEntry>,
-    /// Current thinking text (from active agent)
-    pub current_thinking: Option<String>,
     /// Scroll offset for logs
     pub log_scroll: usize,
     /// Selected feed item
@@ -197,6 +190,10 @@ impl App {
         session_id: impl Into<String>,
         event_rx: Option<mpsc::Receiver<AgentEvent>>,
     ) -> Self {
+        let mut agents = std::collections::HashMap::new();
+        // Pre-register orchestrator with spawn_order 0
+        agents.insert("orchestrator".to_string(), AgentDisplayInfo::new_orchestrator());
+
         Self {
             view: View::Dashboard,
             should_quit: false,
@@ -210,9 +207,10 @@ impl App {
             metrics: Metrics::default(),
             vuln_counts: VulnCounts::default(),
             agent_statuses: AgentStatuses::default(),
-            agents: std::collections::HashMap::new(),
+            agents,
+            selected_agent: Some("orchestrator".to_string()),
+            agent_spawn_counter: 0,
             feed: Vec::new(),
-            current_thinking: None,
             log_scroll: 0,
             selected_feed: 0,
             feed_scroll_x: 0,
@@ -222,6 +220,24 @@ impl App {
             code_finding_counts: CodeFindingCounts::default(),
             event_rx,
         }
+    }
+
+    /// Get agent name by key number (1-9)
+    pub fn get_agent_by_key(&self, key: usize) -> Option<String> {
+        if key == 1 {
+            return Some("orchestrator".to_string());
+        }
+        // Find agent with spawn_order == key - 1
+        self.agents.iter()
+            .find(|(name, info)| *name != "orchestrator" && info.spawn_order == key - 1)
+            .map(|(name, _)| name.clone())
+    }
+
+    /// Get the thinking text for the currently selected agent
+    pub fn get_selected_thinking(&self) -> Option<&str> {
+        self.selected_agent.as_ref()
+            .and_then(|name| self.agents.get(name))
+            .and_then(|info| info.thinking.as_deref())
     }
 
     /// Get elapsed time since start
@@ -271,12 +287,16 @@ impl App {
             info.activity = activity.to_string();
         } else if agent != "orchestrator" && agent != "system" {
             // New agent - add it
+            self.agent_spawn_counter += 1;
             self.agents.insert(
                 agent.to_string(),
                 AgentDisplayInfo {
                     agent_type: String::new(), // Will be set from status event
                     status: AgentStatus::Running,
                     activity: activity.to_string(),
+                    spawn_order: self.agent_spawn_counter,
+                    thinking: None,
+                    output_buffer: VecDeque::with_capacity(100),
                 },
             );
         }
@@ -296,21 +316,19 @@ impl App {
             }
         } else if agent != "orchestrator" && agent != "system" {
             // New agent - add it
+            self.agent_spawn_counter += 1;
             self.agents.insert(
                 agent.to_string(),
                 AgentDisplayInfo {
                     agent_type: agent_type.to_string(),
                     status,
                     activity: String::new(),
+                    spawn_order: self.agent_spawn_counter,
+                    thinking: None,
+                    output_buffer: VecDeque::with_capacity(100),
                 },
             );
         }
-    }
-
-    /// Set current thinking
-    #[allow(dead_code)]
-    pub fn set_thinking(&mut self, thinking: Option<String>) {
-        self.current_thinking = thinking;
     }
 
     /// Update metrics
@@ -415,8 +433,8 @@ mod tests {
         app.navigate(View::Logs);
         assert_eq!(app.view, View::Logs);
 
-        app.navigate(View::AgentDetail(AgentView::Recon));
-        assert_eq!(app.view, View::AgentDetail(AgentView::Recon));
+        app.navigate(View::AgentDetail("recon".to_string()));
+        assert_eq!(app.view, View::AgentDetail("recon".to_string()));
     }
 
     #[test]
