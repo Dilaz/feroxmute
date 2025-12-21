@@ -230,19 +230,19 @@ impl Tool for MemoryListTool {
                 let mut stmt = conn
                     .prepare("SELECT key FROM scratch_pad WHERE key LIKE ?1 ESCAPE '\\' ORDER BY key")
                     .map_err(|e| MemoryToolError::Database(e.to_string()))?;
-                stmt.query_map([pattern], |row| row.get(0))
-                    .map_err(|e| MemoryToolError::Database(e.to_string()))?
-                    .filter_map(|r| r.ok())
-                    .collect()
+                let rows = stmt
+                    .query_map([pattern], |row| row.get(0))
+                    .map_err(|e| MemoryToolError::Database(e.to_string()))?;
+                rows.filter_map(|r| r.ok()).collect()
             }
             None => {
                 let mut stmt = conn
                     .prepare("SELECT key FROM scratch_pad ORDER BY key")
                     .map_err(|e| MemoryToolError::Database(e.to_string()))?;
-                stmt.query_map([], |row| row.get(0))
-                    .map_err(|e| MemoryToolError::Database(e.to_string()))?
-                    .filter_map(|r| r.ok())
-                    .collect()
+                let rows = stmt
+                    .query_map([], |row| row.get(0))
+                    .map_err(|e| MemoryToolError::Database(e.to_string()))?;
+                rows.filter_map(|r| r.ok()).collect()
             }
         };
 
