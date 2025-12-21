@@ -40,6 +40,7 @@ mod tests {
         assert!(tables.contains(&"hosts".to_string()));
         assert!(tables.contains(&"vulnerabilities".to_string()));
         assert!(tables.contains(&"agent_tasks".to_string()));
+        assert!(tables.contains(&"scratch_pad".to_string()));
     }
 
     #[test]
