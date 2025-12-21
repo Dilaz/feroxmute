@@ -8,6 +8,7 @@ pub mod config;
 pub mod docker;
 pub mod error;
 pub mod limitations;
+pub mod pricing;
 pub mod providers;
 pub mod reports;
 pub mod state;

@@ -22,6 +22,8 @@ async-trait.workspace = true
 futures.workspace = true
 dirs.workspace = true
 tokio-util = { version = "0.7.17", features = ["rt"] }
+regex = "1.12.2"
+once_cell = "1.21.3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
