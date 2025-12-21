@@ -64,7 +64,7 @@ impl AgentRegistry {
             name: name.clone(),
             agent_type,
             instructions,
-            status: AgentStatus::Running,
+            status: AgentStatus::Streaming,
             spawned_at: Instant::now(),
             handle: Some(handle),
         };
@@ -84,11 +84,19 @@ impl AgentRegistry {
             .collect()
     }
 
-    /// Get count of running agents
+    /// Get count of running agents (any active state)
     pub fn running_count(&self) -> usize {
         self.agents
             .values()
-            .filter(|a| a.status == AgentStatus::Running)
+            .filter(|a| {
+                matches!(
+                    a.status,
+                    AgentStatus::Thinking
+                        | AgentStatus::Streaming
+                        | AgentStatus::Executing
+                        | AgentStatus::Processing
+                )
+            })
             .count()
     }
 

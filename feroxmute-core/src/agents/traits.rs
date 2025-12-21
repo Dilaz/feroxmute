@@ -15,12 +15,18 @@ pub enum AgentStatus {
     /// Agent is idle, waiting for tasks
     #[default]
     Idle,
-    /// Agent is planning next actions
-    Planning,
-    /// Agent is executing a task
-    Running,
-    /// Agent is waiting for external input
+    /// Agent is in extended thinking (Claude reasoning)
+    Thinking,
+    /// Agent is streaming response text
+    Streaming,
+    /// Agent is executing a tool (tool name tracked separately)
+    Executing,
+    /// Agent is processing tool results
+    Processing,
+    /// Agent is waiting for external input (e.g., orchestrator waiting for agents)
     Waiting,
+    /// Agent encountered a transient error and is retrying
+    Retrying,
     /// Agent completed successfully
     Completed,
     /// Agent encountered an error

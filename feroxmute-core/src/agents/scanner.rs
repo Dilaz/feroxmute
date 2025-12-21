@@ -208,7 +208,7 @@ impl Agent for ScannerAgent {
     }
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
-        self.status = AgentStatus::Running;
+        self.status = AgentStatus::Streaming;
         self.thinking = Some(format!(
             "Starting vulnerability scan for task: {}",
             task.description
@@ -243,7 +243,7 @@ impl Agent for ScannerAgent {
 
             // Handle response
             if !response.tool_calls.is_empty() {
-                self.status = AgentStatus::Running;
+                self.status = AgentStatus::Streaming;
 
                 for tool_call in &response.tool_calls {
                     self.thinking = Some(format!("Executing tool: {}", tool_call.name));

@@ -152,7 +152,7 @@ impl Agent for ReportAgent {
     }
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
-        self.status = AgentStatus::Running;
+        self.status = AgentStatus::Streaming;
         self.thinking = Some(format!("Generating report for task: {}", task.description));
 
         // Build initial message

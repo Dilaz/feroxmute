@@ -274,7 +274,7 @@ impl Agent for OrchestratorAgent {
     }
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
-        self.status = AgentStatus::Running;
+        self.status = AgentStatus::Streaming;
         self.thinking = Some(format!(
             "Starting engagement orchestration: {}",
             task.description

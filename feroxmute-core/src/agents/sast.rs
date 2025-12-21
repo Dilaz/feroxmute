@@ -316,7 +316,7 @@ impl Agent for SastAgent {
     }
 
     async fn execute(&mut self, _task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
-        self.status = AgentStatus::Running;
+        self.status = AgentStatus::Streaming;
         self.thinking = Some("Detecting project languages and dependencies...".to_string());
 
         // Detect languages
