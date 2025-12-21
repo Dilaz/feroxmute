@@ -92,32 +92,44 @@ fn render_header(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
 }
 
 fn render_output(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
-    let output_text: Vec<Line> = app
-        .feed
-        .iter()
-        .filter(|entry| entry.agent == agent_name)
-        .map(|entry| {
-            let style = if entry.is_error {
-                Style::default().fg(Color::Red)
-            } else {
-                Style::default()
-            };
-            let time_str = entry.timestamp.format("%H:%M:%S").to_string();
-            Line::from(vec![
-                Span::styled(time_str, Style::default().fg(Color::DarkGray)),
-                Span::raw(" "),
-                Span::styled(&entry.message, style),
-            ])
-        })
-        .collect();
+    let mut lines: Vec<Line> = Vec::new();
 
-    let content = if output_text.is_empty() {
+    for entry in app.feed.iter().filter(|e| e.agent == agent_name) {
+        let style = if entry.is_error {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default()
+        };
+        let time_str = entry.timestamp.format("%H:%M:%S").to_string();
+
+        // Main message line
+        lines.push(Line::from(vec![
+            Span::styled(time_str, Style::default().fg(Color::DarkGray)),
+            Span::raw(" "),
+            Span::styled(&entry.message, style),
+        ]));
+
+        // If expanded and has output, show it
+        if entry.expanded {
+            if let Some(ref output) = entry.tool_output {
+                for line in output.lines() {
+                    lines.push(Line::from(vec![
+                        Span::styled("         ", Style::default()),
+                        Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(line, style),
+                    ]));
+                }
+            }
+        }
+    }
+
+    let content = if lines.is_empty() {
         vec![Line::from(Span::styled(
             "No output yet...",
             Style::default().fg(Color::DarkGray),
         ))]
     } else {
-        output_text
+        lines
     };
 
     let output = Paragraph::new(content)
@@ -174,6 +186,8 @@ fn render_footer(frame: &mut Frame, current_agent: &str, app: &App, area: Rect) 
         Span::raw(" back  "),
         Span::styled("j/k", Style::default().fg(Color::Yellow)),
         Span::raw(" scroll  "),
+        Span::styled("o", Style::default().fg(Color::Yellow)),
+        Span::raw(" output  "),
         Span::styled("t", Style::default().fg(Color::Yellow)),
         Span::raw(" thinking "),
         Span::styled(thinking_label, thinking_style),

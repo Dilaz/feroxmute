@@ -71,6 +71,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         KeyCode::Char('t') => {
             app.toggle_thinking();
         }
+        KeyCode::Char('o') => {
+            if let View::AgentDetail(agent_name) = &app.view {
+                let agent_name = agent_name.clone();
+                app.toggle_output(Some(&agent_name));
+            }
+        }
         KeyCode::Char('m') => {
             app.mouse_enabled = !app.mouse_enabled;
         }

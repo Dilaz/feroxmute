@@ -103,7 +103,6 @@ pub struct FeedEntry {
     pub message: String,
     pub is_error: bool,
     pub tool_output: Option<String>,
-    #[allow(dead_code)] // Will be used in UI toggle feature
     pub expanded: bool,
 }
 
@@ -375,6 +374,36 @@ impl App {
     /// Toggle thinking panel
     pub fn toggle_thinking(&mut self) {
         self.show_thinking = !self.show_thinking;
+    }
+
+    /// Toggle output expansion for the currently selected feed entry
+    pub fn toggle_output(&mut self, agent_filter: Option<&str>) {
+        // Get entries that match the filter and have tool_output
+        let matching_indices: Vec<usize> = self
+            .feed
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| agent_filter.is_none_or(|a| e.agent == a) && e.tool_output.is_some())
+            .map(|(i, _)| i)
+            .collect();
+
+        if matching_indices.is_empty() {
+            return;
+        }
+
+        // Find the entry at the current scroll position
+        // log_scroll is offset from bottom, so we need to map it
+        let visible_idx = matching_indices
+            .iter()
+            .rev()
+            .nth(self.log_scroll)
+            .or_else(|| matching_indices.last());
+
+        if let Some(&idx) = visible_idx {
+            if let Some(entry) = self.feed.get_mut(idx) {
+                entry.expanded = !entry.expanded;
+            }
+        }
     }
 
     /// Scroll logs up
