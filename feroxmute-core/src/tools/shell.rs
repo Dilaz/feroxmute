@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 
+use crate::agents::AgentStatus;
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolRegistry};
 use crate::tools::sast::{GitleaksOutput, GrypeOutput, SastToolOutput, SemgrepOutput};
@@ -102,6 +103,21 @@ impl Tool for DockerShellTool {
             });
         }
 
+        // Extract tool name for status display (truncate command with args)
+        let tool_display = if args.command.len() > 25 {
+            format!("{}...", &args.command[..22])
+        } else {
+            args.command.clone()
+        };
+
+        // Update status to Executing with tool name
+        self.events.send_status(
+            &self.agent_name,
+            "",
+            AgentStatus::Executing,
+            Some(tool_display),
+        );
+
         // Report what we're about to do
         self.events.send_feed(&self.agent_name, &args.reason, false);
 
@@ -120,6 +136,10 @@ impl Tool for DockerShellTool {
 
         let output = result.output();
 
+        // Update status to Processing (reading result)
+        self.events
+            .send_status(&self.agent_name, "", AgentStatus::Processing, None);
+
         // Parse SAST tool outputs and send vulnerability events
         self.parse_sast_findings(&args.command, &output);
 
@@ -133,6 +153,10 @@ impl Tool for DockerShellTool {
             ),
             result.exit_code != 0,
         );
+
+        // After processing, go back to Streaming (ready for more LLM output)
+        self.events
+            .send_status(&self.agent_name, "", AgentStatus::Streaming, None);
 
         Ok(ShellOutput {
             output,
