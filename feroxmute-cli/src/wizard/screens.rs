@@ -320,6 +320,90 @@ pub fn render_azure_endpoint(frame: &mut Frame, state: &WizardState) {
     render_footer(frame, footer_area, true);
 }
 
+/// Render the Ollama base URL input screen
+pub fn render_ollama_base_url(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 2a: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Ollama Server URL",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let info_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y,
+        width: content_area.width.saturating_sub(4),
+        height: 2,
+    };
+    let info = Paragraph::new(Line::from(vec![Span::styled(
+        "Enter your Ollama server URL (press Enter for default localhost)",
+        Style::default().fg(Color::DarkGray),
+    )]));
+    frame.render_widget(info, info_area);
+
+    let input_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 3,
+        width: content_area.width.saturating_sub(4),
+        height: 3,
+    };
+
+    let input = TextInput::new(&state.text_input, state.cursor_position)
+        .placeholder("http://localhost:11434")
+        .masked(false)
+        .focused(true)
+        .label("Base URL");
+    input.render(frame, input_area);
+
+    render_footer(frame, footer_area, true);
+}
+
+/// Render the Ollama API key input screen (optional)
+pub fn render_ollama_api_key(frame: &mut Frame, state: &WizardState) {
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 2b: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Ollama API Key (Optional)",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let info_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y,
+        width: content_area.width.saturating_sub(4),
+        height: 2,
+    };
+    let info = Paragraph::new(Line::from(vec![Span::styled(
+        "If your Ollama server requires authentication, enter the API key (or press Enter to skip)",
+        Style::default().fg(Color::DarkGray),
+    )]));
+    frame.render_widget(info, info_area);
+
+    let input_area = Rect {
+        x: content_area.x + 2,
+        y: content_area.y + 3,
+        width: content_area.width.saturating_sub(4),
+        height: 3,
+    };
+
+    let input = TextInput::new(&state.text_input, state.cursor_position)
+        .placeholder("(optional - press Enter to skip)")
+        .masked(true)
+        .focused(true)
+        .label("API Key");
+    input.render(frame, input_area);
+
+    render_footer(frame, footer_area, true);
+}
+
 /// Render the scope selection screen
 pub fn render_scope(frame: &mut Frame, state: &WizardState) {
     let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");

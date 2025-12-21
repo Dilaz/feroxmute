@@ -22,6 +22,8 @@ pub enum WizardScreen {
     Provider,
     ApiKey,
     AzureEndpoint,
+    OllamaBaseUrl,
+    OllamaApiKey,
     Scope,
     Constraints,
     AdvancedPrompt,
@@ -93,6 +95,8 @@ impl WizardState {
             WizardScreen::Provider => screens::render_provider(frame, self),
             WizardScreen::ApiKey => screens::render_api_key(frame, self),
             WizardScreen::AzureEndpoint => screens::render_azure_endpoint(frame, self),
+            WizardScreen::OllamaBaseUrl => screens::render_ollama_base_url(frame, self),
+            WizardScreen::OllamaApiKey => screens::render_ollama_api_key(frame, self),
             WizardScreen::Scope => screens::render_scope(frame, self),
             WizardScreen::Constraints => screens::render_constraints(frame, self),
             WizardScreen::AdvancedPrompt => screens::render_advanced_prompt(frame, self),
@@ -248,6 +252,93 @@ impl WizardState {
                 }
                 _ => {}
             },
+            WizardScreen::OllamaBaseUrl => match key.code {
+                KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
+                KeyCode::Char(c) => {
+                    self.text_input.insert(self.cursor_position, c);
+                    self.cursor_position += 1;
+                }
+                KeyCode::Backspace => {
+                    if self.cursor_position > 0 {
+                        self.cursor_position -= 1;
+                        self.text_input.remove(self.cursor_position);
+                    }
+                }
+                KeyCode::Delete => {
+                    if self.cursor_position < self.text_input.len() {
+                        self.text_input.remove(self.cursor_position);
+                    }
+                }
+                KeyCode::Left => {
+                    self.cursor_position = self.cursor_position.saturating_sub(1);
+                }
+                KeyCode::Right => {
+                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                }
+                KeyCode::Home => self.cursor_position = 0,
+                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::Enter => {
+                    // Use default localhost:11434 if empty
+                    let base_url = if self.text_input.is_empty() {
+                        "http://localhost:11434".to_string()
+                    } else {
+                        self.text_input.clone()
+                    };
+                    self.data.base_url = Some(base_url);
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    self.selected_index = 0;
+                    return self.next_screen();
+                }
+                KeyCode::Esc => {
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    return self.prev_screen();
+                }
+                _ => {}
+            },
+            WizardScreen::OllamaApiKey => match key.code {
+                KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
+                KeyCode::Char(c) => {
+                    self.text_input.insert(self.cursor_position, c);
+                    self.cursor_position += 1;
+                }
+                KeyCode::Backspace => {
+                    if self.cursor_position > 0 {
+                        self.cursor_position -= 1;
+                        self.text_input.remove(self.cursor_position);
+                    }
+                }
+                KeyCode::Delete => {
+                    if self.cursor_position < self.text_input.len() {
+                        self.text_input.remove(self.cursor_position);
+                    }
+                }
+                KeyCode::Left => {
+                    self.cursor_position = self.cursor_position.saturating_sub(1);
+                }
+                KeyCode::Right => {
+                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                }
+                KeyCode::Home => self.cursor_position = 0,
+                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::Enter => {
+                    // API key is optional for Ollama, so allow empty
+                    if !self.text_input.is_empty() {
+                        self.data.api_key = self.text_input.clone();
+                    }
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    self.selected_index = 0;
+                    return self.next_screen();
+                }
+                KeyCode::Esc => {
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    return self.prev_screen();
+                }
+                _ => {}
+            },
             WizardScreen::Scope => match key.code {
                 KeyCode::Char('q') => return WizardAction::Quit,
                 KeyCode::Up | KeyCode::Char('k') => {
@@ -345,7 +436,13 @@ impl WizardState {
         self.screen = match self.screen {
             WizardScreen::ConfirmOverwrite => WizardScreen::Welcome,
             WizardScreen::Welcome => WizardScreen::Provider,
-            WizardScreen::Provider => WizardScreen::ApiKey,
+            WizardScreen::Provider => {
+                if self.data.provider == ProviderName::Ollama {
+                    WizardScreen::OllamaBaseUrl
+                } else {
+                    WizardScreen::ApiKey
+                }
+            }
             WizardScreen::ApiKey => {
                 if self.data.provider == ProviderName::Azure {
                     WizardScreen::AzureEndpoint
@@ -354,6 +451,8 @@ impl WizardState {
                 }
             }
             WizardScreen::AzureEndpoint => WizardScreen::Scope,
+            WizardScreen::OllamaBaseUrl => WizardScreen::OllamaApiKey,
+            WizardScreen::OllamaApiKey => WizardScreen::Scope,
             WizardScreen::Scope => WizardScreen::Constraints,
             WizardScreen::Constraints => WizardScreen::AdvancedPrompt,
             WizardScreen::AdvancedPrompt => {
@@ -377,9 +476,13 @@ impl WizardState {
             WizardScreen::Provider => WizardScreen::Welcome,
             WizardScreen::ApiKey => WizardScreen::Provider,
             WizardScreen::AzureEndpoint => WizardScreen::ApiKey,
+            WizardScreen::OllamaBaseUrl => WizardScreen::Provider,
+            WizardScreen::OllamaApiKey => WizardScreen::OllamaBaseUrl,
             WizardScreen::Scope => {
                 if self.data.provider == ProviderName::Azure {
                     WizardScreen::AzureEndpoint
+                } else if self.data.provider == ProviderName::Ollama {
+                    WizardScreen::OllamaApiKey
                 } else {
                     WizardScreen::ApiKey
                 }

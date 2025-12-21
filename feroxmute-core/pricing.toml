@@ -62,3 +62,18 @@ command-a = { input = 2.5, output = 10.0 }
 sonar = { input = 1.0, output = 1.0 }
 sonar-pro = { input = 3.0, output = 15.0 }
 sonar-reasoning = { input = 1.0, output = 5.0 }
+
+[models.ollama]
+# Local models - no API cost
+gemma = { input = 0.0, output = 0.0 }
+gemma2 = { input = 0.0, output = 0.0 }
+functiongemma = { input = 0.0, output = 0.0 }
+llama3 = { input = 0.0, output = 0.0 }
+"llama3.2" = { input = 0.0, output = 0.0 }
+"llama3.3" = { input = 0.0, output = 0.0 }
+mistral = { input = 0.0, output = 0.0 }
+codellama = { input = 0.0, output = 0.0 }
+qwen2 = { input = 0.0, output = 0.0 }
+"qwen2.5" = { input = 0.0, output = 0.0 }
+phi3 = { input = 0.0, output = 0.0 }
+deepseek-coder = { input = 0.0, output = 0.0 }
