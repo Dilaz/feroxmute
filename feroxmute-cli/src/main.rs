@@ -12,11 +12,13 @@ use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::create_provider;
 use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
+use std::fs;
 use std::io::{self, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
 
 #[tokio::main]
@@ -32,8 +34,22 @@ async fn main() -> Result<()> {
         _ => "trace",
     };
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()))
+    // Create logs directory
+    let log_dir = dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".feroxmute")
+        .join("logs");
+    fs::create_dir_all(&log_dir).ok();
+
+    // Set up file appender for persistent logs
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "feroxmute.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Combine file and console logging
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into());
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking))
         .init();
 
     tracing::info!("feroxmute v{}", env!("CARGO_PKG_VERSION"));
@@ -287,6 +303,11 @@ async fn main() -> Result<()> {
             ),
         ));
 
+        // Log custom instruction if provided
+        if let Some(ref instr) = args.instruction {
+            app.add_feed(tui::FeedEntry::new("system", format!("Objective: {}", instr)));
+        }
+
         // If we have linked sources, add info about them
         for group in &targets.groups {
             if let Some(ref source) = group.source_target {
@@ -375,6 +396,7 @@ async fn main() -> Result<()> {
             }
         });
 
+        let instruction = args.instruction.clone();
         let agent_handle = local.spawn_local(async move {
             runner::run_orchestrator(
                 agent_target,
@@ -384,6 +406,7 @@ async fn main() -> Result<()> {
                 agent_cancel,
                 has_source,
                 limitations,
+                instruction,
             )
             .await
         });

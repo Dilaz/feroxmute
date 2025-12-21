@@ -133,6 +133,7 @@ pub async fn run_orchestrator(
     cancel: CancellationToken,
     has_source_target: bool,
     limitations: Arc<EngagementLimitations>,
+    instruction: Option<String>,
 ) -> Result<()> {
     // Send initial status
     let _ = tx
@@ -161,7 +162,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations)) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations), instruction) => {
             match result {
                 Ok(output) => {
                     let _ = tx.send(AgentEvent::Status {
@@ -221,6 +222,7 @@ async fn run_orchestrator_with_tools(
     cancel: CancellationToken,
     has_source_target: bool,
     limitations: Arc<EngagementLimitations>,
+    instruction: Option<String>,
 ) -> Result<String> {
     // Create the orchestrator context with all shared state
     let context = Arc::new(OrchestratorContext {
@@ -236,13 +238,22 @@ async fn run_orchestrator_with_tools(
     });
 
     // Build user prompt with limitations
+    let engagement_task = match &instruction {
+        Some(instr) => format!(
+            "Engagement Task: Perform security assessment\n\nAdditional Objective: {}",
+            instr
+        ),
+        None => "Engagement Task: Perform security assessment".to_string(),
+    };
+
     let user_prompt = format!(
-        "Target: {}\n\n{}\n\nEngagement Task: Perform security assessment\n\n\
+        "Target: {}\n\n{}\n\n{}\n\n\
         You have tools to spawn agents (recon, scanner{}, report), wait for them, \
         record findings, and complete the engagement.\n\n\
         Start by spawning appropriate agents for reconnaissance.",
         target,
         limitations.to_prompt_section(),
+        engagement_task,
         if has_source_target { ", sast" } else { "" }
     );
 
