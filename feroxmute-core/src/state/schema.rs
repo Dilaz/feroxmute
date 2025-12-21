@@ -130,6 +130,14 @@ CREATE TABLE IF NOT EXISTS session_meta (
     value TEXT NOT NULL
 );
 
+-- Orchestrator scratch pad for persistent notes
+CREATE TABLE IF NOT EXISTS scratch_pad (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_ports_host ON ports(host_id);
 CREATE INDEX IF NOT EXISTS idx_technologies_host ON technologies(host_id);
