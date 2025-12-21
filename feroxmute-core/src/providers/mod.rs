@@ -1,5 +1,8 @@
 //! LLM provider integration
 
+#[macro_use]
+pub mod macros;
+
 pub mod anthropic;
 pub mod azure;
 pub mod cohere;
