@@ -35,6 +35,8 @@ pub enum OrchestratorToolError {
 pub trait EventSender: Send + Sync {
     /// Send a feed message
     fn send_feed(&self, agent: &str, message: &str, is_error: bool);
+    /// Send a feed message with tool output attached
+    fn send_feed_with_output(&self, agent: &str, message: &str, is_error: bool, output: &str);
     /// Send a status update with optional current tool info
     fn send_status(
         &self,

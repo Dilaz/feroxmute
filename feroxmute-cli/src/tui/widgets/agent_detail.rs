@@ -96,14 +96,18 @@ fn render_output(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
         .feed
         .iter()
         .filter(|entry| entry.agent == agent_name)
-        .rev()
         .map(|entry| {
             let style = if entry.is_error {
                 Style::default().fg(Color::Red)
             } else {
                 Style::default()
             };
-            Line::from(Span::styled(&entry.message, style))
+            let time_str = entry.timestamp.format("%H:%M:%S").to_string();
+            Line::from(vec![
+                Span::styled(time_str, Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(&entry.message, style),
+            ])
         })
         .collect();
 
@@ -158,13 +162,22 @@ fn render_footer(frame: &mut Frame, current_agent: &str, app: &App, area: Rect) 
         "1".to_string()
     };
 
+    // Show thinking toggle state with color indicator
+    let (thinking_label, thinking_style) = if app.show_thinking {
+        ("[ON]", Style::default().fg(Color::Green))
+    } else {
+        ("[OFF]", Style::default().fg(Color::Red))
+    };
+
     let help = Line::from(vec![
         Span::styled("h", Style::default().fg(Color::Yellow)),
         Span::raw(" back  "),
         Span::styled("j/k", Style::default().fg(Color::Yellow)),
         Span::raw(" scroll  "),
         Span::styled("t", Style::default().fg(Color::Yellow)),
-        Span::raw(" thinking  "),
+        Span::raw(" thinking "),
+        Span::styled(thinking_label, thinking_style),
+        Span::raw("  "),
         Span::styled(&agents_hint, Style::default().fg(Color::Yellow)),
         Span::raw(" agents  "),
         Span::styled(&current_key, Style::default().fg(Color::Cyan)),

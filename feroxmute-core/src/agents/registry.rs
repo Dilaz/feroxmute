@@ -101,10 +101,17 @@ impl AgentRegistry {
     }
 
     /// Wait for a specific agent to complete
-    /// Returns None if agent doesn't exist, Some(result) when complete
+    /// Returns None if agent doesn't exist or already completed, Some(result) when complete
     pub async fn wait_for_agent(&mut self, name: &str) -> Option<AgentResult> {
-        if !self.agents.contains_key(name) {
-            return None;
+        // Check if agent exists and is still running
+        match self.agents.get(name) {
+            None => return None,
+            Some(agent) => {
+                // Agent already completed - result was already consumed
+                if matches!(agent.status, AgentStatus::Completed | AgentStatus::Failed) {
+                    return None;
+                }
+            }
         }
 
         // Check pending results first

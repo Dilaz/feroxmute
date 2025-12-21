@@ -120,11 +120,22 @@ fn render_logs(frame: &mut Frame, app: &App) {
 
     frame.render_widget(logs, chunks[0]);
 
+    // Show thinking toggle state with color indicator
+    let (thinking_label, thinking_style) = if app.show_thinking {
+        ("[ON]", Style::default().fg(Color::Green))
+    } else {
+        ("[OFF]", Style::default().fg(Color::Red))
+    };
+
     let help = Line::from(vec![
         Span::styled("h", Style::default().fg(Color::Yellow)),
         Span::raw(" back  "),
         Span::styled("j/k", Style::default().fg(Color::Yellow)),
         Span::raw(" scroll  "),
+        Span::styled("t", Style::default().fg(Color::Yellow)),
+        Span::raw(" thinking "),
+        Span::styled(thinking_label, thinking_style),
+        Span::raw("  "),
         Span::styled("q", Style::default().fg(Color::Yellow)),
         Span::raw(" quit"),
     ]);
@@ -219,17 +230,24 @@ fn drain_events(app: &mut App) {
                 agent,
                 message,
                 is_error,
+                tool_output,
             } => {
                 // Track activity for non-indented messages
                 if !message.starts_with("  ") {
                     app.update_agent_activity(&agent, &message);
                 }
 
-                if is_error {
-                    app.add_feed(super::app::FeedEntry::error(&agent, &message));
+                let mut entry = if is_error {
+                    super::app::FeedEntry::error(&agent, &message)
                 } else {
-                    app.add_feed(super::app::FeedEntry::new(&agent, &message));
+                    super::app::FeedEntry::new(&agent, &message)
+                };
+
+                if let Some(output) = tool_output {
+                    entry = entry.with_output(output);
                 }
+
+                app.add_feed(entry);
             }
             AgentEvent::Thinking { agent, content } => {
                 app.update_agent_thinking(&agent, content);

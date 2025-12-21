@@ -102,6 +102,9 @@ pub struct FeedEntry {
     pub agent: String,
     pub message: String,
     pub is_error: bool,
+    pub tool_output: Option<String>,
+    #[allow(dead_code)] // Will be used in UI toggle feature
+    pub expanded: bool,
 }
 
 impl FeedEntry {
@@ -111,6 +114,8 @@ impl FeedEntry {
             agent: agent.into(),
             message: message.into(),
             is_error: false,
+            tool_output: None,
+            expanded: false,
         }
     }
 
@@ -120,7 +125,14 @@ impl FeedEntry {
             agent: agent.into(),
             message: message.into(),
             is_error: true,
+            tool_output: None,
+            expanded: false,
         }
+    }
+
+    pub fn with_output(mut self, output: String) -> Self {
+        self.tool_output = Some(output);
+        self
     }
 }
 

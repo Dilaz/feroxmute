@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install ProjectDiscovery tools via pdtm
 ENV GOPATH=/root/go
-ENV PATH="${GOPATH}/bin:${PATH}"
+ENV PATH="${GOPATH}/bin:/root/.pdtm/go/bin:${PATH}"
 RUN go install -v github.com/projectdiscovery/pdtm/cmd/pdtm@latest \
     && pdtm -install-all
 

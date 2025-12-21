@@ -215,7 +215,7 @@ macro_rules! define_provider {
                     let mut final_text = String::new();
                     let mut total_input_tokens: u64 = 0;
                     let mut total_output_tokens: u64 = 0;
-                    let mut tool_call_count: u64 = 0;
+                    let mut tool_call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
                     let mut stream_error: Option<$crate::Error> = None;
 
                     while let Some(item) = stream.next().await {
@@ -245,8 +245,11 @@ macro_rules! define_provider {
                                         );
                                         final_text.push_str(&text.text);
                                     }
-                                    rig::streaming::StreamedAssistantContent::ToolCall(_) => {
-                                        tool_call_count += 1;
+                                    rig::streaming::StreamedAssistantContent::ToolCall(tc) => {
+                                        tool_call_ids.insert(tc.id.clone());
+                                    }
+                                    rig::streaming::StreamedAssistantContent::ToolCallDelta { id, .. } => {
+                                        tool_call_ids.insert(id);
                                     }
                                     _ => {}
                                 }
@@ -311,7 +314,7 @@ macro_rules! define_provider {
                                 total_output_tokens,
                             );
 
-                            events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
+                            events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_ids.len() as u64);
 
                             return Ok(final_text);
                         }
@@ -363,7 +366,7 @@ macro_rules! define_provider {
                     let mut final_text = String::new();
                     let mut total_input_tokens: u64 = 0;
                     let mut total_output_tokens: u64 = 0;
-                    let mut tool_call_count: u64 = 0;
+                    let mut tool_call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
                     let mut stream_error: Option<$crate::Error> = None;
 
                     loop {
@@ -395,8 +398,11 @@ macro_rules! define_provider {
                                                 );
                                                 final_text.push_str(&text.text);
                                             }
-                                            rig::streaming::StreamedAssistantContent::ToolCall(_) => {
-                                                tool_call_count += 1;
+                                            rig::streaming::StreamedAssistantContent::ToolCall(tc) => {
+                                                tool_call_ids.insert(tc.id.clone());
+                                            }
+                                            rig::streaming::StreamedAssistantContent::ToolCallDelta { id, .. } => {
+                                                tool_call_ids.insert(id);
                                             }
                                             _ => {}
                                         }
@@ -462,7 +468,7 @@ macro_rules! define_provider {
 
                             let pricing = $crate::pricing::PricingConfig::load();
                             let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
-                            events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
+                            events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_ids.len() as u64);
 
                             return Ok(final_text);
                         }
@@ -505,7 +511,7 @@ macro_rules! define_provider {
                     let mut final_text = String::new();
                     let mut total_input_tokens: u64 = 0;
                     let mut total_output_tokens: u64 = 0;
-                    let mut tool_call_count: u64 = 0;
+                    let mut tool_call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
                     let mut stream_error: Option<$crate::Error> = None;
 
                     while let Some(item) = stream.next().await {
@@ -535,8 +541,11 @@ macro_rules! define_provider {
                                         );
                                         final_text.push_str(&text.text);
                                     }
-                                    rig::streaming::StreamedAssistantContent::ToolCall(_) => {
-                                        tool_call_count += 1;
+                                    rig::streaming::StreamedAssistantContent::ToolCall(tc) => {
+                                        tool_call_ids.insert(tc.id.clone());
+                                    }
+                                    rig::streaming::StreamedAssistantContent::ToolCallDelta { id, .. } => {
+                                        tool_call_ids.insert(id);
                                     }
                                     _ => {}
                                 }
@@ -594,7 +603,7 @@ macro_rules! define_provider {
 
                             let pricing = $crate::pricing::PricingConfig::load();
                             let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
-                            events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
+                            events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_ids.len() as u64);
 
                             return Ok(final_text);
                         }

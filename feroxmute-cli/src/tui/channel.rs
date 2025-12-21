@@ -20,6 +20,7 @@ pub enum AgentEvent {
         agent: String,
         message: String,
         is_error: bool,
+        tool_output: Option<String>,
     },
 
     /// Update the thinking panel

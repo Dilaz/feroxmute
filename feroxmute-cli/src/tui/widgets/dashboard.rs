@@ -125,23 +125,29 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
     let orch_info = app.agents.get("orchestrator");
     let mut rows = vec![agent_row_with_activity(
         "orchestrator",
-        "Orchestrator",
+        "[1] Orchestrator",
         app.agent_statuses.orchestrator,
         orch_info.map(|a| a.activity.as_str()).unwrap_or("-"),
         orch_info.and_then(|a| a.current_tool.as_deref()),
     )];
 
-    // Add dynamically spawned agents
-    for (name, info) in &app.agents {
-        if name != "orchestrator" {
-            rows.push(agent_row_with_activity(
-                name,
-                name,
-                info.status,
-                &info.activity,
-                info.current_tool.as_deref(),
-            ));
-        }
+    // Add dynamically spawned agents sorted by spawn_order
+    let mut spawned_agents: Vec<_> = app
+        .agents
+        .iter()
+        .filter(|(name, _)| *name != "orchestrator")
+        .collect();
+    spawned_agents.sort_by_key(|(_, info)| info.spawn_order);
+
+    for (name, info) in spawned_agents {
+        let display_name = format!("[{}] {}", info.spawn_order + 1, name);
+        rows.push(agent_row_with_activity(
+            name,
+            &display_name,
+            info.status,
+            &info.activity,
+            info.current_tool.as_deref(),
+        ));
     }
 
     let table = Table::new(
@@ -341,6 +347,13 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
         "1".to_string()
     };
 
+    // Show thinking toggle state with color indicator
+    let (thinking_label, thinking_style) = if app.show_thinking {
+        ("[ON]", Style::default().fg(Color::Green))
+    } else {
+        ("[OFF]", Style::default().fg(Color::Red))
+    };
+
     let help = Line::from(vec![
         Span::styled("q", Style::default().fg(Color::Yellow)),
         Span::raw(" quit  "),
@@ -349,7 +362,9 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled("l", Style::default().fg(Color::Yellow)),
         Span::raw(" logs  "),
         Span::styled("t", Style::default().fg(Color::Yellow)),
-        Span::raw(" thinking  "),
+        Span::raw(" thinking "),
+        Span::styled(thinking_label, thinking_style),
+        Span::raw("  "),
         Span::styled("?", Style::default().fg(Color::Yellow)),
         Span::raw(" help"),
     ]);

@@ -39,6 +39,24 @@ impl EventSender for TuiEventSender {
                     agent,
                     message,
                     is_error,
+                    tool_output: None,
+                })
+                .await;
+        });
+    }
+
+    fn send_feed_with_output(&self, agent: &str, message: &str, is_error: bool, output: &str) {
+        let tx = self.tx.clone();
+        let agent = agent.to_string();
+        let message = message.to_string();
+        let output = output.to_string();
+        tokio::spawn(async move {
+            let _ = tx
+                .send(AgentEvent::Feed {
+                    agent,
+                    message,
+                    is_error,
+                    tool_output: Some(output),
                 })
                 .await;
         });
@@ -151,6 +169,7 @@ pub async fn run_orchestrator(
             agent: "orchestrator".to_string(),
             message: format!("Starting engagement orchestration for {}", target),
             is_error: false,
+            tool_output: None,
         })
         .await;
 
@@ -198,6 +217,7 @@ pub async fn run_orchestrator(
                 agent: "orchestrator".to_string(),
                 message: "Cancelled by user".to_string(),
                 is_error: false,
+                tool_output: None,
             }).await;
 
             let _ = tx.send(AgentEvent::Status {

@@ -23,13 +23,20 @@ pub struct ShellArgs {
     pub reason: String,
 }
 
+/// Maximum output length to prevent context overflow (in characters)
+/// Ollama and other providers can fail with very large tool outputs
+const MAX_OUTPUT_LENGTH: usize = 8000;
+
 /// Output from the shell tool
 #[derive(Debug, Serialize)]
 pub struct ShellOutput {
-    /// Combined stdout and stderr
+    /// Combined stdout and stderr (truncated if too large)
     pub output: String,
     /// Exit code of the command
     pub exit_code: i64,
+    /// Whether output was truncated
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub truncated: bool,
 }
 
 /// Errors from the shell tool
@@ -100,6 +107,7 @@ impl Tool for DockerShellTool {
             return Ok(ShellOutput {
                 output: msg,
                 exit_code: 1,
+                truncated: false,
             });
         }
 
@@ -134,34 +142,81 @@ impl Tool for DockerShellTool {
             .await
             .map_err(|e| ShellError::Docker(e.to_string()))?;
 
-        let output = result.output();
+        let raw_output = result.output();
 
         // Update status to Processing (reading result)
         self.events
             .send_status(&self.agent_name, "", AgentStatus::Processing, None);
 
-        // Parse SAST tool outputs and send vulnerability events
-        self.parse_sast_findings(&args.command, &output);
+        // Parse SAST tool outputs and send vulnerability events (use raw output for parsing)
+        self.parse_sast_findings(&args.command, &raw_output);
 
         // Report result summary (indented)
-        let line_count = output.lines().count();
-        self.events.send_feed(
+        let line_count = raw_output.lines().count();
+        self.events.send_feed_with_output(
             &self.agent_name,
             &format!(
                 "  -> exit {}, {} lines output",
                 result.exit_code, line_count
             ),
             result.exit_code != 0,
+            &raw_output,
         );
 
         // After processing, go back to Streaming (ready for more LLM output)
         self.events
             .send_status(&self.agent_name, "", AgentStatus::Streaming, None);
 
+        // Sanitize and truncate output for safe JSON serialization
+        let (output, truncated) = prepare_output(&raw_output);
+        if truncated {
+            self.events.send_feed(
+                &self.agent_name,
+                "  -> output truncated to prevent context overflow",
+                false,
+            );
+        }
+
         Ok(ShellOutput {
             output,
             exit_code: result.exit_code,
+            truncated,
         })
+    }
+}
+
+/// Sanitize output to remove control characters that can break JSON serialization
+/// Keeps printable ASCII, newlines, tabs, and valid UTF-8
+fn sanitize_output(s: &str) -> String {
+    s.chars()
+        .filter(|c| {
+            // Keep printable ASCII, newlines, tabs, and non-ASCII (valid UTF-8)
+            c.is_ascii_graphic() || *c == ' ' || *c == '\n' || *c == '\t' || !c.is_ascii()
+        })
+        .collect()
+}
+
+/// Truncate and sanitize output for safe JSON serialization
+fn prepare_output(output: &str) -> (String, bool) {
+    let sanitized = sanitize_output(output);
+
+    if sanitized.len() <= MAX_OUTPUT_LENGTH {
+        (sanitized, false)
+    } else {
+        // Truncate at a safe boundary (avoid cutting UTF-8 characters)
+        let truncated = sanitized
+            .char_indices()
+            .take_while(|(i, _)| *i < MAX_OUTPUT_LENGTH)
+            .map(|(_, c)| c)
+            .collect::<String>();
+        (
+            format!(
+                "{}\n... [output truncated, {} bytes omitted]",
+                truncated,
+                sanitized.len() - truncated.len()
+            ),
+            true,
+        )
     }
 }
 
