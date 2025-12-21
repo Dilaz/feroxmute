@@ -305,7 +305,10 @@ async fn main() -> Result<()> {
 
         // Log custom instruction if provided
         if let Some(ref instr) = args.instruction {
-            app.add_feed(tui::FeedEntry::new("system", format!("Objective: {}", instr)));
+            app.add_feed(tui::FeedEntry::new(
+                "system",
+                format!("Objective: {}", instr),
+            ));
         }
 
         // If we have linked sources, add info about them

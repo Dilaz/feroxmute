@@ -23,7 +23,7 @@ use super::{CompletionRequest, CompletionResponse, LlmProvider, StopReason, Toke
 /// Estimate token count from text (roughly 4 characters per token for English)
 /// This is used as a fallback when Ollama doesn't return actual token counts
 fn estimate_tokens(text: &str) -> u64 {
-    (text.len() as u64 + 3) / 4 // Round up
+    (text.len() as u64).div_ceil(4)
 }
 
 /// Ollama provider using rig-core

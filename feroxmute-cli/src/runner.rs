@@ -125,6 +125,7 @@ impl EventSender for TuiEventSender {
 }
 
 /// Run the orchestrator agent with TUI feedback
+#[allow(clippy::too_many_arguments)]
 pub async fn run_orchestrator(
     target: String,
     provider: Arc<dyn LlmProvider>,
@@ -212,6 +213,7 @@ pub async fn run_orchestrator(
 }
 
 /// Run orchestrator using rig's built-in tool loop
+#[allow(clippy::too_many_arguments)]
 async fn run_orchestrator_with_tools(
     orchestrator: &OrchestratorAgent,
     target: &str,

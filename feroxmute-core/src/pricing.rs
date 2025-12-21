@@ -24,6 +24,7 @@ pub struct PricingConfig {
     pub models: HashMap<String, ProviderPricing>,
 }
 
+#[allow(clippy::expect_used)] // Static initialization with embedded data - panic is appropriate
 static PRICING_CONFIG: Lazy<PricingConfig> = Lazy::new(|| {
     let toml_str = include_str!("../pricing.toml");
     toml::from_str(toml_str).expect("Invalid pricing.toml")
@@ -64,6 +65,7 @@ impl PricingConfig {
 }
 
 /// Regex for removing date suffixes (compiled once)
+#[allow(clippy::expect_used)] // Static initialization with hardcoded regex - panic is appropriate
 static DATE_SUFFIX_RE: Lazy<regex::Regex> = Lazy::new(|| {
     regex::Regex::new(r"-\d{4}[-]?\d{2}[-]?\d{2}$")
         .expect("Hardcoded regex pattern should be valid")
@@ -77,14 +79,12 @@ fn normalize_model_name(model: &str) -> String {
     let model = DATE_SUFFIX_RE.replace(&model, "").to_string();
 
     // Map common aliases
-    let model = model
+    model
         .replace("claude-sonnet-4", "claude-4-sonnet")
         .replace("claude-opus-4", "claude-4-opus")
         .replace("claude-3.5-", "claude-3-5-")
         .replace("gemini-2.5-", "gemini-2-5-")
-        .replace("gpt-4.1", "gpt-4-1");
-
-    model
+        .replace("gpt-4.1", "gpt-4-1")
 }
 
 #[cfg(test)]
