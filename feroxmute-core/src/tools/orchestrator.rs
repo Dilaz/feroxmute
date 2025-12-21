@@ -401,8 +401,9 @@ pub struct WaitForAgentArgs {
 #[derive(Debug, Serialize)]
 pub struct WaitForAgentOutput {
     pub found: bool,
-    pub success: bool,
-    pub output: String,
+    pub summary: AgentSummary,
+    /// Raw output truncated for reference (if needed)
+    pub raw_output_truncated: String,
 }
 
 pub struct WaitForAgentTool {
@@ -451,8 +452,15 @@ impl Tool for WaitForAgentTool {
             .events
             .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
 
+        // Get instructions before waiting (registry will be locked during wait)
+        let instructions = {
+            let registry = self.context.registry.lock().await;
+            registry.get_agent_instructions(&args.name).unwrap_or_default()
+        };
+
         let mut registry = self.context.registry.lock().await;
         let result = registry.wait_for_agent(&args.name).await;
+        drop(registry);
 
         // Restore orchestrator status to Running
         self.context.events.send_status(
@@ -475,16 +483,31 @@ impl Tool for WaitForAgentTool {
                     None,
                 );
 
+                // Summarize the output
+                let summary = summarize_agent_output(
+                    self.context.provider.as_ref(),
+                    &result.name,
+                    &result.agent_type,
+                    &instructions,
+                    &result.output,
+                )
+                .await;
+
                 Ok(WaitForAgentOutput {
                     found: true,
-                    success: result.success,
-                    output: truncate_output(&result.output, 2000),
+                    summary,
+                    raw_output_truncated: truncate_output(&result.output, 500),
                 })
             }
             None => Ok(WaitForAgentOutput {
                 found: false,
-                success: false,
-                output: format!("Agent '{}' not found", args.name),
+                summary: AgentSummary {
+                    success: false,
+                    summary: format!("Agent '{}' not found", args.name),
+                    key_findings: vec![],
+                    next_steps: vec![],
+                },
+                raw_output_truncated: String::new(),
             }),
         }
     }
