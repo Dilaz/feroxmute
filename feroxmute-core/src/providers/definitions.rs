@@ -30,7 +30,7 @@
 //!   code uses `::new()` for simplicity
 //! - LiteLLM defaults to http://localhost:4000 if no base_url is provided
 
-use rig::providers::{anthropic, azure, cohere, deepseek, gemini, mira, openai, perplexity, xai};
+use rig::providers::{anthropic, cohere, deepseek, gemini, mira, openai, perplexity, xai};
 
 // =============================================================================
 // Anthropic

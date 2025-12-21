@@ -1,33 +1,38 @@
 //! LLM provider integration
+//!
+//! This module provides LLM provider implementations using the `define_provider!` macro
+//! for code generation. Most providers are defined in `definitions.rs` via the macro,
+//! while Azure and Ollama have manual implementations due to special requirements.
 
 #[macro_use]
-pub mod macros;
-
-pub mod anthropic;
-pub mod azure;
-pub mod cohere;
-pub mod deepseek;
-pub mod factory;
-pub mod gemini;
-pub mod mira;
-pub mod ollama;
-pub mod openai;
-pub mod perplexity;
+mod macros;
+mod definitions;
 pub mod traits;
-pub mod xai;
+pub mod factory;
 
-pub use anthropic::AnthropicProvider;
-pub use azure::AzureProvider;
-pub use cohere::CohereProvider;
-pub use deepseek::DeepSeekProvider;
-pub use factory::create_provider;
-pub use gemini::GeminiProvider;
-pub use mira::MiraProvider;
-pub use ollama::OllamaProvider;
-pub use openai::OpenAiProvider;
-pub use perplexity::PerplexityProvider;
+// Manual implementations (can't use macro due to special requirements)
+mod azure;
+mod ollama;
+
 pub use traits::{
     CompletionRequest, CompletionResponse, LlmProvider, Message, Role, StopReason, TokenUsage,
     ToolCall, ToolDefinition,
 };
-pub use xai::XaiProvider;
+pub use factory::create_provider;
+
+// Re-export macro-generated providers from definitions
+pub use definitions::{
+    AnthropicProvider,
+    CohereProvider,
+    DeepSeekProvider,
+    GeminiProvider,
+    LiteLlmProvider,
+    MiraProvider,
+    OpenAiProvider,
+    PerplexityProvider,
+    XaiProvider,
+};
+
+// Re-export manual implementations
+pub use azure::AzureProvider;
+pub use ollama::OllamaProvider;

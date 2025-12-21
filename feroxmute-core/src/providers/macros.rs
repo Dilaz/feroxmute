@@ -51,7 +51,7 @@ macro_rules! define_provider {
         env_var: $env_var:expr,
         supports_tools: $supports_tools:expr,
         client_builder: |$builder:ident, $base_url:ident| $client_expr:expr,
-        has_base_url: $has_base_url:expr
+        has_base_url: $has_base_url:tt
     ) => {
         /// Provider implementation using rig-core
         pub struct $name {
