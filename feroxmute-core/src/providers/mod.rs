@@ -7,30 +7,23 @@
 #[macro_use]
 mod macros;
 mod definitions;
-pub mod traits;
 pub mod factory;
+pub mod traits;
 
 // Manual implementations (can't use macro due to special requirements)
 mod azure;
 mod ollama;
 
+pub use factory::create_provider;
 pub use traits::{
     CompletionRequest, CompletionResponse, LlmProvider, Message, Role, StopReason, TokenUsage,
     ToolCall, ToolDefinition,
 };
-pub use factory::create_provider;
 
 // Re-export macro-generated providers from definitions
 pub use definitions::{
-    AnthropicProvider,
-    CohereProvider,
-    DeepSeekProvider,
-    GeminiProvider,
-    LiteLlmProvider,
-    MiraProvider,
-    OpenAiProvider,
-    PerplexityProvider,
-    XaiProvider,
+    AnthropicProvider, CohereProvider, DeepSeekProvider, GeminiProvider, LiteLlmProvider,
+    MiraProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
 };
 
 // Re-export manual implementations

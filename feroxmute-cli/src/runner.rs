@@ -95,9 +95,7 @@ impl EventSender for TuiEventSender {
         let tx = self.tx.clone();
         let agent = agent.to_string();
         tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Thinking { agent, content })
-                .await;
+            let _ = tx.send(AgentEvent::Thinking { agent, content }).await;
         });
     }
 }

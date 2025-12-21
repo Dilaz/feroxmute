@@ -164,10 +164,10 @@ impl MetricsTracker {
             .tokens
             .output
             .store(metrics.tokens.output, Ordering::Relaxed);
-        tracker
-            .tokens
-            .cost_micro_usd
-            .store((metrics.tokens.estimated_cost_usd * 1_000_000.0) as u64, Ordering::Relaxed);
+        tracker.tokens.cost_micro_usd.store(
+            (metrics.tokens.estimated_cost_usd * 1_000_000.0) as u64,
+            Ordering::Relaxed,
+        );
         tracker
     }
 

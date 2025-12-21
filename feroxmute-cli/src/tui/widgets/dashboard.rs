@@ -300,7 +300,11 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
 fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let spawned_count = app.agents.len().saturating_sub(1);
     let max_key = (spawned_count + 1).min(9);
-    let agents_hint = if max_key > 1 { format!("1-{}", max_key) } else { "1".to_string() };
+    let agents_hint = if max_key > 1 {
+        format!("1-{}", max_key)
+    } else {
+        "1".to_string()
+    };
 
     let help = Line::from(vec![
         Span::styled("q", Style::default().fg(Color::Yellow)),

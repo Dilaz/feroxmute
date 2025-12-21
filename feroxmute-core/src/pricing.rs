@@ -64,9 +64,10 @@ impl PricingConfig {
 }
 
 /// Regex for removing date suffixes (compiled once)
-static DATE_SUFFIX_RE: Lazy<regex::Regex> =
-    Lazy::new(|| regex::Regex::new(r"-\d{4}[-]?\d{2}[-]?\d{2}$")
-        .expect("Hardcoded regex pattern should be valid"));
+static DATE_SUFFIX_RE: Lazy<regex::Regex> = Lazy::new(|| {
+    regex::Regex::new(r"-\d{4}[-]?\d{2}[-]?\d{2}$")
+        .expect("Hardcoded regex pattern should be valid")
+});
 
 /// Normalize model name by removing date suffixes and common variations
 fn normalize_model_name(model: &str) -> String {
@@ -107,7 +108,10 @@ mod tests {
 
     #[test]
     fn test_normalize_model_name() {
-        assert_eq!(normalize_model_name("claude-sonnet-4-20250514"), "claude-4-sonnet");
+        assert_eq!(
+            normalize_model_name("claude-sonnet-4-20250514"),
+            "claude-4-sonnet"
+        );
         assert_eq!(normalize_model_name("gpt-4o-2024-08-06"), "gpt-4o");
         assert_eq!(normalize_model_name("claude-3.5-haiku"), "claude-3-5-haiku");
     }

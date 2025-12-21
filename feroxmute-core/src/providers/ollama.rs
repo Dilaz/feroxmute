@@ -298,11 +298,8 @@ mod tests {
 
     #[test]
     fn test_provider_custom_base_url() {
-        let result = OllamaProvider::with_base_url(
-            "http://custom:11434",
-            "llama3.2",
-            MetricsTracker::new(),
-        );
+        let result =
+            OllamaProvider::with_base_url("http://custom:11434", "llama3.2", MetricsTracker::new());
         assert!(result.is_ok());
     }
 

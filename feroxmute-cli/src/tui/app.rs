@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 pub enum View {
     #[default]
     Dashboard,
-    AgentDetail(String),  // Agent name instead of AgentView enum
+    AgentDetail(String), // Agent name instead of AgentView enum
     Logs,
     Help,
 }
@@ -192,7 +192,10 @@ impl App {
     ) -> Self {
         let mut agents = std::collections::HashMap::new();
         // Pre-register orchestrator with spawn_order 0
-        agents.insert("orchestrator".to_string(), AgentDisplayInfo::new_orchestrator());
+        agents.insert(
+            "orchestrator".to_string(),
+            AgentDisplayInfo::new_orchestrator(),
+        );
 
         Self {
             view: View::Dashboard,
@@ -228,14 +231,16 @@ impl App {
             return Some("orchestrator".to_string());
         }
         // Find agent with spawn_order == key - 1
-        self.agents.iter()
+        self.agents
+            .iter()
             .find(|(name, info)| *name != "orchestrator" && info.spawn_order == key - 1)
             .map(|(name, _)| name.clone())
     }
 
     /// Get the thinking text for the currently selected agent
     pub fn get_selected_thinking(&self) -> Option<&str> {
-        self.selected_agent.as_ref()
+        self.selected_agent
+            .as_ref()
             .and_then(|name| self.agents.get(name))
             .and_then(|info| info.thinking.as_deref())
     }
@@ -339,7 +344,14 @@ impl App {
 
     /// Update metrics
     #[allow(dead_code)]
-    pub fn update_metrics(&mut self, input: u64, output: u64, cache_read: u64, tool_calls: u64, cost: f64) {
+    pub fn update_metrics(
+        &mut self,
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        tool_calls: u64,
+        cost: f64,
+    ) {
         self.metrics.input_tokens += input;
         self.metrics.output_tokens += output;
         self.metrics.cache_read_tokens += cache_read;
@@ -460,7 +472,10 @@ mod tests {
     fn test_agent_thinking() {
         let mut app = App::new("test.com", "test-session", None);
         app.update_agent_thinking("orchestrator", Some("Planning...".to_string()));
-        assert_eq!(app.agents.get("orchestrator").unwrap().thinking, Some("Planning...".to_string()));
+        assert_eq!(
+            app.agents.get("orchestrator").unwrap().thinking,
+            Some("Planning...".to_string())
+        );
 
         app.selected_agent = Some("orchestrator".to_string());
         assert_eq!(app.get_selected_thinking(), Some("Planning..."));

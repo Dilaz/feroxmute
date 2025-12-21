@@ -231,7 +231,7 @@ mod tests {
         app.navigate(View::Dashboard);
         let key = KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE);
         handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::Dashboard);  // No agent at key 2
+        assert_eq!(app.view, View::Dashboard); // No agent at key 2
     }
 
     #[test]

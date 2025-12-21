@@ -137,7 +137,9 @@ pub fn create_provider(
             } else {
                 // Try OLLAMA_API_BASE_URL env var, fall back to default localhost
                 match std::env::var("OLLAMA_API_BASE_URL") {
-                    Ok(base_url) => OllamaProvider::with_base_url(base_url, &config.model, metrics)?,
+                    Ok(base_url) => {
+                        OllamaProvider::with_base_url(base_url, &config.model, metrics)?
+                    }
                     Err(_) => OllamaProvider::new(&config.model, metrics)?,
                 }
             };
