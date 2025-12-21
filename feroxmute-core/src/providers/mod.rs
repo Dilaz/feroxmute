@@ -8,6 +8,7 @@
 mod macros;
 mod definitions;
 pub mod factory;
+pub mod retry;
 pub mod traits;
 
 // Manual implementations (can't use macro due to special requirements)

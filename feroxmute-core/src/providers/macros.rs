@@ -190,86 +190,133 @@ macro_rules! define_provider {
                 let events_clone = std::sync::Arc::clone(&events);
                 let agent_name_owned = agent_name.to_string();
 
-                let agent = self
-                    .client
-                    .agent(&self.model)
-                    .preamble(system_prompt)
-                    .max_tokens(4096)
-                    .tool($crate::tools::DockerShellTool::new(
-                        container,
-                        std::sync::Arc::clone(&events),
-                        agent_name.to_string(),
-                        limitations,
-                    ))
-                    .build();
+                // Retry configuration
+                let retry_config = $crate::providers::retry::RetryConfig::default();
+                let mut attempt = 0;
+                let mut delay = retry_config.initial_delay;
 
-                // Use streaming with multi-turn tool loop
-                let mut stream = agent.stream_prompt(user_prompt).multi_turn(50).await;
-                let mut final_text = String::new();
-                let mut total_input_tokens: u64 = 0;
-                let mut total_output_tokens: u64 = 0;
-                let mut tool_call_count: u64 = 0;
+                loop {
+                    // Build agent fresh for each attempt
+                    let agent = self
+                        .client
+                        .agent(&self.model)
+                        .preamble(system_prompt)
+                        .max_tokens(4096)
+                        .tool($crate::tools::DockerShellTool::new(
+                            std::sync::Arc::clone(&container),
+                            std::sync::Arc::clone(&events),
+                            agent_name.to_string(),
+                            std::sync::Arc::clone(&limitations),
+                        ))
+                        .build();
 
-                while let Some(item) = stream.next().await {
-                    match item {
-                        Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
-                            match content {
-                                rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
-                                    // Update status to Thinking
-                                    events_clone.send_status(
-                                        &agent_name_owned,
-                                        "",
-                                        $crate::agents::AgentStatus::Thinking,
-                                        None,
-                                    );
-                                    let text = reasoning.reasoning.join("");
-                                    if !text.is_empty() {
-                                        events_clone.send_thinking(&agent_name_owned, Some(text));
+                    // Use streaming with multi-turn tool loop
+                    let mut stream = agent.stream_prompt(user_prompt).multi_turn(50).await;
+                    let mut final_text = String::new();
+                    let mut total_input_tokens: u64 = 0;
+                    let mut total_output_tokens: u64 = 0;
+                    let mut tool_call_count: u64 = 0;
+                    let mut stream_error: Option<$crate::Error> = None;
+
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
+                                match content {
+                                    rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                        // Update status to Thinking
+                                        events_clone.send_status(
+                                            &agent_name_owned,
+                                            "",
+                                            $crate::agents::AgentStatus::Thinking,
+                                            None,
+                                        );
+                                        let text = reasoning.reasoning.join("");
+                                        if !text.is_empty() {
+                                            events_clone.send_thinking(&agent_name_owned, Some(text));
+                                        }
                                     }
+                                    rig::streaming::StreamedAssistantContent::Text(text) => {
+                                        // Update status to Streaming
+                                        events_clone.send_status(
+                                            &agent_name_owned,
+                                            "",
+                                            $crate::agents::AgentStatus::Streaming,
+                                            None,
+                                        );
+                                        final_text.push_str(&text.text);
+                                    }
+                                    rig::streaming::StreamedAssistantContent::ToolCall(_) => {
+                                        tool_call_count += 1;
+                                    }
+                                    _ => {}
                                 }
-                                rig::streaming::StreamedAssistantContent::Text(text) => {
-                                    // Update status to Streaming
-                                    events_clone.send_status(
+                            }
+                            Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res)) => {
+                                total_input_tokens = res.usage().input_tokens;
+                                total_output_tokens = res.usage().output_tokens;
+                            }
+                            Err(e) => {
+                                events_clone.send_thinking(&agent_name_owned, None);
+                                stream_error = Some($crate::Error::Provider(format!("Shell streaming failed: {}", e)));
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Handle result
+                    match stream_error {
+                        Some(e) => {
+                            let error_msg = e.to_string();
+                            let is_retriable = $crate::providers::retry::is_retriable_error(&error_msg);
+
+                            if is_retriable && attempt < retry_config.max_retries {
+                                attempt += 1;
+                                events_clone.send_status(
+                                    &agent_name_owned,
+                                    "",
+                                    $crate::agents::AgentStatus::Retrying,
+                                    None,
+                                );
+                                events_clone.send_feed(
+                                    &agent_name_owned,
+                                    &format!("Transient error, retrying ({}/{}): {}", attempt, retry_config.max_retries, error_msg),
+                                    true,
+                                );
+                                tokio::time::sleep(delay).await;
+                                delay = std::cmp::min(delay * 2, retry_config.max_delay);
+                                continue;
+                            } else {
+                                // Non-retriable or retries exhausted
+                                if attempt > 0 {
+                                    events_clone.send_feed(
                                         &agent_name_owned,
-                                        "",
-                                        $crate::agents::AgentStatus::Streaming,
-                                        None,
+                                        &format!("All {} retries exhausted: {}", retry_config.max_retries, error_msg),
+                                        true,
                                     );
-                                    final_text.push_str(&text.text);
                                 }
-                                rig::streaming::StreamedAssistantContent::ToolCall(_) => {
-                                    tool_call_count += 1;
-                                }
-                                _ => {}
+                                return Err(e);
                             }
                         }
-                        Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res)) => {
-                            total_input_tokens = res.usage().input_tokens;
-                            total_output_tokens = res.usage().output_tokens;
-                        }
-                        Err(e) => {
+                        None => {
+                            // Success - clear thinking and return
                             events_clone.send_thinking(&agent_name_owned, None);
-                            return Err($crate::Error::Provider(format!("Shell streaming failed: {}", e)));
+
+                            // Calculate cost
+                            let pricing = $crate::pricing::PricingConfig::load();
+                            let cost = pricing.calculate_cost(
+                                $provider_name,
+                                &self.model,
+                                total_input_tokens,
+                                total_output_tokens,
+                            );
+
+                            events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
+
+                            return Ok(final_text);
                         }
-                        _ => {}
                     }
                 }
-
-                // Clear thinking when done
-                events_clone.send_thinking(&agent_name_owned, None);
-
-                // Calculate cost
-                let pricing = $crate::pricing::PricingConfig::load();
-                let cost = pricing.calculate_cost(
-                    $provider_name,
-                    &self.model,
-                    total_input_tokens,
-                    total_output_tokens,
-                );
-
-                events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
-
-                Ok(final_text)
             }
 
             async fn complete_with_orchestrator(
@@ -285,87 +332,142 @@ macro_rules! define_provider {
                 let events = std::sync::Arc::clone(&context.events);
                 let agent_name = "orchestrator".to_string();
 
-                let agent = self
-                    .client
-                    .agent(&self.model)
-                    .preamble(system_prompt)
-                    .max_tokens(4096)
-                    .tool($crate::tools::SpawnAgentTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::WaitForAgentTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::WaitForAnyTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::ListAgentsTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::RecordFindingTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::CompleteEngagementTool::new(std::sync::Arc::clone(&context)))
-                    .build();
+                // Retry configuration
+                let retry_config = $crate::providers::retry::RetryConfig::default();
+                let mut attempt = 0;
+                let mut delay = retry_config.initial_delay;
 
-                let mut stream = agent.stream_prompt(user_prompt).multi_turn(50).await;
-                let mut final_text = String::new();
-                let mut total_input_tokens: u64 = 0;
-                let mut total_output_tokens: u64 = 0;
-                let mut tool_call_count: u64 = 0;
+                'retry: loop {
+                    // Check for cancellation before starting a new attempt
+                    if context.cancel.is_cancelled() {
+                        events.send_thinking(&agent_name, None);
+                        let findings = context.findings.lock().await;
+                        return Ok(format!("Engagement completed with {} findings", findings.len()));
+                    }
 
-                loop {
-                    tokio::select! {
-                        item = stream.next() => {
-                            match item {
-                                Some(Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content))) => {
-                                    match content {
-                                        rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
-                                            // Update status to Thinking
-                                            events.send_status(
-                                                &agent_name,
-                                                "orchestrator",
-                                                $crate::agents::AgentStatus::Thinking,
-                                                None,
-                                            );
-                                            let text = reasoning.reasoning.join("");
-                                            if !text.is_empty() {
-                                                events.send_thinking(&agent_name, Some(text));
+                    // Build agent fresh for each attempt
+                    let agent = self
+                        .client
+                        .agent(&self.model)
+                        .preamble(system_prompt)
+                        .max_tokens(4096)
+                        .tool($crate::tools::SpawnAgentTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::WaitForAgentTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::WaitForAnyTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::ListAgentsTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::RecordFindingTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::CompleteEngagementTool::new(std::sync::Arc::clone(&context)))
+                        .build();
+
+                    let mut stream = agent.stream_prompt(user_prompt).multi_turn(50).await;
+                    let mut final_text = String::new();
+                    let mut total_input_tokens: u64 = 0;
+                    let mut total_output_tokens: u64 = 0;
+                    let mut tool_call_count: u64 = 0;
+                    let mut stream_error: Option<$crate::Error> = None;
+
+                    loop {
+                        tokio::select! {
+                            item = stream.next() => {
+                                match item {
+                                    Some(Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content))) => {
+                                        match content {
+                                            rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                                // Update status to Thinking
+                                                events.send_status(
+                                                    &agent_name,
+                                                    "orchestrator",
+                                                    $crate::agents::AgentStatus::Thinking,
+                                                    None,
+                                                );
+                                                let text = reasoning.reasoning.join("");
+                                                if !text.is_empty() {
+                                                    events.send_thinking(&agent_name, Some(text));
+                                                }
                                             }
+                                            rig::streaming::StreamedAssistantContent::Text(text) => {
+                                                // Update status to Streaming
+                                                events.send_status(
+                                                    &agent_name,
+                                                    "orchestrator",
+                                                    $crate::agents::AgentStatus::Streaming,
+                                                    None,
+                                                );
+                                                final_text.push_str(&text.text);
+                                            }
+                                            rig::streaming::StreamedAssistantContent::ToolCall(_) => {
+                                                tool_call_count += 1;
+                                            }
+                                            _ => {}
                                         }
-                                        rig::streaming::StreamedAssistantContent::Text(text) => {
-                                            // Update status to Streaming
-                                            events.send_status(
-                                                &agent_name,
-                                                "orchestrator",
-                                                $crate::agents::AgentStatus::Streaming,
-                                                None,
-                                            );
-                                            final_text.push_str(&text.text);
-                                        }
-                                        rig::streaming::StreamedAssistantContent::ToolCall(_) => {
-                                            tool_call_count += 1;
-                                        }
-                                        _ => {}
                                     }
+                                    Some(Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res))) => {
+                                        total_input_tokens = res.usage().input_tokens;
+                                        total_output_tokens = res.usage().output_tokens;
+                                    }
+                                    Some(Err(e)) => {
+                                        events.send_thinking(&agent_name, None);
+                                        stream_error = Some($crate::Error::Provider(format!("Orchestrator streaming failed: {}", e)));
+                                        break;
+                                    }
+                                    None => break,
+                                    _ => {}
                                 }
-                                Some(Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res))) => {
-                                    total_input_tokens = res.usage().input_tokens;
-                                    total_output_tokens = res.usage().output_tokens;
-                                }
-                                Some(Err(e)) => {
-                                    events.send_thinking(&agent_name, None);
-                                    return Err($crate::Error::Provider(format!("Orchestrator streaming failed: {}", e)));
-                                }
-                                None => break,
-                                _ => {}
+                            }
+                            _ = context.cancel.cancelled() => {
+                                events.send_thinking(&agent_name, None);
+                                let findings = context.findings.lock().await;
+                                return Ok(format!("Engagement completed with {} findings", findings.len()));
                             }
                         }
-                        _ = context.cancel.cancelled() => {
+                    }
+
+                    // Handle result
+                    match stream_error {
+                        Some(e) => {
+                            let error_msg = e.to_string();
+                            let is_retriable = $crate::providers::retry::is_retriable_error(&error_msg);
+
+                            if is_retriable && attempt < retry_config.max_retries {
+                                attempt += 1;
+                                events.send_status(
+                                    &agent_name,
+                                    "orchestrator",
+                                    $crate::agents::AgentStatus::Retrying,
+                                    None,
+                                );
+                                events.send_feed(
+                                    &agent_name,
+                                    &format!("Transient error, retrying ({}/{}): {}", attempt, retry_config.max_retries, error_msg),
+                                    true,
+                                );
+                                tokio::time::sleep(delay).await;
+                                delay = std::cmp::min(delay * 2, retry_config.max_delay);
+                                continue 'retry;
+                            } else {
+                                // Non-retriable or retries exhausted
+                                if attempt > 0 {
+                                    events.send_feed(
+                                        &agent_name,
+                                        &format!("All {} retries exhausted: {}", retry_config.max_retries, error_msg),
+                                        true,
+                                    );
+                                }
+                                return Err(e);
+                            }
+                        }
+                        None => {
+                            // Success - clear thinking and return
                             events.send_thinking(&agent_name, None);
-                            let findings = context.findings.lock().await;
-                            return Ok(format!("Engagement completed with {} findings", findings.len()));
+
+                            let pricing = $crate::pricing::PricingConfig::load();
+                            let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
+                            events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
+
+                            return Ok(final_text);
                         }
                     }
                 }
-
-                events.send_thinking(&agent_name, None);
-
-                let pricing = $crate::pricing::PricingConfig::load();
-                let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
-                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
-
-                Ok(final_text)
             }
 
             async fn complete_with_report(
@@ -381,75 +483,123 @@ macro_rules! define_provider {
                 let events = std::sync::Arc::clone(&context.events);
                 let agent_name = "report".to_string();
 
-                let agent = self
-                    .client
-                    .agent(&self.model)
-                    .preamble(system_prompt)
-                    .max_tokens(4096)
-                    .tool($crate::tools::GenerateReportTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::ExportJsonTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::ExportMarkdownTool::new(std::sync::Arc::clone(&context)))
-                    .tool($crate::tools::AddRecommendationTool::new(std::sync::Arc::clone(&context)))
-                    .build();
+                // Retry configuration
+                let retry_config = $crate::providers::retry::RetryConfig::default();
+                let mut attempt = 0;
+                let mut delay = retry_config.initial_delay;
 
-                let mut stream = agent.stream_prompt(user_prompt).multi_turn(20).await;
-                let mut final_text = String::new();
-                let mut total_input_tokens: u64 = 0;
-                let mut total_output_tokens: u64 = 0;
-                let mut tool_call_count: u64 = 0;
+                loop {
+                    // Build agent fresh for each attempt
+                    let agent = self
+                        .client
+                        .agent(&self.model)
+                        .preamble(system_prompt)
+                        .max_tokens(4096)
+                        .tool($crate::tools::GenerateReportTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::ExportJsonTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::ExportMarkdownTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::AddRecommendationTool::new(std::sync::Arc::clone(&context)))
+                        .build();
 
-                while let Some(item) = stream.next().await {
-                    match item {
-                        Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
-                            match content {
-                                rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
-                                    // Update status to Thinking
-                                    events.send_status(
-                                        &agent_name,
-                                        "report",
-                                        $crate::agents::AgentStatus::Thinking,
-                                        None,
-                                    );
-                                    let text = reasoning.reasoning.join("");
-                                    if !text.is_empty() {
-                                        events.send_thinking(&agent_name, Some(text));
+                    let mut stream = agent.stream_prompt(user_prompt).multi_turn(20).await;
+                    let mut final_text = String::new();
+                    let mut total_input_tokens: u64 = 0;
+                    let mut total_output_tokens: u64 = 0;
+                    let mut tool_call_count: u64 = 0;
+                    let mut stream_error: Option<$crate::Error> = None;
+
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
+                                match content {
+                                    rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                        // Update status to Thinking
+                                        events.send_status(
+                                            &agent_name,
+                                            "report",
+                                            $crate::agents::AgentStatus::Thinking,
+                                            None,
+                                        );
+                                        let text = reasoning.reasoning.join("");
+                                        if !text.is_empty() {
+                                            events.send_thinking(&agent_name, Some(text));
+                                        }
                                     }
+                                    rig::streaming::StreamedAssistantContent::Text(text) => {
+                                        // Update status to Streaming
+                                        events.send_status(
+                                            &agent_name,
+                                            "report",
+                                            $crate::agents::AgentStatus::Streaming,
+                                            None,
+                                        );
+                                        final_text.push_str(&text.text);
+                                    }
+                                    rig::streaming::StreamedAssistantContent::ToolCall(_) => {
+                                        tool_call_count += 1;
+                                    }
+                                    _ => {}
                                 }
-                                rig::streaming::StreamedAssistantContent::Text(text) => {
-                                    // Update status to Streaming
-                                    events.send_status(
+                            }
+                            Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res)) => {
+                                total_input_tokens = res.usage().input_tokens;
+                                total_output_tokens = res.usage().output_tokens;
+                            }
+                            Err(e) => {
+                                events.send_thinking(&agent_name, None);
+                                stream_error = Some($crate::Error::Provider(format!("Report streaming failed: {}", e)));
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Handle result
+                    match stream_error {
+                        Some(e) => {
+                            let error_msg = e.to_string();
+                            let is_retriable = $crate::providers::retry::is_retriable_error(&error_msg);
+
+                            if is_retriable && attempt < retry_config.max_retries {
+                                attempt += 1;
+                                events.send_status(
+                                    &agent_name,
+                                    "report",
+                                    $crate::agents::AgentStatus::Retrying,
+                                    None,
+                                );
+                                events.send_feed(
+                                    &agent_name,
+                                    &format!("Transient error, retrying ({}/{}): {}", attempt, retry_config.max_retries, error_msg),
+                                    true,
+                                );
+                                tokio::time::sleep(delay).await;
+                                delay = std::cmp::min(delay * 2, retry_config.max_delay);
+                                continue;
+                            } else {
+                                // Non-retriable or retries exhausted
+                                if attempt > 0 {
+                                    events.send_feed(
                                         &agent_name,
-                                        "report",
-                                        $crate::agents::AgentStatus::Streaming,
-                                        None,
+                                        &format!("All {} retries exhausted: {}", retry_config.max_retries, error_msg),
+                                        true,
                                     );
-                                    final_text.push_str(&text.text);
                                 }
-                                rig::streaming::StreamedAssistantContent::ToolCall(_) => {
-                                    tool_call_count += 1;
-                                }
-                                _ => {}
+                                return Err(e);
                             }
                         }
-                        Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res)) => {
-                            total_input_tokens = res.usage().input_tokens;
-                            total_output_tokens = res.usage().output_tokens;
-                        }
-                        Err(e) => {
+                        None => {
+                            // Success - clear thinking and return
                             events.send_thinking(&agent_name, None);
-                            return Err($crate::Error::Provider(format!("Report streaming failed: {}", e)));
+
+                            let pricing = $crate::pricing::PricingConfig::load();
+                            let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
+                            events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
+
+                            return Ok(final_text);
                         }
-                        _ => {}
                     }
                 }
-
-                events.send_thinking(&agent_name, None);
-
-                let pricing = $crate::pricing::PricingConfig::load();
-                let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
-                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost, tool_call_count);
-
-                Ok(final_text)
             }
         }
     };
