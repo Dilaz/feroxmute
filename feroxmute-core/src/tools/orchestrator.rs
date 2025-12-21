@@ -525,8 +525,8 @@ pub struct WaitForAnyOutput {
     pub found: bool,
     pub name: String,
     pub agent_type: String,
-    pub success: bool,
-    pub output: String,
+    pub summary: AgentSummary,
+    pub raw_output_truncated: String,
     /// Number of agents still running after this one completed
     pub remaining_running: usize,
 }
@@ -574,6 +574,28 @@ impl Tool for WaitForAnyTool {
         let mut registry = self.context.registry.lock().await;
         let result = registry.wait_for_any().await;
 
+        // Get instructions while we still have the lock
+        let instructions = result.as_ref()
+            .and_then(|r| registry.get_agent_instructions(&r.name))
+            .unwrap_or_default();
+
+        // Count remaining running agents
+        let remaining_running = registry
+            .list_agents()
+            .iter()
+            .filter(|(_, _, status)| {
+                matches!(
+                    status,
+                    AgentStatus::Thinking
+                        | AgentStatus::Streaming
+                        | AgentStatus::Executing
+                        | AgentStatus::Processing
+                )
+            })
+            .count();
+
+        drop(registry);
+
         // Restore orchestrator status to Running
         self.context.events.send_status(
             "orchestrator",
@@ -595,27 +617,22 @@ impl Tool for WaitForAnyTool {
                     None,
                 );
 
-                // Count remaining running agents (any active state counts)
-                let remaining_running = registry
-                    .list_agents()
-                    .iter()
-                    .filter(|(_, _, status)| {
-                        matches!(
-                            status,
-                            AgentStatus::Thinking
-                                | AgentStatus::Streaming
-                                | AgentStatus::Executing
-                                | AgentStatus::Processing
-                        )
-                    })
-                    .count();
+                // Summarize the output
+                let summary = summarize_agent_output(
+                    self.context.provider.as_ref(),
+                    &result.name,
+                    &result.agent_type,
+                    &instructions,
+                    &result.output,
+                )
+                .await;
 
                 Ok(WaitForAnyOutput {
                     found: true,
                     name: result.name,
                     agent_type: result.agent_type,
-                    success: result.success,
-                    output: truncate_output(&result.output, 2000),
+                    summary,
+                    raw_output_truncated: truncate_output(&result.output, 500),
                     remaining_running,
                 })
             }
@@ -623,8 +640,8 @@ impl Tool for WaitForAnyTool {
                 found: false,
                 name: String::new(),
                 agent_type: String::new(),
-                success: false,
-                output: "No running agents".to_string(),
+                summary: AgentSummary::default(),
+                raw_output_truncated: "No running agents".to_string(),
                 remaining_running: 0,
             }),
         }
