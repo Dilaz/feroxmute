@@ -189,8 +189,9 @@ fn agent_row_with_activity(
         AgentStatus::Executing => {
             let tool_display = current_tool
                 .map(|t| {
-                    if t.len() > 20 {
-                        format!("Tool: {}...", &t[..17])
+                    if t.chars().count() > 20 {
+                        let truncated: String = t.chars().take(17).collect();
+                        format!("Tool: {}...", truncated)
                     } else {
                         format!("Tool: {}", t)
                     }
@@ -223,9 +224,10 @@ fn agent_row_with_activity(
         ),
     };
 
-    // Truncate activity to fit
-    let activity_display = if activity.len() > 40 {
-        format!("{}...", &activity[..37])
+    // Truncate activity to fit (use char count for proper UTF-8 handling)
+    let activity_display = if activity.chars().count() > 40 {
+        let truncated: String = activity.chars().take(37).collect();
+        format!("{}...", truncated)
     } else {
         activity.to_string()
     };
