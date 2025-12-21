@@ -84,6 +84,11 @@ impl AgentRegistry {
             .collect()
     }
 
+    /// Get the instructions for a specific agent
+    pub fn get_agent_instructions(&self, name: &str) -> Option<String> {
+        self.agents.get(name).map(|a| a.instructions.clone())
+    }
+
     /// Get count of running agents (any active state)
     pub fn running_count(&self) -> usize {
         self.agents
@@ -218,5 +223,25 @@ mod tests {
         let mut registry = AgentRegistry::new();
         let result = registry.wait_for_agent("nonexistent").await;
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_agent_instructions() {
+        let mut registry = AgentRegistry::new();
+
+        // Register a mock agent
+        let handle = tokio::spawn(async {});
+        registry.register(
+            "test-agent".to_string(),
+            "recon".to_string(),
+            "Enumerate subdomains for example.com".to_string(),
+            handle,
+        );
+
+        let instructions = registry.get_agent_instructions("test-agent");
+        assert_eq!(instructions, Some("Enumerate subdomains for example.com".to_string()));
+
+        let missing = registry.get_agent_instructions("nonexistent");
+        assert_eq!(missing, None);
     }
 }
