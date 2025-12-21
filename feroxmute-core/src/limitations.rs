@@ -25,6 +25,8 @@ pub enum ToolCategory {
     Sast,
     /// Report generation (always allowed)
     Report,
+    /// Basic shell utilities (always allowed)
+    Utility,
 }
 
 /// Registry mapping tool command names to categories
@@ -74,6 +76,48 @@ impl ToolRegistry {
         tools.insert("grype", Sast);
         tools.insert("ast-grep", Sast);
 
+        // Basic shell utilities (always allowed)
+        tools.insert("curl", Utility);
+        tools.insert("wget", Utility);
+        tools.insert("ls", Utility);
+        tools.insert("cat", Utility);
+        tools.insert("find", Utility);
+        tools.insert("grep", Utility);
+        tools.insert("head", Utility);
+        tools.insert("tail", Utility);
+        tools.insert("wc", Utility);
+        tools.insert("sort", Utility);
+        tools.insert("uniq", Utility);
+        tools.insert("cut", Utility);
+        tools.insert("awk", Utility);
+        tools.insert("sed", Utility);
+        tools.insert("echo", Utility);
+        tools.insert("pwd", Utility);
+        tools.insert("cd", Utility);
+        tools.insert("mkdir", Utility);
+        tools.insert("rm", Utility);
+        tools.insert("cp", Utility);
+        tools.insert("mv", Utility);
+        tools.insert("touch", Utility);
+        tools.insert("file", Utility);
+        tools.insert("which", Utility);
+        tools.insert("whoami", Utility);
+        tools.insert("id", Utility);
+        tools.insert("env", Utility);
+        tools.insert("export", Utility);
+        tools.insert("jq", Utility);
+        tools.insert("tr", Utility);
+        tools.insert("xargs", Utility);
+        tools.insert("tee", Utility);
+        tools.insert("base64", Utility);
+        tools.insert("xxd", Utility);
+        tools.insert("strings", Utility);
+        tools.insert("diff", Utility);
+        tools.insert("tar", Utility);
+        tools.insert("unzip", Utility);
+        tools.insert("gzip", Utility);
+        tools.insert("gunzip", Utility);
+
         Self { tools }
     }
 
@@ -99,6 +143,7 @@ impl Default for EngagementLimitations {
     fn default() -> Self {
         let mut allowed = HashSet::new();
         allowed.insert(ToolCategory::Report);
+        allowed.insert(ToolCategory::Utility);
         Self {
             allowed_categories: allowed,
             target_ports: None,
@@ -157,6 +202,7 @@ impl EngagementLimitations {
         allowed.insert(WebCrawl);
         allowed.insert(WebScan);
         allowed.insert(Report);
+        allowed.insert(Utility);
 
         // Conditional
         if !no_exploit {
@@ -206,6 +252,7 @@ impl EngagementLimitations {
             NetworkExploit,
             Sast,
             Report,
+            Utility,
         ]
         .into_iter()
         .collect();
@@ -220,7 +267,7 @@ impl EngagementLimitations {
     /// Create limitations for SAST only
     pub fn for_sast_only() -> Self {
         use ToolCategory::*;
-        let allowed: HashSet<_> = [Sast, Report].into_iter().collect();
+        let allowed: HashSet<_> = [Sast, Report, Utility].into_iter().collect();
 
         Self {
             allowed_categories: allowed,
@@ -232,7 +279,7 @@ impl EngagementLimitations {
     /// Create limitations for passive mode
     pub fn for_passive() -> Self {
         use ToolCategory::*;
-        let allowed: HashSet<_> = [AssetDiscovery, Report].into_iter().collect();
+        let allowed: HashSet<_> = [AssetDiscovery, Report, Utility].into_iter().collect();
 
         Self {
             allowed_categories: allowed,
@@ -298,16 +345,40 @@ mod tests {
     }
 
     #[test]
+    fn test_tool_registry_utility_tools() {
+        let registry = ToolRegistry::new();
+        assert_eq!(
+            registry.categorize("curl http://example.com"),
+            Some(ToolCategory::Utility)
+        );
+        assert_eq!(registry.categorize("ls -la"), Some(ToolCategory::Utility));
+        assert_eq!(
+            registry.categorize("cat /etc/passwd"),
+            Some(ToolCategory::Utility)
+        );
+        assert_eq!(
+            registry.categorize("wget http://example.com"),
+            Some(ToolCategory::Utility)
+        );
+    }
+
+    #[test]
     fn test_tool_registry_unknown_tools() {
         let registry = ToolRegistry::new();
-        assert_eq!(registry.categorize("curl http://example.com"), None);
         assert_eq!(registry.categorize("python3 script.py"), None);
+        assert_eq!(registry.categorize("custom-tool --arg"), None);
     }
 
     #[test]
     fn test_limitations_default_allows_report() {
         let limits = EngagementLimitations::default();
         assert!(limits.is_allowed(ToolCategory::Report));
+    }
+
+    #[test]
+    fn test_limitations_default_allows_utility() {
+        let limits = EngagementLimitations::default();
+        assert!(limits.is_allowed(ToolCategory::Utility));
     }
 
     #[test]
