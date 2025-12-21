@@ -154,10 +154,20 @@ impl LlmProvider for AnthropicProvider {
             .await
             .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
 
+        // Calculate cost
+        let pricing = PricingConfig::load();
+        let cost = pricing.calculate_cost(
+            "anthropic",
+            &self.model,
+            response.total_usage.input_tokens,
+            response.total_usage.output_tokens,
+        );
+
         events_clone.send_metrics(
             response.total_usage.input_tokens,
             response.total_usage.output_tokens,
             0,
+            cost,
         );
 
         Ok(response.output)
@@ -189,10 +199,20 @@ impl LlmProvider for AnthropicProvider {
             result = agent.prompt(user_prompt).extended_details().multi_turn(50) => {
                 match result {
                     Ok(response) => {
+                        // Calculate cost
+                        let pricing = PricingConfig::load();
+                        let cost = pricing.calculate_cost(
+                            "anthropic",
+                            &self.model,
+                            response.total_usage.input_tokens,
+                            response.total_usage.output_tokens,
+                        );
+
                         events.send_metrics(
                             response.total_usage.input_tokens,
                             response.total_usage.output_tokens,
                             0,
+                            cost,
                         );
                         Ok(response.output)
                     }
@@ -234,10 +254,20 @@ impl LlmProvider for AnthropicProvider {
             .await
             .map_err(|e| Error::Provider(format!("Report completion failed: {}", e)))?;
 
+        // Calculate cost
+        let pricing = PricingConfig::load();
+        let cost = pricing.calculate_cost(
+            "anthropic",
+            &self.model,
+            response.total_usage.input_tokens,
+            response.total_usage.output_tokens,
+        );
+
         events.send_metrics(
             response.total_usage.input_tokens,
             response.total_usage.output_tokens,
             0,
+            cost,
         );
 
         Ok(response.output)

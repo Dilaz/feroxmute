@@ -16,13 +16,11 @@ pub struct GitleaksFinding {
     #[serde(rename = "StartLine")]
     pub start_line: u32,
     #[serde(rename = "EndLine")]
-    #[allow(dead_code)]
-    pub end_line: u32,
+    pub _end_line: u32,
     #[serde(rename = "Secret")]
     pub secret: String,
     #[serde(rename = "Match")]
-    #[allow(dead_code)]
-    pub match_text: String,
+    pub _match_text: String,
     #[serde(rename = "RuleID")]
     pub rule_id: String,
 }

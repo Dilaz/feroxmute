@@ -209,9 +209,9 @@ impl SastAgent {
         Ok(Vec::new())
     }
 
-    /// Read a file from the source directory
+    /// Read a file from the source directory (for future use)
     #[allow(dead_code)]
-    async fn read_file(&self, ctx: &AgentContext<'_>, relative_path: &str) -> Result<String> {
+    async fn _read_file(&self, ctx: &AgentContext<'_>, relative_path: &str) -> Result<String> {
         let full_path = self.source_path.join(relative_path);
         let path_str = full_path.to_string_lossy();
 

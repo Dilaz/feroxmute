@@ -57,7 +57,7 @@ impl EventSender for TuiEventSender {
         });
     }
 
-    fn send_metrics(&self, input: u64, output: u64, cache_read: u64) {
+    fn send_metrics(&self, input: u64, output: u64, cache_read: u64, cost_usd: f64) {
         let tx = self.tx.clone();
         tokio::spawn(async move {
             let _ = tx
@@ -65,7 +65,7 @@ impl EventSender for TuiEventSender {
                     input,
                     output,
                     cache_read,
-                    cost_usd: 0.0, // TODO: Will be populated when trait is updated with cost parameter
+                    cost_usd,
                 })
                 .await;
         });

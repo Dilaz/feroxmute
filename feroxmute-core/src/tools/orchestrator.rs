@@ -38,7 +38,7 @@ pub trait EventSender: Send + Sync {
     /// Send a status update
     fn send_status(&self, agent: &str, agent_type: &str, status: AgentStatus);
     /// Send metrics update
-    fn send_metrics(&self, input_tokens: u64, output_tokens: u64, cache_read_tokens: u64);
+    fn send_metrics(&self, input_tokens: u64, output_tokens: u64, cache_read_tokens: u64, cost_usd: f64);
     /// Send vulnerability found
     fn send_vulnerability(&self, severity: Severity, title: &str);
 }

@@ -581,6 +581,7 @@ dependencies = [
  "futures",
  "hyper",
  "miette",
+ "once_cell",
  "regex",
  "rig-core",
  "rusqlite",

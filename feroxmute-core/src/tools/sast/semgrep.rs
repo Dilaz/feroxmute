@@ -7,8 +7,8 @@ use super::SastToolOutput;
 #[derive(Debug, Deserialize)]
 pub struct SemgrepOutput {
     pub results: Vec<SemgrepResult>,
-    #[allow(dead_code)]
-    pub errors: Vec<serde_json::Value>,
+    #[serde(default, rename = "errors")]
+    pub _errors: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -16,16 +16,16 @@ pub struct SemgrepResult {
     pub check_id: String,
     pub path: String,
     pub start: SemgrepLocation,
-    #[allow(dead_code)]
-    pub end: SemgrepLocation,
+    #[serde(rename = "end")]
+    pub _end: SemgrepLocation,
     pub extra: SemgrepExtra,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SemgrepLocation {
     pub line: u32,
-    #[allow(dead_code)]
-    pub col: u32,
+    #[serde(rename = "col")]
+    pub _col: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,8 +39,8 @@ pub struct SemgrepExtra {
 #[derive(Debug, Deserialize)]
 pub struct SemgrepMetadata {
     pub cwe: Option<Vec<String>>,
-    #[allow(dead_code)]
-    pub owasp: Option<Vec<String>>,
+    #[serde(rename = "owasp")]
+    pub _owasp: Option<Vec<String>>,
 }
 
 impl SemgrepOutput {

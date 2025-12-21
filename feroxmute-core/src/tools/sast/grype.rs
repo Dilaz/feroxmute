@@ -27,8 +27,8 @@ pub struct GrypeVulnerability {
 #[derive(Debug, Deserialize)]
 pub struct GrypeFix {
     pub versions: Vec<String>,
-    #[allow(dead_code)]
-    pub state: String,
+    #[serde(rename = "state")]
+    pub _state: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,8 +36,7 @@ pub struct GrypeArtifact {
     pub name: String,
     pub version: String,
     #[serde(rename = "type")]
-    #[allow(dead_code)]
-    pub artifact_type: String,
+    pub _artifact_type: String,
     pub locations: Option<Vec<GrypeLocation>>,
 }
 

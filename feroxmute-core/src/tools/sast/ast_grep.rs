@@ -21,15 +21,15 @@ pub struct AstGrepMatch {
 #[derive(Debug, Deserialize)]
 pub struct AstGrepRange {
     pub start: AstGrepPosition,
-    #[allow(dead_code)]
-    pub end: AstGrepPosition,
+    #[serde(rename = "end")]
+    pub _end: AstGrepPosition,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AstGrepPosition {
     pub line: u32,
-    #[allow(dead_code)]
-    pub column: u32,
+    #[serde(rename = "column")]
+    pub _column: u32,
 }
 
 impl AstGrepOutput {

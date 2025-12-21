@@ -1,0 +1,2081 @@
+[
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-mini-medium",
+        "input": "0.25",
+        "output": "2",
+        "total": "2.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-nano-minimal",
+        "input": "0.05",
+        "output": "0.4",
+        "total": "0.45"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-oss-120b",
+        "input": "0.15",
+        "output": "0.6",
+        "total": "0.75"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-oss-20b",
+        "input": "0.06",
+        "output": "0.2",
+        "total": "0.26"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-minimal",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-nano-medium",
+        "input": "0.05",
+        "output": "0.4",
+        "total": "0.45"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-mini-minimal",
+        "input": "0.25",
+        "output": "2",
+        "total": "2.25"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-1",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o3",
+        "input": "2",
+        "output": "8",
+        "total": "10"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-low",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-nano",
+        "input": "0.05",
+        "output": "0.4",
+        "total": "0.45"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-medium",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-mini",
+        "input": "0.25",
+        "output": "2",
+        "total": "2.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-chatgpt",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-5-codex",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-3-instruct-70b",
+        "input": "0.54",
+        "output": "0.675",
+        "total": "1.215"
+    },
+    {
+        "owner": "Google",
+        "model": "palm-2",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-1-instruct-405b",
+        "input": "3",
+        "output": "3.5",
+        "total": "6.5"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-2-instruct-90b-vision",
+        "input": "0.72",
+        "output": "0.72",
+        "total": "1.44"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-2-instruct-11b-vision",
+        "input": "0.16",
+        "output": "0.16",
+        "total": "0.32"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-4-scout",
+        "input": "0.15",
+        "output": "0.59",
+        "total": "0.74"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-4-maverick",
+        "input": "0.24",
+        "output": "0.85",
+        "total": "1.09"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-lite-preview-09-2025",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3-12b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3n-e2b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3-27b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-lite-preview-09-2025-reasoning",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-preview-09-2025",
+        "input": "0.3",
+        "output": "2.5",
+        "total": "2.8"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-pro",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3-4b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3-1b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3n-e4b",
+        "input": "0.02",
+        "output": "0.04",
+        "total": "0.06"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-preview-09-2025-reasoning",
+        "input": "0.3",
+        "output": "2.5",
+        "total": "2.8"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-sonnet",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-1-opus-thinking",
+        "input": "15",
+        "output": "75",
+        "total": "90"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-1-opus",
+        "input": "15",
+        "output": "75",
+        "total": "90"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-sonnet-thinking",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-5-sonnet",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-5-sonnet-thinking",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Mistral",
+        "model": "ministral-8b",
+        "input": "0.1",
+        "output": "0.1",
+        "total": "0.2"
+    },
+    {
+        "owner": "Mistral",
+        "model": "ministral-3b",
+        "input": "0.04",
+        "output": "0.04",
+        "total": "0.08"
+    },
+    {
+        "owner": "Mistral",
+        "model": "magistral-small-2509",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "Mistral",
+        "model": "devstral-small",
+        "input": "0.1",
+        "output": "0.3",
+        "total": "0.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-medium-3-1",
+        "input": "0.4",
+        "output": "2",
+        "total": "2.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "codestral",
+        "input": "0.3",
+        "output": "0.9",
+        "total": "1.2"
+    },
+    {
+        "owner": "Mistral",
+        "model": "magistral-medium-2509",
+        "input": "2",
+        "output": "5",
+        "total": "7"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-small-3-2",
+        "input": "0.1",
+        "output": "0.3",
+        "total": "0.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "devstral-medium",
+        "input": "0.4",
+        "output": "2",
+        "total": "2.4"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-1-terminus-reasoning",
+        "input": "1.635",
+        "output": "2.75",
+        "total": "4.385"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-1-terminus",
+        "input": "0.27",
+        "output": "1",
+        "total": "1.27"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1",
+        "input": "0.8",
+        "output": "3",
+        "total": "3.8"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-2-reasoning",
+        "input": "0.28",
+        "output": "0.42",
+        "total": "0.7"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-2",
+        "input": "0.28",
+        "output": "0.42",
+        "total": "0.7"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-qwen3-8b",
+        "input": "0.055",
+        "output": "0.095",
+        "total": "0.15"
+    },
+    {
+        "owner": "Perplexity",
+        "model": "r1-1776",
+        "input": "2",
+        "output": "8",
+        "total": "10"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-4",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-4-fast-reasoning",
+        "input": "0.2",
+        "output": "0.5",
+        "total": "0.7"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-3-reasoning",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-4-fast",
+        "input": "0.2",
+        "output": "0.5",
+        "total": "0.7"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-3-mini-reasoning-low",
+        "input": "0",
+        "output": "1",
+        "total": "0.8"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-code-fast-1",
+        "input": "0.2",
+        "output": "1.5",
+        "total": "1.7"
+    },
+    {
+        "owner": "Amazon",
+        "model": "nova-premier",
+        "input": "2.5",
+        "output": "12.5",
+        "total": "15"
+    },
+    {
+        "owner": "Microsoft Azure",
+        "model": "phi-4",
+        "input": "0.125",
+        "output": "0.5",
+        "total": "0.625"
+    },
+    {
+        "owner": "Microsoft Azure",
+        "model": "phi-4-multimodal",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Liquid AI",
+        "model": "lfm2-2-6b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Liquid AI",
+        "model": "lfm2-1-2b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Upstage",
+        "model": "solar-pro-2",
+        "input": "0.5",
+        "output": "0.5",
+        "total": "1"
+    },
+    {
+        "owner": "Upstage",
+        "model": "solar-pro-2-reasoning",
+        "input": "0.5",
+        "output": "0.5",
+        "total": "1"
+    },
+    {
+        "owner": "MiniMax",
+        "model": "minimax-text-01",
+        "input": "0",
+        "output": "1.1",
+        "total": "1.3"
+    },
+    {
+        "owner": "MiniMax",
+        "model": "minimax-m1-80k",
+        "input": "0.4",
+        "output": "2.1",
+        "total": "2.5"
+    },
+    {
+        "owner": "MiniMax",
+        "model": "minimax-m1-40k",
+        "input": "0.4",
+        "output": "2.1",
+        "total": "2.5"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-3-1-nemotron-instruct-70b",
+        "input": "0.6",
+        "output": "0.6",
+        "total": "1.2"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-3-1-nemotron-ultra-253b-v1-reasoning",
+        "input": "0.6",
+        "output": "1.8",
+        "total": "2.4"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-3-3-nemotron-super-49b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "nvidia-nemotron-nano-9b-v2-reasoning",
+        "input": "0.04",
+        "output": "0.16",
+        "total": "0.2"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-nemotron-super-49b-v1-5",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-3-3-nemotron-super-49b-reasoning",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-nemotron-super-49b-v1-5-reasoning",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "nvidia-nemotron-nano-9b-v2",
+        "input": "0.04",
+        "output": "0.16",
+        "total": "0.2"
+    },
+    {
+        "owner": "NVIDIA",
+        "model": "llama-3-1-nemotron-nano-4b-reasoning",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Moonshot AI",
+        "model": "kimi-k2-0905",
+        "input": "0.995",
+        "output": "2.745",
+        "total": "3.74"
+    },
+    {
+        "owner": "IBM",
+        "model": "granite-4-0-micro",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "IBM",
+        "model": "granite-3-3-8b-instruct",
+        "input": "0.03",
+        "output": "0.25",
+        "total": "0.28"
+    },
+    {
+        "owner": "IBM",
+        "model": "granite-4-0-h-small",
+        "input": "0.06",
+        "output": "0.25",
+        "total": "0.31"
+    },
+    {
+        "owner": "Reka AI",
+        "model": "reka-flash-3",
+        "input": "0.2",
+        "output": "0.8",
+        "total": "1"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "hermes-4-llama-3-1-405b",
+        "input": "1",
+        "output": "3",
+        "total": "4"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "deephermes-3-mistral-24b-preview",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "deephermes-3-llama-3-1-8b-preview",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "hermes-4-llama-3-1-405b-reasoning",
+        "input": "1",
+        "output": "3",
+        "total": "4"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "hermes-4-llama-3-1-70b",
+        "input": "0.13",
+        "output": "0.4",
+        "total": "0.53"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "hermes-4-llama-3-1-70b-reasoning",
+        "input": "0.13",
+        "output": "0.4",
+        "total": "0.53"
+    },
+    {
+        "owner": "LG AI Research",
+        "model": "exaone-4-0-1-2b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "LG AI Research",
+        "model": "exaone-4-0-32b",
+        "input": "0.6",
+        "output": "1",
+        "total": "1.6"
+    },
+    {
+        "owner": "LG AI Research",
+        "model": "exaone-4-0-1-2b-reasoning",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "LG AI Research",
+        "model": "exaone-4-0-32b-reasoning",
+        "input": "0.6",
+        "output": "1",
+        "total": "1.6"
+    },
+    {
+        "owner": "Z AI",
+        "model": "glm-4-5v-reasoning",
+        "input": "0.6",
+        "output": "1.8",
+        "total": "2.4"
+    },
+    {
+        "owner": "Z AI",
+        "model": "glm-4-5-air",
+        "input": "0.2",
+        "output": "1.1",
+        "total": "1.3"
+    },
+    {
+        "owner": "Z AI",
+        "model": "glm-4-6",
+        "input": "0.6",
+        "output": "2.1",
+        "total": "2.7"
+    },
+    {
+        "owner": "Z AI",
+        "model": "glm-4-6-reasoning",
+        "input": "0.6",
+        "output": "2.05",
+        "total": "2.65"
+    },
+    {
+        "owner": "Z AI",
+        "model": "glm-4-5v",
+        "input": "0.6",
+        "output": "1.8",
+        "total": "2.4"
+    },
+    {
+        "owner": "Cohere",
+        "model": "aya-expanse-32b",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "Cohere",
+        "model": "aya-expanse-8b",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "Cohere",
+        "model": "command-a",
+        "input": "2.5",
+        "output": "10",
+        "total": "12.5"
+    },
+    {
+        "owner": "ServiceNow",
+        "model": "apriel-v1-5-15b-thinker",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-1-7-mini",
+        "input": "0.2",
+        "output": "0.4",
+        "total": "0.6"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-1-7-large",
+        "input": "2",
+        "output": "8",
+        "total": "10"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwq-32b",
+        "input": "0.35",
+        "output": "0.725",
+        "total": "1.075"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-30b-a3b-2507",
+        "input": "0.2",
+        "output": "0.8",
+        "total": "1"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-coder-480b-a35b-instruct",
+        "input": "1.5",
+        "output": "7.5",
+        "total": "9"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-30b-a3b-2507-reasoning",
+        "input": "0.2",
+        "output": "2.4",
+        "total": "2.6"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-235b-a22b-instruct-2507-reasoning",
+        "input": "0.7",
+        "output": "8.4",
+        "total": "9.1"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-coder-30b-a3b-instruct",
+        "input": "0.45",
+        "output": "2.25",
+        "total": "2.7"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-next-80b-a3b-instruct",
+        "input": "0.5",
+        "output": "2",
+        "total": "2.5"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-235b-a22b-instruct-2507",
+        "input": "0.7",
+        "output": "2.8",
+        "total": "3.5"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-next-80b-a3b-reasoning",
+        "input": "0.5",
+        "output": "6",
+        "total": "6.5"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-omni-30b-a3b-instruct",
+        "input": "0.25",
+        "output": "0.97",
+        "total": "1.22"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-4b-2507-instruct-reasoning",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-4b-2507-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-max",
+        "input": "1.2",
+        "output": "6",
+        "total": "7.2"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-omni-30b-a3b-reasoning",
+        "input": "0.25",
+        "output": "0.97",
+        "total": "1.22"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o1",
+        "input": "15",
+        "output": "60",
+        "total": "75"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o1-preview",
+        "input": "16.5",
+        "output": "66",
+        "total": "82.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o1-mini",
+        "input": "1.1",
+        "output": "4.4",
+        "total": "5.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-2024-08-06",
+        "input": "2.5",
+        "output": "10",
+        "total": "12.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-2024-05-13",
+        "input": "5",
+        "output": "15",
+        "total": "20"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4-turbo",
+        "input": "10",
+        "output": "30",
+        "total": "40"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o",
+        "input": "2.5",
+        "output": "10",
+        "total": "12.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-mini",
+        "input": "0.15",
+        "output": "0.6",
+        "total": "0.75"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-35-turbo",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o3-mini-high",
+        "input": "1.1",
+        "output": "4.4",
+        "total": "5.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-chatgpt",
+        "input": "5",
+        "output": "15",
+        "total": "20"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4",
+        "input": "30",
+        "output": "60",
+        "total": "90"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4-1-nano",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-mini-realtime-dec-2024",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o4-mini",
+        "input": "1.1",
+        "output": "4.4",
+        "total": "5.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o3-mini",
+        "input": "1.1",
+        "output": "4.4",
+        "total": "5.5"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-realtime-dec-2024",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4-1",
+        "input": "2",
+        "output": "8",
+        "total": "10"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o3-pro",
+        "input": "20",
+        "output": "80",
+        "total": "100"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-65b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4-1-mini",
+        "input": "0",
+        "output": "2",
+        "total": "2"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4o-chatgpt-03-25",
+        "input": "5",
+        "output": "15",
+        "total": "20"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-4-5",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "o1-pro",
+        "input": "150",
+        "output": "600",
+        "total": "750"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-1-instruct-70b",
+        "input": "0.76",
+        "output": "0.76",
+        "total": "1.52"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-1-instruct-8b",
+        "input": "0.1",
+        "output": "0.1",
+        "total": "0.2"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-2-instruct-3b",
+        "input": "0.045",
+        "output": "0.055",
+        "total": "0.1"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen-chat-14b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-instruct-70b",
+        "input": "0.725",
+        "output": "0.84",
+        "total": "1.565"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-instruct-8b",
+        "input": "0.05",
+        "output": "0.07",
+        "total": "0.12"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-3-2-instruct-1b",
+        "input": "0.053",
+        "output": "0.055",
+        "total": "0.108"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-2-chat-13b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-2-chat-7b",
+        "input": "0.05",
+        "output": "0.25",
+        "total": "0.3"
+    },
+    {
+        "owner": "Meta",
+        "model": "llama-2-chat-70b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-pro-experimental-02-05",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-flash-experimental",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-5-pro",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-flash-lite-preview",
+        "input": "0.075",
+        "output": "0.3",
+        "total": "0.375"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-flash",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-5-flash",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-2-27b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-2-9b",
+        "input": "0.2",
+        "output": "0.2",
+        "total": "0.4"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-5-flash-8b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-pro-05-06",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-5-pro-may-2024",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-reasoning",
+        "input": "0.3",
+        "output": "2.5",
+        "total": "2.8"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-5-flash-may-2024",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-04-2025",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-reasoning-04-2025",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash",
+        "input": "0.3",
+        "output": "2.5",
+        "total": "2.8"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-lite",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-pro-03-25",
+        "input": "1.25",
+        "output": "10",
+        "total": "11.25"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-0-ultra",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-5-flash-lite-reasoning",
+        "input": "0.1",
+        "output": "0.4",
+        "total": "0.5"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-flash-thinking-exp-0121",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-flash-thinking-exp-1219",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-1-0-pro",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "Google",
+        "model": "gemini-2-0-flash-lite-001",
+        "input": "0.075",
+        "output": "0.3",
+        "total": "0.375"
+    },
+    {
+        "owner": "Google",
+        "model": "gemma-3n-e4b-preview-0520",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-35-sonnet",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-35-sonnet-june-24",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-3-opus",
+        "input": "15",
+        "output": "75",
+        "total": "90"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-3-5-haiku",
+        "input": "0.8",
+        "output": "4",
+        "total": "4.8"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-3-sonnet",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-3-haiku",
+        "input": "0.25",
+        "output": "1.25",
+        "total": "1.5"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-instant",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-opus",
+        "input": "15",
+        "output": "75",
+        "total": "90"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-4-opus-thinking",
+        "input": "15",
+        "output": "75",
+        "total": "90"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-3-7-sonnet",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-21",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-3-7-sonnet-thinking",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Anthropic",
+        "model": "claude-2",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-large-2",
+        "input": "2",
+        "output": "6",
+        "total": "8"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-large-2407",
+        "input": "2",
+        "output": "6",
+        "total": "8"
+    },
+    {
+        "owner": "Mistral",
+        "model": "pixtral-large-2411",
+        "input": "2",
+        "output": "6",
+        "total": "8"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-small-3",
+        "input": "0",
+        "output": "0",
+        "total": "0.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-small",
+        "input": "0.2",
+        "output": "0.6",
+        "total": "0.8"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-8x22b-instruct",
+        "input": "2",
+        "output": "6",
+        "total": "8"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-small-2402",
+        "input": "1",
+        "output": "3",
+        "total": "4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-large",
+        "input": "4",
+        "output": "12",
+        "total": "16"
+    },
+    {
+        "owner": "Mistral",
+        "model": "pixtral",
+        "input": "0.15",
+        "output": "0.15",
+        "total": "0.3"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-nemo",
+        "input": "0.15",
+        "output": "0.15",
+        "total": "0.3"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mixtral-8x7b-instruct",
+        "input": "0.7",
+        "output": "0.7",
+        "total": "1.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "codestral-mamba",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-7b-instruct",
+        "input": "0.25",
+        "output": "0.25",
+        "total": "0.5"
+    },
+    {
+        "owner": "Mistral",
+        "model": "magistral-small",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "Mistral",
+        "model": "devstral-small-2505",
+        "input": "0.1",
+        "output": "0.3",
+        "total": "0.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "codestral-2405",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-medium",
+        "input": "2.75",
+        "output": "8.1",
+        "total": "10.85"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-saba",
+        "input": "0.2",
+        "output": "0.6",
+        "total": "0.8"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-medium-3",
+        "input": "0.4",
+        "output": "2",
+        "total": "2.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "mistral-small-3-1",
+        "input": "0.1",
+        "output": "0.3",
+        "total": "0.4"
+    },
+    {
+        "owner": "Mistral",
+        "model": "magistral-medium",
+        "input": "2",
+        "output": "5",
+        "total": "7"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-distill-llama-70b",
+        "input": "0.725",
+        "output": "0.895",
+        "total": "1.62"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-distill-qwen-32b",
+        "input": "0.285",
+        "output": "0.285",
+        "total": "0.57"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3",
+        "input": "0.5",
+        "output": "1.25",
+        "total": "1.75"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-distill-qwen-14b",
+        "input": "0.875",
+        "output": "0.875",
+        "total": "1.75"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v2-5",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-coder-v2",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-distill-llama-8b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-llm-67b-chat",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-distill-qwen-1-5b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-0324",
+        "input": "0.9",
+        "output": "1.25",
+        "total": "2.15"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-1",
+        "input": "0.58",
+        "output": "1.68",
+        "total": "2.26"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-r1-0120",
+        "input": "1.35",
+        "output": "3",
+        "total": "4.35"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v2",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-coder-v2-lite",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v2-5-sep-2024",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "DeepSeek",
+        "model": "deepseek-v3-1-reasoning",
+        "input": "0.425",
+        "output": "1.34",
+        "total": "1.765"
+    },
+    {
+        "owner": "Perplexity",
+        "model": "sonar",
+        "input": "1",
+        "output": "1",
+        "total": "2"
+    },
+    {
+        "owner": "Perplexity",
+        "model": "sonar-reasoning-pro",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Perplexity",
+        "model": "sonar-reasoning",
+        "input": "1",
+        "output": "5",
+        "total": "6"
+    },
+    {
+        "owner": "Perplexity",
+        "model": "sonar-pro",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-beta",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-3",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-3-mini-reasoning",
+        "input": "0.3",
+        "output": "0.5",
+        "total": "0.8"
+    },
+    {
+        "owner": "xAI",
+        "model": "grok-2-1212",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenChat",
+        "model": "openchat-35",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Amazon",
+        "model": "nova-pro",
+        "input": "0.8",
+        "output": "3.2",
+        "total": "4"
+    },
+    {
+        "owner": "Amazon",
+        "model": "nova-lite",
+        "input": "0.06",
+        "output": "0.24",
+        "total": "0.3"
+    },
+    {
+        "owner": "Amazon",
+        "model": "nova-micro",
+        "input": "0.035",
+        "output": "0.14",
+        "total": "0.175"
+    },
+    {
+        "owner": "Microsoft Azure",
+        "model": "phi-4-mini",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Microsoft Azure",
+        "model": "phi-3-mini",
+        "input": "0.13",
+        "output": "0.52",
+        "total": "0.65"
+    },
+    {
+        "owner": "Microsoft Azure",
+        "model": "phi-3-medium",
+        "input": "0.17",
+        "output": "0.68",
+        "total": "0.85"
+    },
+    {
+        "owner": "Liquid AI",
+        "model": "lfm-40b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Upstage",
+        "model": "solar-mini",
+        "input": "0.15",
+        "output": "0.15",
+        "total": "0.3"
+    },
+    {
+        "owner": "Upstage",
+        "model": "solar-pro-2-preview",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Upstage",
+        "model": "solar-pro-2-preview-reasoning",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Databricks",
+        "model": "dbrx",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Moonshot AI",
+        "model": "kimi-k2",
+        "input": "0.6",
+        "output": "2.5",
+        "total": "3.1"
+    },
+    {
+        "owner": "Allen Institute for AI",
+        "model": "tulu3-405b",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Reka AI",
+        "model": "reka-flash",
+        "input": "0.2",
+        "output": "0.8",
+        "total": "1"
+    },
+    {
+        "owner": "Reka AI",
+        "model": "reka-core",
+        "input": "2",
+        "output": "2",
+        "total": "4"
+    },
+    {
+        "owner": "Reka AI",
+        "model": "reka-flash-02-2024",
+        "input": "0.2",
+        "output": "0.8",
+        "total": "1"
+    },
+    {
+        "owner": "Reka AI",
+        "model": "reka-edge",
+        "input": "0.1",
+        "output": "0.1",
+        "total": "0.2"
+    },
+    {
+        "owner": "Nous Research",
+        "model": "hermes-3-llama-3-1-70b",
+        "input": "0.3",
+        "output": "0.3",
+        "total": "0.6"
+    },
+    {
+        "owner": "Z AI",
+        "model": "glm-4.5",
+        "input": "0.59",
+        "output": "2.19",
+        "total": "2.78"
+    },
+    {
+        "owner": "Cohere",
+        "model": "command-r-plus",
+        "input": "2.5",
+        "output": "10",
+        "total": "12.5"
+    },
+    {
+        "owner": "Cohere",
+        "model": "command-r-plus-04-2024",
+        "input": "3",
+        "output": "15",
+        "total": "18"
+    },
+    {
+        "owner": "Cohere",
+        "model": "command-r",
+        "input": "0.15",
+        "output": "0.6",
+        "total": "0.75"
+    },
+    {
+        "owner": "Cohere",
+        "model": "command-r-03-2024",
+        "input": "0.5",
+        "output": "1.5",
+        "total": "2"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-1-5-mini",
+        "input": "0.2",
+        "output": "0.4",
+        "total": "0.6"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-1-5-large",
+        "input": "2",
+        "output": "8",
+        "total": "10"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-1-6-large",
+        "input": "2",
+        "output": "8",
+        "total": "10"
+    },
+    {
+        "owner": "AI21 Labs",
+        "model": "jamba-1-6-mini",
+        "input": "0.2",
+        "output": "0.4",
+        "total": "0.6"
+    },
+    {
+        "owner": "Snowflake",
+        "model": "arctic-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen-2-5-max",
+        "input": "1.6",
+        "output": "6.4",
+        "total": "8"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen2-5-72b-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen2-5-coder-32b-instruct",
+        "input": "0.2",
+        "output": "0.2",
+        "total": "0.4"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen-turbo",
+        "input": "0.05",
+        "output": "0.2",
+        "total": "0.25"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen2-72b-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-32b-instruct",
+        "input": "0.7",
+        "output": "2.8",
+        "total": "3.5"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-235b-a22b-instruct",
+        "input": "0.7",
+        "output": "2.8",
+        "total": "3.5"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-max-preview",
+        "input": "1.2",
+        "output": "6",
+        "total": "7.2"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-8b-instruct-reasoning",
+        "input": "0.18",
+        "output": "2.1",
+        "total": "2.28"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-4b-instruct",
+        "input": "0.11",
+        "output": "0.42",
+        "total": "0.53"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-32b-instruct-reasoning",
+        "input": "0.7",
+        "output": "8.4",
+        "total": "9.1"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen-chat-72b",
+        "input": "1",
+        "output": "1",
+        "total": "2"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-30b-a3b-instruct-reasoning",
+        "input": "0.2",
+        "output": "2.4",
+        "total": "2.6"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-14b-instruct",
+        "input": "0.35",
+        "output": "1.4",
+        "total": "1.75"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-1.7b-instruct",
+        "input": "0.11",
+        "output": "0.42",
+        "total": "0.53"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-8b-instruct",
+        "input": "0.18",
+        "output": "0.7",
+        "total": "0.88"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "QwQ-32B-Preview",
+        "input": "0.66",
+        "output": "0.69",
+        "total": "1.35"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-4b-instruct-reasoning",
+        "input": "0.11",
+        "output": "1.26",
+        "total": "1.37"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-0.6b-instruct",
+        "input": "0.11",
+        "output": "0.42",
+        "total": "0.53"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-30b-a3b-instruct",
+        "input": "0.2",
+        "output": "0.8",
+        "total": "1"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-14b-instruct-reasoning",
+        "input": "0.35",
+        "output": "4.2",
+        "total": "4.55"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen2.5-32b-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-1.7b-instruct-reasoning",
+        "input": "0.11",
+        "output": "1.26",
+        "total": "1.37"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-0.6b-instruct-reasoning",
+        "input": "0.11",
+        "output": "1.26",
+        "total": "1.37"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen2-5-coder-7b-instruct",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen3-235b-a22b-instruct-reasoning",
+        "input": "0.7",
+        "output": "8.4",
+        "total": "9.1"
+    },
+    {
+        "owner": "Alibaba",
+        "model": "qwen1.5-110b-chat",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "01.AI",
+        "model": "yi-large",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    },
+    {
+        "owner": "OpenAI",
+        "model": "gpt-3-5-turbo-0613",
+        "input": "0",
+        "output": "0",
+        "total": "0"
+    }
+]

@@ -209,6 +209,10 @@ impl ContainerManager {
             working_dir: workdir.map(|s| s.to_string()),
             attach_stdout: Some(true),
             attach_stderr: Some(true),
+            env: Some(vec![
+                "PATH=/root/.pdtm/go/bin:/root/go/bin:/root/.local/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
+                "GOPATH=/root/go".to_string(),
+            ]),
             ..Default::default()
         };
 

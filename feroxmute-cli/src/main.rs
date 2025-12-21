@@ -8,6 +8,7 @@ use args::Args;
 use clap::Parser;
 use feroxmute_core::config::{EngagementConfig, ProviderConfig, ProviderName};
 use feroxmute_core::docker::{find_docker_dir, ContainerConfig, ContainerManager};
+use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::create_provider;
 use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
@@ -334,6 +335,44 @@ async fn main() -> Result<()> {
             || targets.groups.iter().any(|g| g.source_target.is_some());
         let container = Arc::new(container);
 
+        // Build engagement limitations from CLI args
+        let limitations = Arc::new(if args.sast_only {
+            EngagementLimitations::for_sast_only()
+        } else if args.passive {
+            EngagementLimitations::for_passive()
+        } else {
+            let base = match args.scope.as_str() {
+                "network" => EngagementLimitations::for_network_scope(
+                    args.no_discovery,
+                    args.no_exploit,
+                    args.no_portscan,
+                ),
+                "full" => EngagementLimitations::for_full_scope(),
+                _ => EngagementLimitations::for_web_scope(
+                    args.no_discovery,
+                    args.no_exploit,
+                    args.no_portscan,
+                ),
+            };
+
+            // Apply optional port and rate limit modifiers
+            let base = if let Some(ref ports) = args.ports {
+                let ports: Vec<u16> = ports
+                    .split(',')
+                    .filter_map(|p| p.trim().parse().ok())
+                    .collect();
+                base.with_ports(ports)
+            } else {
+                base
+            };
+
+            if let Some(rate) = args.rate_limit {
+                base.with_rate_limit(rate)
+            } else {
+                base
+            }
+        });
+
         let agent_handle = local.spawn_local(async move {
             runner::run_orchestrator(
                 agent_target,
@@ -342,6 +381,7 @@ async fn main() -> Result<()> {
                 tx,
                 agent_cancel,
                 has_source,
+                limitations,
             )
             .await
         });
