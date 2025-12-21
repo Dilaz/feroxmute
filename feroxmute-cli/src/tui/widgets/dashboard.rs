@@ -71,12 +71,13 @@ fn render_metrics(frame: &mut Frame, app: &App, area: Rect) {
         ])
         .split(area);
 
-    // Token metrics
+    // Token metrics with cost
     let tokens = format!(
-        "In: {} | Out: {} | Cache: {}",
+        "In: {} | Out: {} | Cache: {} | Cost: {}",
         format_number(app.metrics.input_tokens),
         format_number(app.metrics.output_tokens),
-        format_number(app.metrics.cache_read_tokens)
+        format_number(app.metrics.cache_read_tokens),
+        format_cost(app.metrics.estimated_cost_usd)
     );
     let token_block =
         Paragraph::new(tokens).block(Block::default().borders(Borders::ALL).title(" Tokens "));
@@ -325,6 +326,15 @@ fn format_number(n: u64) -> String {
     }
 }
 
+/// Format cost with appropriate precision
+fn format_cost(cost: f64) -> String {
+    if cost < 0.01 {
+        format!("${:.4}", cost)
+    } else {
+        format!("${:.2}", cost)
+    }
+}
+
 /// Get color for engagement phase
 fn phase_color(phase: feroxmute_core::agents::EngagementPhase) -> Style {
     use feroxmute_core::agents::EngagementPhase;
@@ -350,5 +360,14 @@ mod tests {
         assert_eq!(format_number(500), "500");
         assert_eq!(format_number(1500), "1.5K");
         assert_eq!(format_number(1_500_000), "1.5M");
+    }
+
+    #[test]
+    fn test_format_cost() {
+        assert_eq!(format_cost(0.0001), "$0.0001");
+        assert_eq!(format_cost(0.005), "$0.0050");
+        assert_eq!(format_cost(0.05), "$0.05");
+        assert_eq!(format_cost(1.50), "$1.50");
+        assert_eq!(format_cost(99.99), "$99.99");
     }
 }
