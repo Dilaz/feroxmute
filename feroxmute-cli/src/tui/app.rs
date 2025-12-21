@@ -35,6 +35,7 @@ pub struct Metrics {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub tool_calls: u64,
+    pub estimated_cost_usd: f64,
 }
 
 /// Vulnerability severity counts
@@ -258,9 +259,27 @@ impl App {
     }
 
     /// Update spawned agent status
-    pub fn update_spawned_agent_status(&mut self, agent: &str, status: AgentStatus) {
+    pub fn update_spawned_agent_status(
+        &mut self,
+        agent: &str,
+        agent_type: &str,
+        status: AgentStatus,
+    ) {
         if let Some(info) = self.agents.get_mut(agent) {
             info.status = status;
+            if !agent_type.is_empty() {
+                info.agent_type = agent_type.to_string();
+            }
+        } else if agent != "orchestrator" && agent != "system" {
+            // New agent - add it
+            self.agents.insert(
+                agent.to_string(),
+                AgentDisplayInfo {
+                    agent_type: agent_type.to_string(),
+                    status,
+                    activity: String::new(),
+                },
+            );
         }
     }
 
@@ -272,11 +291,12 @@ impl App {
 
     /// Update metrics
     #[allow(dead_code)]
-    pub fn update_metrics(&mut self, input: u64, output: u64, cache_read: u64, tool_calls: u64) {
+    pub fn update_metrics(&mut self, input: u64, output: u64, cache_read: u64, tool_calls: u64, cost: f64) {
         self.metrics.input_tokens += input;
         self.metrics.output_tokens += output;
         self.metrics.cache_read_tokens += cache_read;
         self.metrics.tool_calls += tool_calls;
+        self.metrics.estimated_cost_usd += cost;
     }
 
     /// Navigate to view

@@ -5,12 +5,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use feroxmute_core::agents::{Agent, AgentRegistry, AgentStatus, OrchestratorAgent, Prompts};
 use feroxmute_core::docker::ContainerManager;
+use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::LlmProvider;
+use feroxmute_core::state::Severity;
 use feroxmute_core::tools::{EventSender, OrchestratorContext};
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-use crate::tui::AgentEvent;
+use crate::tui::{AgentEvent, VulnSeverity};
 
 /// Event sender implementation that wraps the TUI channel
 struct TuiEventSender {
@@ -40,11 +42,52 @@ impl EventSender for TuiEventSender {
         });
     }
 
-    fn send_status(&self, agent: &str, status: AgentStatus) {
+    fn send_status(&self, agent: &str, agent_type: &str, status: AgentStatus) {
         let tx = self.tx.clone();
         let agent = agent.to_string();
+        let agent_type = agent_type.to_string();
         tokio::spawn(async move {
-            let _ = tx.send(AgentEvent::Status { agent, status }).await;
+            let _ = tx
+                .send(AgentEvent::Status {
+                    agent,
+                    agent_type,
+                    status,
+                })
+                .await;
+        });
+    }
+
+    fn send_metrics(&self, input: u64, output: u64, cache_read: u64) {
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx
+                .send(AgentEvent::Metrics {
+                    input,
+                    output,
+                    cache_read,
+                    cost_usd: 0.0, // TODO: Will be populated when trait is updated with cost parameter
+                })
+                .await;
+        });
+    }
+
+    fn send_vulnerability(&self, severity: Severity, title: &str) {
+        let tx = self.tx.clone();
+        let vuln_severity = match severity {
+            Severity::Critical => VulnSeverity::Critical,
+            Severity::High => VulnSeverity::High,
+            Severity::Medium => VulnSeverity::Medium,
+            Severity::Low => VulnSeverity::Low,
+            Severity::Info => VulnSeverity::Info,
+        };
+        let title = title.to_string();
+        tokio::spawn(async move {
+            let _ = tx
+                .send(AgentEvent::Vulnerability {
+                    severity: vuln_severity,
+                    title,
+                })
+                .await;
         });
     }
 }
@@ -57,11 +100,13 @@ pub async fn run_orchestrator(
     tx: mpsc::Sender<AgentEvent>,
     cancel: CancellationToken,
     has_source_target: bool,
+    limitations: Arc<EngagementLimitations>,
 ) -> Result<()> {
     // Send initial status
     let _ = tx
         .send(AgentEvent::Status {
             agent: "orchestrator".to_string(),
+            agent_type: "orchestrator".to_string(),
             status: AgentStatus::Running,
         })
         .await;
@@ -83,11 +128,12 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations)) => {
             match result {
                 Ok(output) => {
                     let _ = tx.send(AgentEvent::Status {
                         agent: "orchestrator".to_string(),
+                        agent_type: "orchestrator".to_string(),
                         status: AgentStatus::Completed,
                     }).await;
 
@@ -99,6 +145,7 @@ pub async fn run_orchestrator(
                 Err(e) => {
                     let _ = tx.send(AgentEvent::Status {
                         agent: "orchestrator".to_string(),
+                        agent_type: "orchestrator".to_string(),
                         status: AgentStatus::Failed,
                     }).await;
 
@@ -118,6 +165,7 @@ pub async fn run_orchestrator(
 
             let _ = tx.send(AgentEvent::Status {
                 agent: "orchestrator".to_string(),
+                agent_type: "orchestrator".to_string(),
                 status: AgentStatus::Idle,
             }).await;
         }
@@ -136,6 +184,7 @@ async fn run_orchestrator_with_tools(
     prompts: &Prompts,
     cancel: CancellationToken,
     has_source_target: bool,
+    limitations: Arc<EngagementLimitations>,
 ) -> Result<String> {
     // Create the orchestrator context with all shared state
     let context = Arc::new(OrchestratorContext {
@@ -147,15 +196,17 @@ async fn run_orchestrator_with_tools(
         prompts: prompts.clone(),
         target: target.to_string(),
         findings: Arc::new(Mutex::new(Vec::new())),
+        limitations: Arc::clone(&limitations),
     });
 
-    // Build user prompt
+    // Build user prompt with limitations
     let user_prompt = format!(
-        "Target: {}\nEngagement Task: Perform security assessment\n\n\
+        "Target: {}\n\n{}\n\nEngagement Task: Perform security assessment\n\n\
         You have tools to spawn agents (recon, scanner{}, report), wait for them, \
         record findings, and complete the engagement.\n\n\
         Start by spawning appropriate agents for reconnaissance.",
         target,
+        limitations.to_prompt_section(),
         if has_source_target { ", sast" } else { "" }
     );
 

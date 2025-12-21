@@ -12,7 +12,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Frame, Terminal};
 
 use super::app::{App, View};
-use super::channel::AgentEvent;
+use super::channel::{AgentEvent, VulnSeverity};
 use super::events::{handle_event, poll_event, EventResult};
 use super::widgets::{agent_detail, dashboard};
 
@@ -246,18 +246,37 @@ fn drain_events(app: &mut App) {
             AgentEvent::Thinking(thinking) => {
                 app.current_thinking = thinking;
             }
-            AgentEvent::Status { agent, status } => {
+            AgentEvent::Status {
+                agent,
+                agent_type,
+                status,
+            } => {
                 app.update_agent_status(&agent, status);
-                app.update_spawned_agent_status(&agent, status);
+                app.update_spawned_agent_status(&agent, &agent_type, status);
             }
             AgentEvent::Metrics {
                 input,
                 output,
                 cache_read,
+                cost_usd,
             } => {
                 app.metrics.input_tokens += input;
                 app.metrics.output_tokens += output;
                 app.metrics.cache_read_tokens += cache_read;
+                app.metrics.estimated_cost_usd += cost_usd;
+            }
+            AgentEvent::Vulnerability { severity, title } => {
+                match severity {
+                    VulnSeverity::Critical => app.vuln_counts.critical += 1,
+                    VulnSeverity::High => app.vuln_counts.high += 1,
+                    VulnSeverity::Medium => app.vuln_counts.medium += 1,
+                    VulnSeverity::Low => app.vuln_counts.low += 1,
+                    VulnSeverity::Info => app.vuln_counts.info += 1,
+                }
+                app.add_feed(super::app::FeedEntry::new(
+                    "vuln",
+                    format!("[{:?}] {}", severity, title),
+                ));
             }
             AgentEvent::Finished { success, message } => {
                 let agent = "system";

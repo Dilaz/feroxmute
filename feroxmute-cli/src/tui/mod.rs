@@ -8,5 +8,5 @@ pub mod runner;
 pub mod widgets;
 
 pub use app::{App, FeedEntry};
-pub use channel::AgentEvent;
+pub use channel::{AgentEvent, VulnSeverity};
 pub use runner::run;
