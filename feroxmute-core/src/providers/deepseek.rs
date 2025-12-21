@@ -9,6 +9,7 @@ use rig::providers::deepseek;
 
 use crate::docker::ContainerManager;
 use crate::limitations::EngagementLimitations;
+use crate::pricing::PricingConfig;
 use crate::state::MetricsTracker;
 use crate::tools::{
     AddRecommendationTool, CompleteEngagementTool, DockerShellTool, EventSender, ExportJsonTool,
@@ -96,8 +97,10 @@ impl LlmProvider for DeepSeekProvider {
 
         let estimated_input = prompt.len() as u64 / 4;
         let estimated_output = response.len() as u64 / 4;
+        let pricing = PricingConfig::load();
+        let cost = pricing.calculate_cost("deepseek", &self.model, estimated_input, estimated_output);
         self.metrics
-            .record_tokens(estimated_input, 0, estimated_output, 0.0);
+            .record_tokens(estimated_input, 0, estimated_output, cost);
 
         Ok(CompletionResponse {
             content: Some(response),

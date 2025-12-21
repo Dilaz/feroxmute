@@ -24,11 +24,15 @@ pub struct PricingConfig {
     pub models: HashMap<String, ProviderPricing>,
 }
 
+static PRICING_CONFIG: Lazy<PricingConfig> = Lazy::new(|| {
+    let toml_str = include_str!("../pricing.toml");
+    toml::from_str(toml_str).expect("Invalid pricing.toml")
+});
+
 impl PricingConfig {
-    /// Load pricing from embedded TOML
-    pub fn load() -> Self {
-        let toml_str = include_str!("../pricing.toml");
-        toml::from_str(toml_str).expect("Invalid pricing.toml")
+    /// Load pricing from embedded TOML (cached after first call)
+    pub fn load() -> &'static Self {
+        &PRICING_CONFIG
     }
 
     /// Get pricing for a provider and model
