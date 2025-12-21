@@ -1,5 +1,6 @@
 //! TUI Application state
 
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
@@ -85,6 +86,29 @@ pub struct AgentDisplayInfo {
     pub agent_type: String,
     pub status: AgentStatus,
     pub activity: String,
+    pub spawn_order: usize,
+    pub thinking: Option<String>,
+    pub output_buffer: VecDeque<String>,
+}
+
+impl AgentDisplayInfo {
+    pub fn new_orchestrator() -> Self {
+        Self {
+            agent_type: "orchestrator".to_string(),
+            status: AgentStatus::Idle,
+            activity: String::new(),
+            spawn_order: 0,
+            thinking: None,
+            output_buffer: VecDeque::with_capacity(100),
+        }
+    }
+
+    pub fn push_output(&mut self, line: String) {
+        if self.output_buffer.len() >= 100 {
+            self.output_buffer.pop_front();
+        }
+        self.output_buffer.push_back(line);
+    }
 }
 
 /// Activity feed entry
