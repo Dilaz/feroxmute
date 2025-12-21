@@ -10,8 +10,8 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 
     // Initialize metrics if not exists
     conn.execute(
-        "INSERT OR IGNORE INTO metrics (id, tool_calls, tokens_input, tokens_cached, tokens_output)
-         VALUES ('global', 0, 0, 0, 0)",
+        "INSERT OR IGNORE INTO metrics (id, tool_calls, tokens_input, tokens_cached, tokens_output, estimated_cost_usd)
+         VALUES ('global', 0, 0, 0, 0, 0.0)",
         [],
     )?;
 

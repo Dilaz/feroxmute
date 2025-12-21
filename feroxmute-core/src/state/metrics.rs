@@ -37,6 +37,7 @@ impl TokenCounter {
             input: self.input.load(Ordering::Relaxed),
             cached: self.cached.load(Ordering::Relaxed),
             output: self.output.load(Ordering::Relaxed),
+            estimated_cost_usd: 0.0,
         }
     }
 }
@@ -47,6 +48,7 @@ pub struct TokenCounts {
     pub input: u64,
     pub cached: u64,
     pub output: u64,
+    pub estimated_cost_usd: f64,
 }
 
 /// Session metrics
@@ -60,7 +62,7 @@ impl Metrics {
     /// Load metrics from database
     pub fn load(conn: &Connection) -> Result<Self> {
         let mut stmt = conn.prepare(
-            "SELECT tool_calls, tokens_input, tokens_cached, tokens_output FROM metrics WHERE id = 'global'"
+            "SELECT tool_calls, tokens_input, tokens_cached, tokens_output, estimated_cost_usd FROM metrics WHERE id = 'global'"
         )?;
 
         let metrics = stmt.query_row([], |row| {
@@ -70,6 +72,7 @@ impl Metrics {
                     input: row.get::<_, i64>(1)? as u64,
                     cached: row.get::<_, i64>(2)? as u64,
                     output: row.get::<_, i64>(3)? as u64,
+                    estimated_cost_usd: row.get::<_, f64>(4)?,
                 },
             })
         })?;
@@ -85,6 +88,7 @@ impl Metrics {
                 tokens_input = ?2,
                 tokens_cached = ?3,
                 tokens_output = ?4,
+                estimated_cost_usd = ?5,
                 updated_at = datetime('now')
              WHERE id = 'global'",
             params![
@@ -92,6 +96,7 @@ impl Metrics {
                 self.tokens.input as i64,
                 self.tokens.cached as i64,
                 self.tokens.output as i64,
+                self.tokens.estimated_cost_usd,
             ],
         )?;
         Ok(())
@@ -102,11 +107,12 @@ impl Metrics {
         self.tool_calls += 1;
     }
 
-    /// Add token counts
-    pub fn add_tokens(&mut self, input: u64, cached: u64, output: u64) {
+    /// Add token counts and cost
+    pub fn add_tokens(&mut self, input: u64, cached: u64, output: u64, cost: f64) {
         self.tokens.input += input;
         self.tokens.cached += cached;
         self.tokens.output += output;
+        self.tokens.estimated_cost_usd += cost;
     }
 }
 

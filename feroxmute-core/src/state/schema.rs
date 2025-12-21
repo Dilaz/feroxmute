@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS metrics (
     tokens_input INTEGER NOT NULL DEFAULT 0,
     tokens_cached INTEGER NOT NULL DEFAULT 0,
     tokens_output INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd REAL NOT NULL DEFAULT 0.0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
