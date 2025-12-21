@@ -18,9 +18,9 @@ use super::widgets::{agent_detail, dashboard};
 
 /// Render the current view
 fn render(frame: &mut Frame, app: &App) {
-    match app.view {
+    match &app.view {
         View::Dashboard => dashboard::render(frame, app),
-        View::AgentDetail(agent_view) => agent_detail::render(frame, app, agent_view),
+        View::AgentDetail(agent_name) => agent_detail::render(frame, app, agent_name),
         View::Logs => render_logs(frame, app),
         View::Help => render_help(frame),
     }
@@ -166,20 +166,8 @@ fn render_help(frame: &mut Frame) {
             Span::raw("Logs view"),
         ]),
         Line::from(vec![
-            Span::styled("  1          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Orchestrator details"),
-        ]),
-        Line::from(vec![
-            Span::styled("  2          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Recon agent details"),
-        ]),
-        Line::from(vec![
-            Span::styled("  3          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Scanner agent details"),
-        ]),
-        Line::from(vec![
-            Span::styled("  4          ", Style::default().fg(Color::Yellow)),
-            Span::raw("SAST agent details"),
+            Span::styled("  1-9        ", Style::default().fg(Color::Yellow)),
+            Span::raw("Agent details (1=orchestrator, 2-9=spawned)"),
         ]),
         Line::from(vec![
             Span::styled("  t          ", Style::default().fg(Color::Yellow)),
@@ -243,8 +231,8 @@ fn drain_events(app: &mut App) {
                     app.add_feed(super::app::FeedEntry::new(&agent, &message));
                 }
             }
-            AgentEvent::Thinking(thinking) => {
-                app.current_thinking = thinking;
+            AgentEvent::Thinking { agent, content } => {
+                app.update_agent_thinking(&agent, content);
             }
             AgentEvent::Status {
                 agent,

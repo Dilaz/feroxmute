@@ -30,7 +30,7 @@ pub fn render(frame: &mut Frame, app: &App) {
     render_metrics(frame, app, chunks[1]);
     render_agents(frame, app, chunks[2]);
     render_feed(frame, app, chunks[3]);
-    render_footer(frame, chunks[4]);
+    render_footer(frame, app, chunks[4]);
 }
 
 /// Render the header with target info
@@ -297,11 +297,15 @@ fn render_feed(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Render footer with keybindings
-fn render_footer(frame: &mut Frame, area: Rect) {
+fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
+    let spawned_count = app.agents.len().saturating_sub(1);
+    let max_key = (spawned_count + 1).min(9);
+    let agents_hint = if max_key > 1 { format!("1-{}", max_key) } else { "1".to_string() };
+
     let help = Line::from(vec![
         Span::styled("q", Style::default().fg(Color::Yellow)),
         Span::raw(" quit  "),
-        Span::styled("1-3", Style::default().fg(Color::Yellow)),
+        Span::styled(&agents_hint, Style::default().fg(Color::Yellow)),
         Span::raw(" agents  "),
         Span::styled("l", Style::default().fg(Color::Yellow)),
         Span::raw(" logs  "),

@@ -23,8 +23,10 @@ pub enum AgentEvent {
     },
 
     /// Update the thinking panel
-    #[allow(dead_code)]
-    Thinking(Option<String>),
+    Thinking {
+        agent: String,
+        content: Option<String>,
+    },
 
     /// Update agent status
     Status {

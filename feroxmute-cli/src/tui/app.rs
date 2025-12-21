@@ -314,8 +314,7 @@ impl App {
             if !agent_type.is_empty() {
                 info.agent_type = agent_type.to_string();
             }
-        } else if agent != "orchestrator" && agent != "system" {
-            // New agent - add it
+        } else if agent != "system" {
             self.agent_spawn_counter += 1;
             self.agents.insert(
                 agent.to_string(),
@@ -328,6 +327,13 @@ impl App {
                     output_buffer: VecDeque::with_capacity(100),
                 },
             );
+        }
+    }
+
+    /// Update agent thinking
+    pub fn update_agent_thinking(&mut self, agent: &str, thinking: Option<String>) {
+        if let Some(info) = self.agents.get_mut(agent) {
+            info.thinking = thinking;
         }
     }
 
@@ -433,8 +439,31 @@ mod tests {
         app.navigate(View::Logs);
         assert_eq!(app.view, View::Logs);
 
-        app.navigate(View::AgentDetail("recon".to_string()));
-        assert_eq!(app.view, View::AgentDetail("recon".to_string()));
+        app.navigate(View::AgentDetail("orchestrator".to_string()));
+        assert_eq!(app.view, View::AgentDetail("orchestrator".to_string()));
+    }
+
+    #[test]
+    fn test_get_agent_by_key() {
+        let mut app = App::new("test.com", "test-session", None);
+        assert_eq!(app.get_agent_by_key(1), Some("orchestrator".to_string()));
+        assert_eq!(app.get_agent_by_key(2), None);
+
+        app.update_spawned_agent_status("recon-1", "recon", AgentStatus::Running);
+        assert_eq!(app.get_agent_by_key(2), Some("recon-1".to_string()));
+
+        app.update_spawned_agent_status("scanner-1", "scanner", AgentStatus::Running);
+        assert_eq!(app.get_agent_by_key(3), Some("scanner-1".to_string()));
+    }
+
+    #[test]
+    fn test_agent_thinking() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.update_agent_thinking("orchestrator", Some("Planning...".to_string()));
+        assert_eq!(app.agents.get("orchestrator").unwrap().thinking, Some("Planning...".to_string()));
+
+        app.selected_agent = Some("orchestrator".to_string());
+        assert_eq!(app.get_selected_thinking(), Some("Planning..."));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use std::time::Duration;
 
-use super::app::{AgentView, App, View};
+use super::app::{App, View};
 
 /// Event handling result
 pub enum EventResult {
@@ -57,17 +57,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         }
 
         // Agent detail views (number keys)
-        KeyCode::Char('1') => {
-            app.navigate(View::AgentDetail(AgentView::Orchestrator));
-        }
-        KeyCode::Char('2') => {
-            app.navigate(View::AgentDetail(AgentView::Recon));
-        }
-        KeyCode::Char('3') => {
-            app.navigate(View::AgentDetail(AgentView::Scanner));
-        }
-        KeyCode::Char('4') => {
-            app.navigate(View::AgentDetail(AgentView::Sast));
+        KeyCode::Char(c @ '1'..='9') => {
+            let key_num = c.to_digit(10).unwrap() as usize;
+            if let Some(agent_name) = app.get_agent_by_key(key_num) {
+                app.selected_agent = Some(agent_name.clone());
+                app.navigate(View::AgentDetail(agent_name));
+            }
         }
 
         // Toggles
@@ -231,11 +226,12 @@ mod tests {
 
         let key = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE);
         handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::AgentDetail(AgentView::Orchestrator));
+        assert_eq!(app.view, View::AgentDetail("orchestrator".to_string()));
 
+        app.navigate(View::Dashboard);
         let key = KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE);
         handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::AgentDetail(AgentView::Recon));
+        assert_eq!(app.view, View::Dashboard);  // No agent at key 2
     }
 
     #[test]
