@@ -122,14 +122,13 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
     );
 
     // Always show orchestrator first
+    let orch_info = app.agents.get("orchestrator");
     let mut rows = vec![agent_row_with_activity(
         "orchestrator",
         "Orchestrator",
         app.agent_statuses.orchestrator,
-        app.agents
-            .get("orchestrator")
-            .map(|a| a.activity.as_str())
-            .unwrap_or("-"),
+        orch_info.map(|a| a.activity.as_str()).unwrap_or("-"),
+        orch_info.and_then(|a| a.current_tool.as_deref()),
     )];
 
     // Add dynamically spawned agents
@@ -140,6 +139,7 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
                 name,
                 info.status,
                 &info.activity,
+                info.current_tool.as_deref(),
             ));
         }
     }
@@ -159,25 +159,60 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Create a row for an agent with activity
-fn agent_row_with_activity<'a>(
-    _key: &'a str,
-    name: &'a str,
+fn agent_row_with_activity(
+    _key: &str,
+    name: &str,
     status: AgentStatus,
-    activity: &'a str,
-) -> Row<'a> {
-    let (status_text, status_style) = match status {
-        AgentStatus::Idle => ("Idle", Style::default().fg(Color::Gray)),
-        AgentStatus::Planning => ("Planning", Style::default().fg(Color::Blue)),
-        AgentStatus::Running => (
-            "Running",
+    activity: &str,
+    current_tool: Option<&str>,
+) -> Row<'static> {
+    let (status_text, status_style): (String, Style) = match status {
+        AgentStatus::Idle => ("Idle".to_string(), Style::default().fg(Color::Gray)),
+        AgentStatus::Thinking => (
+            "Thinking".to_string(),
             Style::default()
-                .fg(Color::Green)
+                .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        AgentStatus::Waiting => ("Waiting", Style::default().fg(Color::Yellow)),
-        AgentStatus::Completed => ("Done", Style::default().fg(Color::Cyan)),
+        AgentStatus::Streaming => (
+            "Streaming".to_string(),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD),
+        ),
+        AgentStatus::Executing => {
+            let tool_display = current_tool
+                .map(|t| {
+                    if t.len() > 20 {
+                        format!("Tool: {}...", &t[..17])
+                    } else {
+                        format!("Tool: {}", t)
+                    }
+                })
+                .unwrap_or_else(|| "Executing".to_string());
+            (
+                tool_display,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
+        }
+        AgentStatus::Processing => (
+            "Processing".to_string(),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+        AgentStatus::Waiting => ("Waiting".to_string(), Style::default().fg(Color::Yellow)),
+        AgentStatus::Retrying => (
+            "Retrying".to_string(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::SLOW_BLINK),
+        ),
+        AgentStatus::Completed => ("Done".to_string(), Style::default().fg(Color::Green)),
         AgentStatus::Failed => (
-            "Failed",
+            "Failed".to_string(),
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
     };
@@ -190,7 +225,7 @@ fn agent_row_with_activity<'a>(
     };
 
     Row::new(vec![
-        Cell::from(name),
+        Cell::from(name.to_string()),
         Cell::from(status_text).style(status_style),
         Cell::from(activity_display).style(Style::default().fg(Color::DarkGray)),
     ])

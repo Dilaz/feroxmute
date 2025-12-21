@@ -58,18 +58,18 @@ pub fn render(frame: &mut Frame, app: &App, agent_name: &str) {
 }
 
 fn render_header(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
-    let (display_name, status) = if let Some(info) = app.agents.get(agent_name) {
+    let (display_name, status, current_tool) = if let Some(info) = app.agents.get(agent_name) {
         let name = if info.agent_type.is_empty() {
             agent_name.to_string()
         } else {
             format!("{} ({})", agent_name, info.agent_type)
         };
-        (name, info.status)
+        (name, info.status, info.current_tool.as_deref())
     } else {
-        (agent_name.to_string(), AgentStatus::Idle)
+        (agent_name.to_string(), AgentStatus::Idle, None)
     };
 
-    let (status_text, status_style) = format_status(status);
+    let (status_text, status_style) = format_status(status, current_tool);
 
     let header_text = vec![Line::from(vec![
         Span::styled(
@@ -177,20 +177,54 @@ fn render_footer(frame: &mut Frame, current_agent: &str, app: &App, area: Rect) 
     frame.render_widget(footer, area);
 }
 
-fn format_status(status: AgentStatus) -> (&'static str, Style) {
+fn format_status(status: AgentStatus, current_tool: Option<&str>) -> (String, Style) {
     match status {
-        AgentStatus::Idle => ("Idle", Style::default().fg(Color::Gray)),
-        AgentStatus::Planning => ("Planning...", Style::default().fg(Color::Blue)),
-        AgentStatus::Running => (
-            "Running",
+        AgentStatus::Idle => ("Idle".to_string(), Style::default().fg(Color::Gray)),
+        AgentStatus::Thinking => (
+            "Thinking".to_string(),
             Style::default()
-                .fg(Color::Green)
+                .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        AgentStatus::Waiting => ("Waiting", Style::default().fg(Color::Yellow)),
-        AgentStatus::Completed => ("Completed", Style::default().fg(Color::Cyan)),
+        AgentStatus::Streaming => (
+            "Streaming".to_string(),
+            Style::default()
+                .fg(Color::Blue)
+                .add_modifier(Modifier::BOLD),
+        ),
+        AgentStatus::Executing => {
+            let tool_display = current_tool
+                .map(|t| {
+                    if t.len() > 25 {
+                        format!("Tool: {}...", &t[..22])
+                    } else {
+                        format!("Tool: {}", t)
+                    }
+                })
+                .unwrap_or_else(|| "Executing".to_string());
+            (
+                tool_display,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )
+        }
+        AgentStatus::Processing => (
+            "Processing".to_string(),
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+        AgentStatus::Waiting => ("Waiting".to_string(), Style::default().fg(Color::Yellow)),
+        AgentStatus::Retrying => (
+            "Retrying".to_string(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::SLOW_BLINK),
+        ),
+        AgentStatus::Completed => ("Completed".to_string(), Style::default().fg(Color::Green)),
         AgentStatus::Failed => (
-            "Failed",
+            "Failed".to_string(),
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
     }

@@ -58,10 +58,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
 
         // Agent detail views (number keys)
         KeyCode::Char(c @ '1'..='9') => {
-            let key_num = c.to_digit(10).unwrap() as usize;
-            if let Some(agent_name) = app.get_agent_by_key(key_num) {
-                app.selected_agent = Some(agent_name.clone());
-                app.navigate(View::AgentDetail(agent_name));
+            // Safe: pattern guarantees c is '1'-'9', which always converts to a digit
+            if let Some(key_num) = c.to_digit(10) {
+                if let Some(agent_name) = app.get_agent_by_key(key_num as usize) {
+                    app.selected_agent = Some(agent_name.clone());
+                    app.navigate(View::AgentDetail(agent_name));
+                }
             }
         }
 

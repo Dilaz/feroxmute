@@ -1,6 +1,5 @@
 //! TUI Application state
 
-use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
@@ -79,7 +78,6 @@ pub struct AgentDisplayInfo {
     pub activity: String,
     pub spawn_order: usize,
     pub thinking: Option<String>,
-    pub output_buffer: VecDeque<String>,
     /// Current tool being executed (for Executing status display)
     pub current_tool: Option<String>,
 }
@@ -92,16 +90,8 @@ impl AgentDisplayInfo {
             activity: String::new(),
             spawn_order: 0,
             thinking: None,
-            output_buffer: VecDeque::with_capacity(100),
             current_tool: None,
         }
-    }
-
-    pub fn push_output(&mut self, line: String) {
-        if self.output_buffer.len() >= 100 {
-            self.output_buffer.pop_front();
-        }
-        self.output_buffer.push_back(line);
     }
 }
 
@@ -241,6 +231,7 @@ impl App {
     }
 
     /// Get the thinking text for the currently selected agent
+    #[allow(dead_code)] // Used in tests
     pub fn get_selected_thinking(&self) -> Option<&str> {
         self.selected_agent
             .as_ref()
@@ -304,7 +295,6 @@ impl App {
                     activity: activity.to_string(),
                     spawn_order: self.agent_spawn_counter,
                     thinking: None,
-                    output_buffer: VecDeque::with_capacity(100),
                     current_tool: None,
                 },
             );
@@ -335,7 +325,6 @@ impl App {
                     activity: String::new(),
                     spawn_order: self.agent_spawn_counter,
                     thinking: None,
-                    output_buffer: VecDeque::with_capacity(100),
                     current_tool,
                 },
             );
