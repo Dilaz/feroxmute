@@ -10,6 +10,7 @@ pub mod deepseek;
 pub mod factory;
 pub mod gemini;
 pub mod mira;
+pub mod ollama;
 pub mod openai;
 pub mod perplexity;
 pub mod traits;
@@ -22,6 +23,7 @@ pub use deepseek::DeepSeekProvider;
 pub use factory::create_provider;
 pub use gemini::GeminiProvider;
 pub use mira::MiraProvider;
+pub use ollama::OllamaProvider;
 pub use openai::OpenAiProvider;
 pub use perplexity::PerplexityProvider;
 pub use traits::{

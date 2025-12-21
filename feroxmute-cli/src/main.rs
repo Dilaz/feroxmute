@@ -81,6 +81,7 @@ async fn main() -> Result<()> {
             "azure" => ProviderName::Azure,
             "perplexity" => ProviderName::Perplexity,
             "mira" => ProviderName::Mira,
+            "ollama" => ProviderName::Ollama,
             _ => ProviderName::Anthropic,
         })
         .unwrap_or_else(|| config.provider.name.clone());
@@ -112,6 +113,7 @@ async fn main() -> Result<()> {
                 ProviderName::Perplexity => "PERPLEXITY_API_KEY",
                 ProviderName::Mira => "MIRA_API_KEY",
                 ProviderName::LiteLlm => "LITELLM_API_KEY",
+                ProviderName::Ollama => "OLLAMA_API_BASE_URL (optional, defaults to localhost:11434)",
             }
         )
     })?;

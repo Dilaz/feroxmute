@@ -40,6 +40,7 @@ pub enum ProviderName {
     DeepSeek,
     Azure,
     Mira,
+    Ollama,
 }
 
 /// Target configuration (optional in config file - use CLI --target instead)

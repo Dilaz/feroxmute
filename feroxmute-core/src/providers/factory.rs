@@ -8,7 +8,7 @@ use crate::{Error, Result};
 
 use super::{
     AnthropicProvider, AzureProvider, CohereProvider, DeepSeekProvider, GeminiProvider,
-    LlmProvider, MiraProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
+    LlmProvider, MiraProvider, OllamaProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
 };
 
 /// Create a provider from configuration
@@ -128,6 +128,19 @@ pub fn create_provider(
                 .or_else(|| std::env::var("MIRA_API_KEY").ok())
                 .ok_or_else(|| Error::Provider("MIRA_API_KEY not set".to_string()))?;
             let provider = MiraProvider::with_api_key(api_key, &config.model, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Ollama => {
+            // Ollama doesn't require API key by default, uses localhost:11434
+            let provider = if let Some(ref base_url) = config.base_url {
+                OllamaProvider::with_base_url(base_url, &config.model, metrics)?
+            } else {
+                // Try OLLAMA_API_BASE_URL env var, fall back to default localhost
+                match std::env::var("OLLAMA_API_BASE_URL") {
+                    Ok(base_url) => OllamaProvider::with_base_url(base_url, &config.model, metrics)?,
+                    Err(_) => OllamaProvider::new(&config.model, metrics)?,
+                }
+            };
             Ok(Arc::new(provider))
         }
     }
@@ -281,5 +294,30 @@ mod tests {
         if let Some(key) = original_openai {
             std::env::set_var("OPENAI_API_KEY", key);
         }
+    }
+
+    #[test]
+    fn test_ollama_works_without_api_key() {
+        // Ollama should work without any API key (uses localhost by default)
+        let config = ProviderConfig {
+            name: ProviderName::Ollama,
+            model: "llama3.2".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_ollama_with_custom_base_url() {
+        let config = ProviderConfig {
+            name: ProviderName::Ollama,
+            model: "llama3.2".to_string(),
+            api_key: None,
+            base_url: Some("http://custom:11434".to_string()),
+        };
+        let result = create_provider(&config, MetricsTracker::new());
+        assert!(result.is_ok());
     }
 }

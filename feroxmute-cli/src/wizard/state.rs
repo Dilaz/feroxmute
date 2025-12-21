@@ -144,7 +144,7 @@ impl WizardState {
                     self.selected_index = self.selected_index.saturating_sub(1);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    self.selected_index = (self.selected_index + 1).min(9);
+                    self.selected_index = (self.selected_index + 1).min(10);
                 }
                 KeyCode::Enter => {
                     self.data.provider = match self.selected_index {
@@ -157,6 +157,7 @@ impl WizardState {
                         6 => ProviderName::Cohere,
                         7 => ProviderName::Azure,
                         8 => ProviderName::Mira,
+                        9 => ProviderName::Ollama,
                         _ => ProviderName::LiteLlm,
                     };
                     self.selected_index = 0;
@@ -434,6 +435,7 @@ impl WizardState {
             ProviderName::Azure => "azure",
             ProviderName::Mira => "mira",
             ProviderName::LiteLlm => "litellm",
+            ProviderName::Ollama => "ollama",
         };
 
         let scope_name = match self.data.scope {
@@ -458,6 +460,7 @@ impl WizardState {
                 ProviderName::Azure => "gpt-4o",
                 ProviderName::Mira => "mira-chat",
                 ProviderName::LiteLlm => "openai/gpt-4o",
+                ProviderName::Ollama => "llama3.2",
             });
 
         let mut toml = String::new();

@@ -187,6 +187,7 @@ pub fn render_provider(frame: &mut Frame, state: &WizardState) {
         "Cohere",
         "Azure OpenAI",
         "Mira",
+        "Ollama (Local)",
         "LiteLLM (Local proxy)",
     ];
     let list = SelectList::new(&providers, state.selected_index)
@@ -219,6 +220,7 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
         feroxmute_core::config::ProviderName::Azure => "Azure OpenAI",
         feroxmute_core::config::ProviderName::Mira => "Mira",
         feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
+        feroxmute_core::config::ProviderName::Ollama => "Ollama",
     };
 
     let title = Paragraph::new(Line::from(vec![
@@ -263,6 +265,7 @@ pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
         feroxmute_core::config::ProviderName::Azure => "your-azure-key",
         feroxmute_core::config::ProviderName::Mira => "your-mira-key",
         feroxmute_core::config::ProviderName::LiteLlm => "your-api-key",
+        feroxmute_core::config::ProviderName::Ollama => "http://localhost:11434 (or leave empty)",
     };
 
     let input = TextInput::new(&state.text_input, state.cursor_position)
@@ -468,6 +471,7 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
         feroxmute_core::config::ProviderName::Azure => "Azure OpenAI",
         feroxmute_core::config::ProviderName::Mira => "Mira",
         feroxmute_core::config::ProviderName::LiteLlm => "LiteLLM",
+        feroxmute_core::config::ProviderName::Ollama => "Ollama",
     };
 
     let scope_name = match state.data.scope {
