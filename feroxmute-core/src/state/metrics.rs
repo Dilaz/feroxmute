@@ -13,6 +13,8 @@ pub struct TokenCounter {
     pub input: AtomicU64,
     pub cached: AtomicU64,
     pub output: AtomicU64,
+    /// Cost in micro-dollars (1 USD = 1_000_000 micro-dollars) for atomic precision
+    pub cost_micro_usd: AtomicU64,
 }
 
 impl TokenCounter {
@@ -31,13 +33,19 @@ impl TokenCounter {
         self.output.fetch_add(count, Ordering::Relaxed);
     }
 
+    /// Add cost in USD (converted to micro-dollars internally)
+    pub fn add_cost(&self, cost_usd: f64) {
+        let micro_usd = (cost_usd * 1_000_000.0) as u64;
+        self.cost_micro_usd.fetch_add(micro_usd, Ordering::Relaxed);
+    }
+
     /// Get current counts
     pub fn get(&self) -> TokenCounts {
         TokenCounts {
             input: self.input.load(Ordering::Relaxed),
             cached: self.cached.load(Ordering::Relaxed),
             output: self.output.load(Ordering::Relaxed),
-            estimated_cost_usd: 0.0,
+            estimated_cost_usd: self.cost_micro_usd.load(Ordering::Relaxed) as f64 / 1_000_000.0,
         }
     }
 }
@@ -157,6 +165,10 @@ impl MetricsTracker {
             .output
             .store(metrics.tokens.output, Ordering::Relaxed);
         tracker
+            .tokens
+            .cost_micro_usd
+            .store((metrics.tokens.estimated_cost_usd * 1_000_000.0) as u64, Ordering::Relaxed);
+        tracker
     }
 
     /// Record a tool call
@@ -164,11 +176,12 @@ impl MetricsTracker {
         self.tool_calls.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record token usage
-    pub fn record_tokens(&self, input: u64, cached: u64, output: u64) {
+    /// Record token usage and cost
+    pub fn record_tokens(&self, input: u64, cached: u64, output: u64, cost_usd: f64) {
         self.tokens.add_input(input);
         self.tokens.add_cached(cached);
         self.tokens.add_output(output);
+        self.tokens.add_cost(cost_usd);
     }
 
     /// Get current metrics snapshot
@@ -219,13 +232,14 @@ mod tests {
 
         tracker.record_tool_call();
         tracker.record_tool_call();
-        tracker.record_tokens(100, 20, 50);
+        tracker.record_tokens(100, 20, 50, 0.05);
 
         let snapshot = tracker.snapshot();
         assert_eq!(snapshot.tool_calls, 2);
         assert_eq!(snapshot.tokens.input, 100);
         assert_eq!(snapshot.tokens.cached, 20);
         assert_eq!(snapshot.tokens.output, 50);
+        assert!((snapshot.tokens.estimated_cost_usd - 0.05).abs() < 1e-6);
     }
 
     #[test]

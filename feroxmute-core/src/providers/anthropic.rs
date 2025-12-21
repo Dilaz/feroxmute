@@ -104,7 +104,7 @@ impl LlmProvider for AnthropicProvider {
         let estimated_input = prompt.len() as u64 / 4; // Rough token estimate
         let estimated_output = response.len() as u64 / 4;
         self.metrics
-            .record_tokens(estimated_input, 0, estimated_output);
+            .record_tokens(estimated_input, 0, estimated_output, 0.0);
 
         Ok(CompletionResponse {
             content: Some(response),
