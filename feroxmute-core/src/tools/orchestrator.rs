@@ -55,6 +55,69 @@ impl Default for AgentSummary {
     }
 }
 
+/// Summarize agent output using the LLM
+async fn summarize_agent_output(
+    provider: &dyn crate::providers::LlmProvider,
+    agent_name: &str,
+    agent_type: &str,
+    instructions: &str,
+    raw_output: &str,
+) -> AgentSummary {
+    use crate::providers::{CompletionRequest, Message};
+
+    let prompt = format!(
+        r#"You are summarizing agent output for an orchestrator coordinating a penetration test.
+
+Agent: {} ({})
+Task: {}
+
+Raw Output:
+{}
+
+Respond with JSON only, no markdown formatting:
+{{"success": true/false, "summary": "1-2 sentence overview", "key_findings": ["finding 1", "finding 2"], "next_steps": ["action 1", "action 2"]}}"#,
+        agent_name, agent_type, instructions, raw_output
+    );
+
+    let request = CompletionRequest::new(vec![Message::user(&prompt)])
+        .with_system("You extract structured summaries from agent output. Respond with valid JSON only.")
+        .with_max_tokens(1024);
+
+    match provider.complete(request).await {
+        Ok(response) => {
+            if let Some(content) = response.content {
+                // Try to parse the JSON response
+                if let Ok(summary) = serde_json::from_str::<AgentSummary>(&content) {
+                    return summary;
+                }
+                // Try to extract JSON from markdown code block
+                let cleaned = content
+                    .trim()
+                    .trim_start_matches("```json")
+                    .trim_start_matches("```")
+                    .trim_end_matches("```")
+                    .trim();
+                if let Ok(summary) = serde_json::from_str::<AgentSummary>(cleaned) {
+                    return summary;
+                }
+            }
+            // Fallback: return a basic summary
+            AgentSummary {
+                success: !raw_output.to_lowercase().contains("error"),
+                summary: "Summarization failed - raw output available".to_string(),
+                key_findings: vec![],
+                next_steps: vec![],
+            }
+        }
+        Err(_) => AgentSummary {
+            success: !raw_output.to_lowercase().contains("error"),
+            summary: "Summarization failed - raw output available".to_string(),
+            key_findings: vec![],
+            next_steps: vec![],
+        },
+    }
+}
+
 /// Trait for sending events to the UI (implemented by CLI)
 pub trait EventSender: Send + Sync {
     /// Send a feed message
