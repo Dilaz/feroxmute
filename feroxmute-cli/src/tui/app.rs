@@ -535,4 +535,28 @@ mod tests {
         app.reset_feed_scroll();
         assert_eq!(app.feed_scroll_x, 0);
     }
+
+    #[test]
+    fn test_toggle_output() {
+        let mut app = App::new("test.com", "test-session", None);
+
+        // Add entry without output
+        app.add_feed(FeedEntry::new("recon", "Starting scan"));
+
+        // Add entry with output
+        let entry_with_output = FeedEntry::new("recon", "  -> exit 0, 5 lines output")
+            .with_output("line1\nline2\nline3\nline4\nline5".to_string());
+        app.add_feed(entry_with_output);
+
+        // Initially not expanded
+        assert!(!app.feed[1].expanded);
+
+        // Toggle should expand
+        app.toggle_output(Some("recon"));
+        assert!(app.feed[1].expanded);
+
+        // Toggle again should collapse
+        app.toggle_output(Some("recon"));
+        assert!(!app.feed[1].expanded);
+    }
 }
