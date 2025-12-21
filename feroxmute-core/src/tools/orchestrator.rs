@@ -41,6 +41,8 @@ pub trait EventSender: Send + Sync {
     fn send_metrics(&self, input_tokens: u64, output_tokens: u64, cache_read_tokens: u64, cost_usd: f64);
     /// Send vulnerability found
     fn send_vulnerability(&self, severity: Severity, title: &str);
+    /// Send thinking update for an agent
+    fn send_thinking(&self, agent: &str, content: Option<String>);
 }
 
 /// Shared context for all orchestrator tools

@@ -90,6 +90,16 @@ impl EventSender for TuiEventSender {
                 .await;
         });
     }
+
+    fn send_thinking(&self, agent: &str, content: Option<String>) {
+        let tx = self.tx.clone();
+        let agent = agent.to_string();
+        tokio::spawn(async move {
+            let _ = tx
+                .send(AgentEvent::Thinking { agent, content })
+                .await;
+        });
+    }
 }
 
 /// Run the orchestrator agent with TUI feedback

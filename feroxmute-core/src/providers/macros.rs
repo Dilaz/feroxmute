@@ -3,6 +3,12 @@
 //! This module provides the `define_provider!` macro which generates complete provider
 //! implementations with constructors and LlmProvider trait impl, eliminating 95% code
 //! duplication across provider files.
+//!
+//! ## Streaming Support
+//!
+//! All provider methods use rig-core's streaming API to capture reasoning/thinking
+//! in real-time. The `StreamedAssistantContent::Reasoning` variant contains thinking
+//! blocks which are forwarded to the TUI via `EventSender::send_thinking()`.
 
 /// Generates a complete provider implementation with struct, constructors, and LlmProvider trait
 ///
@@ -177,10 +183,13 @@ macro_rules! define_provider {
                 agent_name: &str,
                 limitations: std::sync::Arc<$crate::limitations::EngagementLimitations>,
             ) -> $crate::Result<String> {
+                use futures::StreamExt;
                 use rig::client::CompletionClient;
-                use rig::completion::Prompt;
+                use rig::streaming::StreamingPrompt;
 
                 let events_clone = std::sync::Arc::clone(&events);
+                let agent_name_owned = agent_name.to_string();
+
                 let agent = self
                     .client
                     .agent(&self.model)
@@ -188,38 +197,61 @@ macro_rules! define_provider {
                     .max_tokens(4096)
                     .tool($crate::tools::DockerShellTool::new(
                         container,
-                        events,
+                        std::sync::Arc::clone(&events),
                         agent_name.to_string(),
                         limitations,
                     ))
                     .build();
 
-                // multi_turn enables tool loop with max 50 iterations
-                // extended_details() gives us real token usage
-                let response = agent
-                    .prompt(user_prompt)
-                    .extended_details()
-                    .multi_turn(50)
-                    .await
-                    .map_err(|e| $crate::Error::Provider(format!("Shell completion failed: {}", e)))?;
+                // Use streaming with multi-turn tool loop
+                let mut stream = agent.stream_prompt(user_prompt).multi_turn(50).await;
+                let mut final_text = String::new();
+                let mut total_input_tokens: u64 = 0;
+                let mut total_output_tokens: u64 = 0;
+
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
+                            match content {
+                                rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                    let text = reasoning.reasoning.join("");
+                                    if !text.is_empty() {
+                                        events_clone.send_thinking(&agent_name_owned, Some(text));
+                                    }
+                                }
+                                rig::streaming::StreamedAssistantContent::Text(text) => {
+                                    final_text.push_str(&text.text);
+                                }
+                                _ => {}
+                            }
+                        }
+                        Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res)) => {
+                            total_input_tokens = res.usage().input_tokens;
+                            total_output_tokens = res.usage().output_tokens;
+                        }
+                        Err(e) => {
+                            events_clone.send_thinking(&agent_name_owned, None);
+                            return Err($crate::Error::Provider(format!("Shell streaming failed: {}", e)));
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Clear thinking when done
+                events_clone.send_thinking(&agent_name_owned, None);
 
                 // Calculate cost
                 let pricing = $crate::pricing::PricingConfig::load();
                 let cost = pricing.calculate_cost(
                     $provider_name,
                     &self.model,
-                    response.total_usage.input_tokens,
-                    response.total_usage.output_tokens,
+                    total_input_tokens,
+                    total_output_tokens,
                 );
 
-                events_clone.send_metrics(
-                    response.total_usage.input_tokens,
-                    response.total_usage.output_tokens,
-                    0,
-                    cost,
-                );
+                events_clone.send_metrics(total_input_tokens, total_output_tokens, 0, cost);
 
-                Ok(response.output)
+                Ok(final_text)
             }
 
             async fn complete_with_orchestrator(
@@ -228,10 +260,13 @@ macro_rules! define_provider {
                 user_prompt: &str,
                 context: std::sync::Arc<$crate::tools::OrchestratorContext>,
             ) -> $crate::Result<String> {
+                use futures::StreamExt;
                 use rig::client::CompletionClient;
-                use rig::completion::Prompt;
+                use rig::streaming::StreamingPrompt;
 
                 let events = std::sync::Arc::clone(&context.events);
+                let agent_name = "orchestrator".to_string();
+
                 let agent = self
                     .client
                     .agent(&self.model)
@@ -245,38 +280,56 @@ macro_rules! define_provider {
                     .tool($crate::tools::CompleteEngagementTool::new(std::sync::Arc::clone(&context)))
                     .build();
 
-                // Run with cancellation support (multi_turn enables tool loop with max 50 iterations)
-                // extended_details() gives us real token usage
-                tokio::select! {
-                    result = agent.prompt(user_prompt).extended_details().multi_turn(50) => {
-                        match result {
-                            Ok(response) => {
-                                // Calculate cost
-                                let pricing = $crate::pricing::PricingConfig::load();
-                                let cost = pricing.calculate_cost(
-                                    $provider_name,
-                                    &self.model,
-                                    response.total_usage.input_tokens,
-                                    response.total_usage.output_tokens,
-                                );
+                let mut stream = agent.stream_prompt(user_prompt).multi_turn(50).await;
+                let mut final_text = String::new();
+                let mut total_input_tokens: u64 = 0;
+                let mut total_output_tokens: u64 = 0;
 
-                                events.send_metrics(
-                                    response.total_usage.input_tokens,
-                                    response.total_usage.output_tokens,
-                                    0,
-                                    cost,
-                                );
-                                Ok(response.output)
+                loop {
+                    tokio::select! {
+                        item = stream.next() => {
+                            match item {
+                                Some(Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content))) => {
+                                    match content {
+                                        rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                            let text = reasoning.reasoning.join("");
+                                            if !text.is_empty() {
+                                                events.send_thinking(&agent_name, Some(text));
+                                            }
+                                        }
+                                        rig::streaming::StreamedAssistantContent::Text(text) => {
+                                            final_text.push_str(&text.text);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                Some(Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res))) => {
+                                    total_input_tokens = res.usage().input_tokens;
+                                    total_output_tokens = res.usage().output_tokens;
+                                }
+                                Some(Err(e)) => {
+                                    events.send_thinking(&agent_name, None);
+                                    return Err($crate::Error::Provider(format!("Orchestrator streaming failed: {}", e)));
+                                }
+                                None => break,
+                                _ => {}
                             }
-                            Err(e) => Err($crate::Error::Provider(format!("Orchestrator completion failed: {}", e)))
+                        }
+                        _ = context.cancel.cancelled() => {
+                            events.send_thinking(&agent_name, None);
+                            let findings = context.findings.lock().await;
+                            return Ok(format!("Engagement completed with {} findings", findings.len()));
                         }
                     }
-                    _ = context.cancel.cancelled() => {
-                        // Engagement was completed via complete_engagement tool
-                        let findings = context.findings.lock().await;
-                        Ok(format!("Engagement completed with {} findings", findings.len()))
-                    }
                 }
+
+                events.send_thinking(&agent_name, None);
+
+                let pricing = $crate::pricing::PricingConfig::load();
+                let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
+                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost);
+
+                Ok(final_text)
             }
 
             async fn complete_with_report(
@@ -285,10 +338,13 @@ macro_rules! define_provider {
                 user_prompt: &str,
                 context: std::sync::Arc<$crate::tools::ReportContext>,
             ) -> $crate::Result<String> {
+                use futures::StreamExt;
                 use rig::client::CompletionClient;
-                use rig::completion::Prompt;
+                use rig::streaming::StreamingPrompt;
 
                 let events = std::sync::Arc::clone(&context.events);
+                let agent_name = "report".to_string();
+
                 let agent = self
                     .client
                     .agent(&self.model)
@@ -300,32 +356,46 @@ macro_rules! define_provider {
                     .tool($crate::tools::AddRecommendationTool::new(std::sync::Arc::clone(&context)))
                     .build();
 
-                // multi_turn enables tool loop with max 20 iterations
-                // extended_details() gives us real token usage
-                let response = agent
-                    .prompt(user_prompt)
-                    .extended_details()
-                    .multi_turn(20)
-                    .await
-                    .map_err(|e| $crate::Error::Provider(format!("Report completion failed: {}", e)))?;
+                let mut stream = agent.stream_prompt(user_prompt).multi_turn(20).await;
+                let mut final_text = String::new();
+                let mut total_input_tokens: u64 = 0;
+                let mut total_output_tokens: u64 = 0;
 
-                // Calculate cost
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(rig::agent::MultiTurnStreamItem::StreamAssistantItem(content)) => {
+                            match content {
+                                rig::streaming::StreamedAssistantContent::Reasoning(reasoning) => {
+                                    let text = reasoning.reasoning.join("");
+                                    if !text.is_empty() {
+                                        events.send_thinking(&agent_name, Some(text));
+                                    }
+                                }
+                                rig::streaming::StreamedAssistantContent::Text(text) => {
+                                    final_text.push_str(&text.text);
+                                }
+                                _ => {}
+                            }
+                        }
+                        Ok(rig::agent::MultiTurnStreamItem::FinalResponse(res)) => {
+                            total_input_tokens = res.usage().input_tokens;
+                            total_output_tokens = res.usage().output_tokens;
+                        }
+                        Err(e) => {
+                            events.send_thinking(&agent_name, None);
+                            return Err($crate::Error::Provider(format!("Report streaming failed: {}", e)));
+                        }
+                        _ => {}
+                    }
+                }
+
+                events.send_thinking(&agent_name, None);
+
                 let pricing = $crate::pricing::PricingConfig::load();
-                let cost = pricing.calculate_cost(
-                    $provider_name,
-                    &self.model,
-                    response.total_usage.input_tokens,
-                    response.total_usage.output_tokens,
-                );
+                let cost = pricing.calculate_cost($provider_name, &self.model, total_input_tokens, total_output_tokens);
+                events.send_metrics(total_input_tokens, total_output_tokens, 0, cost);
 
-                events.send_metrics(
-                    response.total_usage.input_tokens,
-                    response.total_usage.output_tokens,
-                    0,
-                    cost,
-                );
-
-                Ok(response.output)
+                Ok(final_text)
             }
         }
     };
