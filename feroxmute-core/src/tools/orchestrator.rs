@@ -31,6 +31,30 @@ pub enum OrchestratorToolError {
     Registry(String),
 }
 
+/// Structured summary of an agent's work
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSummary {
+    /// Whether the agent completed successfully
+    pub success: bool,
+    /// 1-2 sentence overview of what the agent did
+    pub summary: String,
+    /// Important discoveries or results
+    pub key_findings: Vec<String>,
+    /// Suggested follow-up actions
+    pub next_steps: Vec<String>,
+}
+
+impl Default for AgentSummary {
+    fn default() -> Self {
+        Self {
+            success: false,
+            summary: String::new(),
+            key_findings: Vec::new(),
+            next_steps: Vec::new(),
+        }
+    }
+}
+
 /// Trait for sending events to the UI (implemented by CLI)
 pub trait EventSender: Send + Sync {
     /// Send a feed message
