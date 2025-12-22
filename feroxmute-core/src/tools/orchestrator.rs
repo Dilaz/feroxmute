@@ -870,6 +870,18 @@ impl Tool for CompleteEngagementTool {
         // Update phase to Complete
         self.context.events.send_phase(EngagementPhase::Complete);
 
+        // Mark all agents as completed
+        let registry = self.context.registry.lock().await;
+        for (name, agent_type, _status) in registry.list_agents() {
+            self.context.events.send_status(
+                name,
+                agent_type,
+                AgentStatus::Completed,
+                None,
+            );
+        }
+        drop(registry);
+
         // Trigger cancellation to stop the agent loop
         self.context.cancel.cancel();
 
@@ -889,6 +901,11 @@ fn truncate_output(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        // Find a valid UTF-8 char boundary at or before max_len
+        let mut end = max_len;
+        while !s.is_char_boundary(end) && end > 0 {
+            end -= 1;
+        }
+        format!("{}...", &s[..end])
     }
 }
