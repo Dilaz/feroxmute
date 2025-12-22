@@ -47,7 +47,9 @@ impl SastToolOutput for GitleaksOutput {
 
                 // Redact the actual secret in the finding
                 let redacted_secret = if f.secret.len() > 8 {
-                    format!("{}...{}", &f.secret[..4], &f.secret[f.secret.len() - 4..])
+                    let start = &f.secret[..f.secret.floor_char_boundary(4)];
+                    let end_start = f.secret.ceil_char_boundary(f.secret.len().saturating_sub(4));
+                    format!("{}...{}", start, &f.secret[end_start..])
                 } else {
                     "****".to_string()
                 };

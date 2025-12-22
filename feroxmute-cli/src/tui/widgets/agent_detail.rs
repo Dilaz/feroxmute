@@ -223,7 +223,7 @@ fn format_status(status: AgentStatus, current_tool: Option<&str>) -> (String, St
             let tool_display = current_tool
                 .map(|t| {
                     if t.len() > 25 {
-                        format!("Tool: {}...", &t[..22])
+                        format!("Tool: {}...", &t[..t.floor_char_boundary(22)])
                     } else {
                         format!("Tool: {}", t)
                     }
