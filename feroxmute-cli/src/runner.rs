@@ -10,7 +10,7 @@ use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::LlmProvider;
 use feroxmute_core::state::Severity;
-use feroxmute_core::tools::{EventSender, OrchestratorContext};
+use feroxmute_core::tools::{EventSender, MemoryContext, OrchestratorContext};
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -246,6 +246,15 @@ async fn run_orchestrator_with_tools(
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
 ) -> Result<String> {
+    // Create memory context with in-memory DB (TODO: use session DB when available)
+    let memory_conn = rusqlite::Connection::open_in_memory()
+        .map_err(|e| anyhow::anyhow!("Failed to create memory DB: {}", e))?;
+    feroxmute_core::state::run_migrations(&memory_conn)
+        .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
+    let memory_context = Arc::new(MemoryContext {
+        conn: Arc::new(Mutex::new(memory_conn)),
+    });
+
     // Create the orchestrator context with all shared state
     let context = Arc::new(OrchestratorContext {
         registry: Arc::new(Mutex::new(AgentRegistry::new())),
@@ -257,6 +266,7 @@ async fn run_orchestrator_with_tools(
         target: target.to_string(),
         findings: Arc::new(Mutex::new(Vec::new())),
         limitations: Arc::clone(&limitations),
+        memory: memory_context,
     });
 
     // Build user prompt with limitations
