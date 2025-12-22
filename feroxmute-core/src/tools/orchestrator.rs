@@ -32,7 +32,7 @@ pub enum OrchestratorToolError {
 }
 
 /// Structured summary of an agent's work
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentSummary {
     /// Whether the agent completed successfully
     pub success: bool,
@@ -42,17 +42,6 @@ pub struct AgentSummary {
     pub key_findings: Vec<String>,
     /// Suggested follow-up actions
     pub next_steps: Vec<String>,
-}
-
-impl Default for AgentSummary {
-    fn default() -> Self {
-        Self {
-            success: false,
-            summary: String::new(),
-            key_findings: Vec::new(),
-            next_steps: Vec::new(),
-        }
-    }
 }
 
 /// Summarize agent output using the LLM
