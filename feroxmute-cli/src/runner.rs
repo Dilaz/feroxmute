@@ -140,6 +140,26 @@ impl EventSender for TuiEventSender {
             let _ = tx.send(AgentEvent::Phase { phase }).await;
         });
     }
+
+    fn send_summary(&self, agent: &str, summary: &feroxmute_core::tools::AgentSummary) {
+        let tx = self.tx.clone();
+        let agent = agent.to_string();
+        let success = summary.success;
+        let summary_text = summary.summary.clone();
+        let key_findings = summary.key_findings.clone();
+        let next_steps = summary.next_steps.clone();
+        tokio::spawn(async move {
+            let _ = tx
+                .send(AgentEvent::Summary {
+                    agent,
+                    success,
+                    summary: summary_text,
+                    key_findings,
+                    next_steps,
+                })
+                .await;
+        });
+    }
 }
 
 /// Run the orchestrator agent with TUI feedback
@@ -154,6 +174,8 @@ pub async fn run_orchestrator(
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
 ) -> Result<()> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     // Send initial status
     let _ = tx
         .send(AgentEvent::Status {
@@ -180,9 +202,12 @@ pub async fn run_orchestrator(
         orchestrator = orchestrator.with_source_target();
     }
 
+    // Create flag to distinguish engagement completion from user cancellation
+    let engagement_completed = Arc::new(AtomicBool::new(false));
+
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations), instruction) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed)) => {
             match result {
                 Ok(output) => {
                     let _ = tx.send(AgentEvent::Status {
@@ -213,19 +238,38 @@ pub async fn run_orchestrator(
             }
         }
         _ = cancel.cancelled() => {
-            let _ = tx.send(AgentEvent::Feed {
-                agent: "orchestrator".to_string(),
-                message: "Cancelled by user".to_string(),
-                is_error: false,
-                tool_output: None,
-            }).await;
+            // Check if this was engagement completion or user cancellation
+            let completed = engagement_completed.load(Ordering::SeqCst);
 
-            let _ = tx.send(AgentEvent::Status {
-                agent: "orchestrator".to_string(),
-                agent_type: "orchestrator".to_string(),
-                status: AgentStatus::Idle,
-                current_tool: None,
-            }).await;
+            if completed {
+                // Engagement completed successfully via complete_engagement tool
+                let _ = tx.send(AgentEvent::Status {
+                    agent: "orchestrator".to_string(),
+                    agent_type: "orchestrator".to_string(),
+                    status: AgentStatus::Completed,
+                    current_tool: None,
+                }).await;
+
+                let _ = tx.send(AgentEvent::Finished {
+                    success: true,
+                    message: "Engagement completed successfully".to_string(),
+                }).await;
+            } else {
+                // User-initiated cancellation
+                let _ = tx.send(AgentEvent::Feed {
+                    agent: "orchestrator".to_string(),
+                    message: "Cancelled by user".to_string(),
+                    is_error: false,
+                    tool_output: None,
+                }).await;
+
+                let _ = tx.send(AgentEvent::Status {
+                    agent: "orchestrator".to_string(),
+                    agent_type: "orchestrator".to_string(),
+                    status: AgentStatus::Idle,
+                    current_tool: None,
+                }).await;
+            }
         }
     }
 
@@ -245,6 +289,7 @@ async fn run_orchestrator_with_tools(
     has_source_target: bool,
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
+    engagement_completed: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<String> {
     // Create memory context with in-memory DB (TODO: use session DB when available)
     let memory_conn = rusqlite::Connection::open_in_memory()
@@ -267,6 +312,7 @@ async fn run_orchestrator_with_tools(
         findings: Arc::new(Mutex::new(Vec::new())),
         limitations: Arc::clone(&limitations),
         memory: memory_context,
+        engagement_completed,
     });
 
     // Build user prompt with limitations

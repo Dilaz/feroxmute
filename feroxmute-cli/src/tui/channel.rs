@@ -58,4 +58,13 @@ pub enum AgentEvent {
 
     /// Agent finished
     Finished { success: bool, message: String },
+
+    /// Agent summary (sent when subagent completes)
+    Summary {
+        agent: String,
+        success: bool,
+        summary: String,
+        key_findings: Vec<String>,
+        next_steps: Vec<String>,
+    },
 }

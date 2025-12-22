@@ -121,7 +121,15 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
             .add_modifier(Modifier::BOLD),
     );
 
-    // Always show orchestrator first
+    // Calculate available width for activity column (subtract borders + other columns)
+    let activity_width = area
+        .width
+        .saturating_sub(2) // borders
+        .saturating_sub(24) // agent column
+        .saturating_sub(22) // status column
+        as usize;
+
+    // Re-create rows with proper activity width
     let orch_info = app.agents.get("orchestrator");
     let mut rows = vec![agent_row_with_activity(
         "orchestrator",
@@ -129,9 +137,9 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
         app.agent_statuses.orchestrator,
         orch_info.map(|a| a.activity.as_str()).unwrap_or("-"),
         orch_info.and_then(|a| a.current_tool.as_deref()),
+        activity_width,
     )];
 
-    // Add dynamically spawned agents sorted by spawn_order
     let mut spawned_agents: Vec<_> = app
         .agents
         .iter()
@@ -147,15 +155,16 @@ fn render_agents(frame: &mut Frame, app: &App, area: Rect) {
             info.status,
             &info.activity,
             info.current_tool.as_deref(),
+            activity_width,
         ));
     }
 
     let table = Table::new(
         rows,
         [
-            Constraint::Length(20),
-            Constraint::Length(12),
-            Constraint::Min(20),
+            Constraint::Length(24), // Agent name (wider for [N] prefix + name)
+            Constraint::Length(22), // Status (wider for "Tool: toolname...")
+            Constraint::Min(30),    // Activity (takes remaining, min 30)
         ],
     )
     .header(header)
@@ -171,6 +180,7 @@ fn agent_row_with_activity(
     status: AgentStatus,
     activity: &str,
     current_tool: Option<&str>,
+    activity_width: usize,
 ) -> Row<'static> {
     let (status_text, status_style): (String, Style) = match status {
         AgentStatus::Idle => ("Idle".to_string(), Style::default().fg(Color::Gray)),
@@ -189,8 +199,9 @@ fn agent_row_with_activity(
         AgentStatus::Executing => {
             let tool_display = current_tool
                 .map(|t| {
-                    if t.chars().count() > 20 {
-                        let truncated: String = t.chars().take(17).collect();
+                    // Status column is 22 chars; "Tool: " is 6 chars, leaving 16 for tool name
+                    if t.chars().count() > 16 {
+                        let truncated: String = t.chars().take(13).collect();
                         format!("Tool: {}...", truncated)
                     } else {
                         format!("Tool: {}", t)
@@ -224,9 +235,10 @@ fn agent_row_with_activity(
         ),
     };
 
-    // Truncate activity to fit (use char count for proper UTF-8 handling)
-    let activity_display = if activity.chars().count() > 40 {
-        let truncated: String = activity.chars().take(37).collect();
+    // Truncate activity to fit available width (use char count for proper UTF-8 handling)
+    let max_activity = activity_width.max(10); // minimum 10 chars
+    let activity_display = if activity.chars().count() > max_activity {
+        let truncated: String = activity.chars().take(max_activity.saturating_sub(3)).collect();
         format!("{}...", truncated)
     } else {
         activity.to_string()

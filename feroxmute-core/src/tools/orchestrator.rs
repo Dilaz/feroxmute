@@ -2,6 +2,7 @@
 //!
 //! These tools allow the orchestrator LLM to spawn and manage specialist agents.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use rig::completion::ToolDefinition;
@@ -136,6 +137,8 @@ pub trait EventSender: Send + Sync {
     fn send_thinking(&self, agent: &str, content: Option<String>);
     /// Send engagement phase update
     fn send_phase(&self, phase: EngagementPhase);
+    /// Send agent summary (when subagent completes)
+    fn send_summary(&self, agent: &str, summary: &AgentSummary);
 }
 
 /// Shared context for all orchestrator tools
@@ -152,6 +155,8 @@ pub struct OrchestratorContext {
     pub limitations: Arc<EngagementLimitations>,
     /// Memory/scratch pad context for persistent notes
     pub memory: Arc<super::memory::MemoryContext>,
+    /// Flag to distinguish engagement completion from user cancellation
+    pub engagement_completed: Arc<AtomicBool>,
 }
 
 // ============================================================================
@@ -484,6 +489,9 @@ impl Tool for WaitForAgentTool {
                 )
                 .await;
 
+                // Send summary to TUI
+                self.context.events.send_summary(&result.name, &summary);
+
                 Ok(WaitForAgentOutput {
                     found: true,
                     summary,
@@ -617,6 +625,9 @@ impl Tool for WaitForAnyTool {
                     &result.output,
                 )
                 .await;
+
+                // Send summary to TUI
+                self.context.events.send_summary(&result.name, &summary);
 
                 Ok(WaitForAnyOutput {
                     found: true,
@@ -881,6 +892,9 @@ impl Tool for CompleteEngagementTool {
             );
         }
         drop(registry);
+
+        // Set completion flag BEFORE cancelling so runner knows this was a clean exit
+        self.context.engagement_completed.store(true, Ordering::SeqCst);
 
         // Trigger cancellation to stop the agent loop
         self.context.cancel.cancel();

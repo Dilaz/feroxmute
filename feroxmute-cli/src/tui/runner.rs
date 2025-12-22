@@ -298,6 +298,32 @@ fn drain_events(app: &mut App) {
             AgentEvent::Phase { phase } => {
                 app.phase = phase;
             }
+            AgentEvent::Summary {
+                agent,
+                success,
+                summary,
+                key_findings,
+                next_steps,
+            } => {
+                // Format summary as a compact block
+                let icon = if success { "✓" } else { "✗" };
+                let mut lines = vec![format!("{} SUMMARY", icon)];
+
+                if !summary.is_empty() {
+                    lines.push(format!("│ {}", summary));
+                }
+
+                for finding in key_findings.iter().take(5) {
+                    lines.push(format!("│ • {}", finding));
+                }
+
+                for step in next_steps.iter().take(3) {
+                    lines.push(format!("│ → {}", step));
+                }
+
+                let message = lines.join("\n");
+                app.add_feed(super::app::FeedEntry::new(&agent, message));
+            }
         }
     }
 }
