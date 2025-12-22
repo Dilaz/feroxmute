@@ -161,6 +161,8 @@ pub struct OrchestratorContext {
     pub findings: Arc<Mutex<Vec<String>>>,
     /// Engagement scope limitations
     pub limitations: Arc<EngagementLimitations>,
+    /// Memory/scratch pad context for persistent notes
+    pub memory: Arc<super::memory::MemoryContext>,
 }
 
 // ============================================================================
