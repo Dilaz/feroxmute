@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
+use crate::state::models::{Severity, Vulnerability};
 use crate::{Error, Result};
 
 use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts};
@@ -257,11 +258,48 @@ impl Agent for ScannerAgent {
                         let vuln_report = self.handle_vulnerability_report(&args);
                         vulnerabilities_found.push(vuln_report.clone());
                         result.push_str(&format!("\n## Vulnerability Found\n{}\n", vuln_report));
+
+                        // Persist vulnerability to database
+                        let title = args
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown");
+                        let severity_str = args
+                            .get("severity")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("info");
+                        let severity: Severity =
+                            severity_str.parse().unwrap_or(Severity::Info);
+                        let description = args
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let endpoint = args
+                            .get("endpoint")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let evidence = args.get("evidence").and_then(|v| v.as_str());
+                        let remediation = args.get("remediation").and_then(|v| v.as_str());
+
+                        let mut vuln =
+                            Vulnerability::new(title, "web", severity, self.name())
+                                .with_description(description)
+                                .with_asset(endpoint);
+
+                        if let Some(ev) = evidence {
+                            vuln = vuln.with_evidence(ev);
+                        }
+                        if let Some(rem) = remediation {
+                            vuln = vuln.with_remediation(rem);
+                        }
+
+                        if let Err(e) = vuln.insert(ctx.conn) {
+                            tracing::warn!("Failed to persist vulnerability: {}", e);
+                        }
+
                         messages.push(Message::assistant(format!(
                             "Vulnerability recorded: {}",
-                            args.get("title")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("Unknown")
+                            title
                         )));
                     } else {
                         // Execute the scanning tool
