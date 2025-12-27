@@ -259,10 +259,12 @@ mod tests {
         app.navigate(View::Logs);
         app.log_scroll = 5;
 
+        // Up increases offset from bottom (shows older entries)
         let key = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
         handle_key_event(&mut app, key);
-        assert_eq!(app.log_scroll, 4);
+        assert_eq!(app.log_scroll, 6);
 
+        // Down decreases offset from bottom (shows newer entries)
         let key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
         handle_key_event(&mut app, key);
         assert_eq!(app.log_scroll, 5);

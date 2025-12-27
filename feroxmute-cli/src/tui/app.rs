@@ -406,14 +406,14 @@ impl App {
         }
     }
 
-    /// Scroll logs up
+    /// Scroll logs up (show older entries by increasing offset from bottom)
     pub fn scroll_up(&mut self) {
-        self.log_scroll = self.log_scroll.saturating_sub(1);
+        self.log_scroll = self.log_scroll.saturating_add(1);
     }
 
-    /// Scroll logs down
+    /// Scroll logs down (show newer entries by decreasing offset from bottom)
     pub fn scroll_down(&mut self) {
-        self.log_scroll = self.log_scroll.saturating_add(1);
+        self.log_scroll = self.log_scroll.saturating_sub(1);
     }
 
     /// Select next feed item
