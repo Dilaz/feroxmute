@@ -132,49 +132,84 @@ impl LlmProvider for AzureProvider {
         events: Arc<dyn EventSender>,
         agent_name: &str,
         limitations: Arc<EngagementLimitations>,
+        memory: Arc<crate::tools::MemoryContext>,
     ) -> Result<String> {
+        use crate::tools::{MemoryAddTool, MemoryGetTool, MemoryListTool};
+
         let events_clone = Arc::clone(&events);
-        let agent = self
-            .client
-            .agent(&self.model)
-            .preamble(system_prompt)
-            .max_tokens(4096)
-            .tool(DockerShellTool::new(
-                container,
-                events,
-                agent_name.to_string(),
-                limitations,
-            ))
-            .build();
 
-        // multi_turn enables tool loop with max 50 iterations
-        // extended_details() gives us real token usage
-        let response = agent
-            .prompt(user_prompt)
-            .extended_details()
-            .multi_turn(50)
-            .await
-            .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
+        // Continuation configuration
+        const MAX_CONTINUATIONS: usize = 3;
+        let mut continuation_count = 0;
+        let mut accumulated_output = String::new();
+        let mut current_prompt = user_prompt.to_string();
 
-        // Calculate cost
-        let pricing = PricingConfig::load();
-        let cost = pricing.calculate_cost(
-            "openai",
-            &self.model,
-            response.total_usage.input_tokens,
-            response.total_usage.output_tokens,
-        );
+        loop {
+            let agent = self
+                .client
+                .agent(&self.model)
+                .preamble(system_prompt)
+                .max_tokens(4096)
+                .tool(DockerShellTool::new(
+                    Arc::clone(&container),
+                    Arc::clone(&events),
+                    agent_name.to_string(),
+                    Arc::clone(&limitations),
+                ))
+                .tool(MemoryAddTool::new(Arc::clone(&memory)))
+                .tool(MemoryGetTool::new(Arc::clone(&memory)))
+                .tool(MemoryListTool::new(Arc::clone(&memory)))
+                .build();
 
-        // Note: Tool call count not available in non-streaming mode
-        events_clone.send_metrics(
-            response.total_usage.input_tokens,
-            response.total_usage.output_tokens,
-            0,
-            cost,
-            0,
-        );
+            // multi_turn enables tool loop with max 50 iterations
+            let response = agent
+                .prompt(&current_prompt)
+                .extended_details()
+                .multi_turn(50)
+                .await
+                .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
 
-        Ok(response.output)
+            // Calculate cost
+            let pricing = PricingConfig::load();
+            let cost = pricing.calculate_cost(
+                "openai",
+                &self.model,
+                response.total_usage.input_tokens,
+                response.total_usage.output_tokens,
+            );
+            events_clone.send_metrics(
+                response.total_usage.input_tokens,
+                response.total_usage.output_tokens,
+                0,
+                cost,
+                0,
+            );
+
+            accumulated_output.push_str(&response.output);
+            accumulated_output.push('\n');
+
+            // Check if output looks like it stopped too early
+            let looks_incomplete = response.output.len() < 500
+                && !response.output.contains("=== RECON SUMMARY ===")
+                && !response.output.contains("=== SCANNER SUMMARY ===")
+                && continuation_count < MAX_CONTINUATIONS;
+
+            if looks_incomplete {
+                continuation_count += 1;
+                events_clone.send_feed(
+                    agent_name,
+                    &format!("Agent output looks incomplete. Continuing... ({}/{})", continuation_count, MAX_CONTINUATIONS),
+                    false,
+                );
+                current_prompt = format!(
+                    "You stopped too early. Continue your task.\n\nPrevious output:\n{}\n\n---\n\nKeep running tools until you have comprehensive results.",
+                    response.output.chars().take(1500).collect::<String>()
+                );
+                continue;
+            }
+
+            return Ok(accumulated_output);
+        }
     }
 
     async fn complete_with_orchestrator(

@@ -135,6 +135,7 @@ pub struct TokenUsage {
 }
 
 /// LLM Provider trait
+#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     /// Get provider name
@@ -155,6 +156,7 @@ pub trait LlmProvider: Send + Sync {
         _events: Arc<dyn crate::tools::EventSender>,
         _agent_name: &str,
         _limitations: Arc<EngagementLimitations>,
+        _memory: Arc<crate::tools::MemoryContext>,
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Shell tool not supported by this provider".to_string(),
