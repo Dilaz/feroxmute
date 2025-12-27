@@ -14,6 +14,7 @@ use feroxmute_core::tools::{EventSender, MemoryContext, OrchestratorContext};
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
+use crate::tui::channel::MemoryEntry;
 use crate::tui::{AgentEvent, VulnSeverity};
 
 /// Event sender implementation that wraps the TUI channel
@@ -160,6 +161,23 @@ impl EventSender for TuiEventSender {
                     raw_output,
                 })
                 .await;
+        });
+    }
+
+    fn send_memory_update(&self, entries: Vec<feroxmute_core::tools::MemoryEntryData>) {
+        let tx = self.tx.clone();
+        // Convert core MemoryEntryData to TUI MemoryEntry
+        let tui_entries: Vec<MemoryEntry> = entries
+            .into_iter()
+            .map(|e| MemoryEntry {
+                key: e.key,
+                value: e.value,
+                created_at: e.created_at,
+                updated_at: e.updated_at,
+            })
+            .collect();
+        tokio::spawn(async move {
+            let _ = tx.send(AgentEvent::MemoryUpdated { entries: tui_entries }).await;
         });
     }
 }
