@@ -12,6 +12,8 @@ use serde_json::json;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
+use super::EventSender;
+
 /// Errors from memory tools
 #[derive(Debug, Error)]
 pub enum MemoryToolError {
@@ -22,6 +24,8 @@ pub enum MemoryToolError {
 /// Shared context for memory tools
 pub struct MemoryContext {
     pub conn: Arc<Mutex<Connection>>,
+    pub events: Arc<dyn EventSender>,
+    pub agent_name: String,
 }
 
 // ============================================================================
@@ -80,6 +84,13 @@ impl Tool for MemoryAddTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Log the memory operation
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            &format!("Storing '{}' in memory", args.key),
+            false,
+        );
+
         let conn = self.context.conn.lock().await;
         conn.execute(
             "INSERT INTO scratch_pad (key, value, created_at, updated_at)
@@ -147,6 +158,13 @@ impl Tool for MemoryGetTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Log the memory operation
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            &format!("Reading '{}' from memory", args.key),
+            false,
+        );
+
         let conn = self.context.conn.lock().await;
         let result: Result<String, _> = conn.query_row(
             "SELECT value FROM scratch_pad WHERE key = ?1",
@@ -220,6 +238,15 @@ impl Tool for MemoryListTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Log the memory operation
+        let msg = match &args.prefix {
+            Some(prefix) => format!("Listing memory keys with prefix '{}'", prefix),
+            None => "Listing all memory keys".to_string(),
+        };
+        self.context
+            .events
+            .send_feed(&self.context.agent_name, &msg, false);
+
         let conn = self.context.conn.lock().await;
 
         let keys: Vec<String> = match &args.prefix {
@@ -300,6 +327,13 @@ impl Tool for MemoryRemoveTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Log the memory operation
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            &format!("Removing '{}' from memory", args.key),
+            false,
+        );
+
         let conn = self.context.conn.lock().await;
         let rows_affected = conn
             .execute("DELETE FROM scratch_pad WHERE key = ?1", [&args.key])
@@ -315,13 +349,53 @@ impl Tool for MemoryRemoveTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::run_migrations;
+    use crate::agents::{AgentStatus, EngagementPhase};
+    use crate::state::{run_migrations, Severity};
+    use crate::tools::orchestrator::AgentSummary;
+
+    /// No-op event sender for tests
+    struct NoopEventSender;
+
+    impl EventSender for NoopEventSender {
+        fn send_feed(&self, _agent: &str, _message: &str, _is_error: bool) {}
+        fn send_feed_with_output(
+            &self,
+            _agent: &str,
+            _message: &str,
+            _is_error: bool,
+            _output: &str,
+        ) {
+        }
+        fn send_status(
+            &self,
+            _agent: &str,
+            _agent_type: &str,
+            _status: AgentStatus,
+            _current_tool: Option<String>,
+        ) {
+        }
+        fn send_metrics(
+            &self,
+            _input_tokens: u64,
+            _output_tokens: u64,
+            _cache_read_tokens: u64,
+            _cost_usd: f64,
+            _tool_calls: u64,
+        ) {
+        }
+        fn send_vulnerability(&self, _severity: Severity, _title: &str) {}
+        fn send_thinking(&self, _agent: &str, _content: Option<String>) {}
+        fn send_phase(&self, _phase: EngagementPhase) {}
+        fn send_summary(&self, _agent: &str, _summary: &AgentSummary) {}
+    }
 
     fn setup_context() -> Arc<MemoryContext> {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         Arc::new(MemoryContext {
             conn: Arc::new(Mutex::new(conn)),
+            events: Arc::new(NoopEventSender),
+            agent_name: "test".to_string(),
         })
     }
 
