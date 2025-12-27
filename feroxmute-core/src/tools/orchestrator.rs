@@ -43,6 +43,9 @@ pub struct AgentSummary {
     pub key_findings: Vec<String>,
     /// Suggested follow-up actions
     pub next_steps: Vec<String>,
+    /// Full raw output from the agent (for debugging)
+    #[serde(skip)]
+    pub raw_output: Option<String>,
 }
 
 /// Summarize agent output using the LLM
@@ -97,6 +100,7 @@ Respond with JSON only, no markdown formatting:
                 summary: "Summarization failed - raw output available".to_string(),
                 key_findings: vec![],
                 next_steps: vec![],
+                raw_output: None,
             }
         }
         Err(_) => AgentSummary {
@@ -104,6 +108,7 @@ Respond with JSON only, no markdown formatting:
             summary: "Summarization failed - raw output available".to_string(),
             key_findings: vec![],
             next_steps: vec![],
+            raw_output: None,
         },
     }
 }
@@ -209,7 +214,7 @@ impl Tool for SpawnAgentTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "spawn_agent".to_string(),
-            description: "Spawn a new agent to run a task in the background. Returns immediately."
+            description: "Spawn a new agent to run a task in the background. Returns immediately. After calling this, you MUST call wait_for_any() to get results - do not stop or complete the engagement without waiting."
                 .to_string(),
             parameters: json!({
                 "type": "object",
@@ -299,6 +304,7 @@ impl Tool for SpawnAgentTool {
         let events = Arc::clone(&self.context.events);
         let findings = Arc::clone(&self.context.findings);
         let limitations = Arc::clone(&self.context.limitations);
+        let memory = Arc::clone(&self.context.memory);
 
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
@@ -350,6 +356,7 @@ impl Tool for SpawnAgentTool {
                         events,
                         &agent_name,
                         limitations,
+                        memory,
                     )
                     .await
                 {
@@ -380,7 +387,10 @@ impl Tool for SpawnAgentTool {
 
         Ok(SpawnAgentOutput {
             success: true,
-            message: format!("Spawned agent '{}' ({})", args.name, args.agent_type),
+            message: format!(
+                "Agent '{}' ({}) is now running. YOUR NEXT TOOL CALL MUST BE: wait_for_any()",
+                args.name, args.agent_type
+            ),
         })
     }
 }
@@ -400,6 +410,8 @@ pub struct WaitForAgentOutput {
     pub summary: AgentSummary,
     /// Raw output truncated for reference (if needed)
     pub raw_output_truncated: String,
+    /// Workflow guidance based on current state
+    pub workflow_hint: String,
 }
 
 pub struct WaitForAgentTool {
@@ -480,7 +492,7 @@ impl Tool for WaitForAgentTool {
                 );
 
                 // Summarize the output
-                let summary = summarize_agent_output(
+                let mut summary = summarize_agent_output(
                     self.context.provider.as_ref(),
                     &result.name,
                     &result.agent_type,
@@ -489,13 +501,26 @@ impl Tool for WaitForAgentTool {
                 )
                 .await;
 
+                // Attach raw output for debugging
+                summary.raw_output = Some(result.output.clone());
+
                 // Send summary to TUI
                 self.context.events.send_summary(&result.name, &summary);
+
+                // Generate workflow hint based on agent type
+                let workflow_hint = if result.agent_type == "report" {
+                    "REPORT COMPLETED. You may now call complete_engagement with an executive summary.".to_string()
+                } else if result.agent_type == "recon" {
+                    "RECON COMPLETED. Spawn scanner agent(s) to test discovered endpoints, or wait for other agents.".to_string()
+                } else {
+                    "Agent completed. Continue with next phase of testing.".to_string()
+                };
 
                 Ok(WaitForAgentOutput {
                     found: true,
                     summary,
                     raw_output_truncated: truncate_output(&result.output, 500),
+                    workflow_hint,
                 })
             }
             None => Ok(WaitForAgentOutput {
@@ -505,8 +530,10 @@ impl Tool for WaitForAgentTool {
                     summary: format!("Agent '{}' not found", args.name),
                     key_findings: vec![],
                     next_steps: vec![],
+                    raw_output: None,
                 },
                 raw_output_truncated: String::new(),
+                workflow_hint: "Agent not found.".to_string(),
             }),
         }
     }
@@ -528,6 +555,8 @@ pub struct WaitForAnyOutput {
     pub raw_output_truncated: String,
     /// Number of agents still running after this one completed
     pub remaining_running: usize,
+    /// Workflow guidance based on current state
+    pub workflow_hint: String,
 }
 
 pub struct WaitForAnyTool {
@@ -550,7 +579,7 @@ impl Tool for WaitForAnyTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "wait_for_any".to_string(),
-            description: "Wait for any running agent to complete. Returns remaining_running count - keep calling until 0 before complete_engagement.".to_string(),
+            description: "REQUIRED after spawn_agent. Blocks until an agent completes and returns its results. You MUST call this after every spawn to get results and decide next steps. Returns remaining_running count.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {}
@@ -617,7 +646,7 @@ impl Tool for WaitForAnyTool {
                 );
 
                 // Summarize the output
-                let summary = summarize_agent_output(
+                let mut summary = summarize_agent_output(
                     self.context.provider.as_ref(),
                     &result.name,
                     &result.agent_type,
@@ -626,8 +655,32 @@ impl Tool for WaitForAnyTool {
                 )
                 .await;
 
+                // Attach raw output for debugging
+                summary.raw_output = Some(result.output.clone());
+
                 // Send summary to TUI
                 self.context.events.send_summary(&result.name, &summary);
+
+                // Generate workflow hint based on current state
+                let (has_scanner, has_report) = {
+                    let registry = self.context.registry.lock().await;
+                    let all_agents = registry.list_agents();
+                    let has_scanner = all_agents.iter().any(|(_, t, _)| *t == "scanner");
+                    let has_report = all_agents.iter().any(|(_, t, _)| *t == "report");
+                    (has_scanner, has_report)
+                };
+
+                let workflow_hint = if result.agent_type == "recon" && !has_scanner {
+                    "RECON COMPLETED. You MUST now spawn scanner agent(s) to test the discovered endpoints/services. DO NOT call complete_engagement yet.".to_string()
+                } else if result.agent_type == "scanner" && remaining_running == 0 && !has_report {
+                    "ALL SCANNERS COMPLETED. You MUST now spawn a report agent to generate findings. DO NOT call complete_engagement yet.".to_string()
+                } else if result.agent_type == "report" && remaining_running == 0 {
+                    "REPORT COMPLETED. You may now call complete_engagement with an executive summary.".to_string()
+                } else if remaining_running > 0 {
+                    format!("{} agent(s) still running. Call wait_for_any again or spawn more agents.", remaining_running)
+                } else {
+                    "Analyze results and spawn appropriate follow-up agents, or spawn report if all testing is done.".to_string()
+                };
 
                 Ok(WaitForAnyOutput {
                     found: true,
@@ -636,6 +689,7 @@ impl Tool for WaitForAnyTool {
                     summary,
                     raw_output_truncated: truncate_output(&result.output, 500),
                     remaining_running,
+                    workflow_hint,
                 })
             }
             None => Ok(WaitForAnyOutput {
@@ -645,6 +699,7 @@ impl Tool for WaitForAnyTool {
                 summary: AgentSummary::default(),
                 raw_output_truncated: "No running agents".to_string(),
                 remaining_running: 0,
+                workflow_hint: "No agents running. Spawn agents to continue the engagement.".to_string(),
             }),
         }
     }
@@ -822,7 +877,7 @@ impl Tool for CompleteEngagementTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "complete_engagement".to_string(),
-            description: "Mark the engagement as complete. FAILS if any agents are still running - use wait_for_any until remaining_running is 0 first.".to_string(),
+            description: "ONLY call after all work is done: spawn recon -> wait_for_any -> spawn scanners -> wait_for_any (repeat until remaining_running=0) -> spawn report -> wait_for_agent -> THEN complete. Will fail if agents are running.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -839,8 +894,8 @@ impl Tool for CompleteEngagementTool {
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         // Check if there are still running agents (any active state)
         let registry = self.context.registry.lock().await;
-        let running_agents: Vec<_> = registry
-            .list_agents()
+        let all_agents: Vec<_> = registry.list_agents();
+        let running_agents: Vec<_> = all_agents
             .iter()
             .filter(|(_, _, status)| {
                 matches!(
@@ -853,6 +908,7 @@ impl Tool for CompleteEngagementTool {
             })
             .map(|(name, _, _)| name.to_string())
             .collect();
+
         drop(registry);
 
         if !running_agents.is_empty() {
