@@ -148,6 +148,7 @@ impl EventSender for TuiEventSender {
         let summary_text = summary.summary.clone();
         let key_findings = summary.key_findings.clone();
         let next_steps = summary.next_steps.clone();
+        let raw_output = summary.raw_output.clone();
         tokio::spawn(async move {
             let _ = tx
                 .send(AgentEvent::Summary {
@@ -156,6 +157,7 @@ impl EventSender for TuiEventSender {
                     summary: summary_text,
                     key_findings,
                     next_steps,
+                    raw_output,
                 })
                 .await;
         });
@@ -210,17 +212,35 @@ pub async fn run_orchestrator(
         result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed)) => {
             match result {
                 Ok(output) => {
-                    let _ = tx.send(AgentEvent::Status {
-                        agent: "orchestrator".to_string(),
-                        agent_type: "orchestrator".to_string(),
-                        status: AgentStatus::Completed,
-                        current_tool: None,
-                    }).await;
+                    // Check if engagement was properly completed via complete_engagement tool
+                    let completed = engagement_completed.load(Ordering::SeqCst);
 
-                    let _ = tx.send(AgentEvent::Finished {
-                        success: true,
-                        message: format!("Engagement complete.\n{}", output),
-                    }).await;
+                    if completed {
+                        let _ = tx.send(AgentEvent::Status {
+                            agent: "orchestrator".to_string(),
+                            agent_type: "orchestrator".to_string(),
+                            status: AgentStatus::Completed,
+                            current_tool: None,
+                        }).await;
+
+                        let _ = tx.send(AgentEvent::Finished {
+                            success: true,
+                            message: format!("Engagement complete.\n{}", output),
+                        }).await;
+                    } else {
+                        // Orchestrator ended without calling complete_engagement
+                        let _ = tx.send(AgentEvent::Status {
+                            agent: "orchestrator".to_string(),
+                            agent_type: "orchestrator".to_string(),
+                            status: AgentStatus::Failed,
+                            current_tool: None,
+                        }).await;
+
+                        let _ = tx.send(AgentEvent::Finished {
+                            success: false,
+                            message: format!("Engagement ended prematurely - orchestrator stopped without completing the full workflow (recon → scanner → report → complete). Last output:\n{}", output),
+                        }).await;
+                    }
                 }
                 Err(e) => {
                     let _ = tx.send(AgentEvent::Status {
@@ -291,6 +311,10 @@ async fn run_orchestrator_with_tools(
     instruction: Option<String>,
     engagement_completed: Arc<std::sync::atomic::AtomicBool>,
 ) -> Result<String> {
+    // Create TuiEventSender first so it can be shared
+    let events: Arc<dyn feroxmute_core::tools::EventSender> =
+        Arc::new(TuiEventSender::new(tx.clone()));
+
     // Create memory context with in-memory DB (TODO: use session DB when available)
     let memory_conn = rusqlite::Connection::open_in_memory()
         .map_err(|e| anyhow::anyhow!("Failed to create memory DB: {}", e))?;
@@ -298,6 +322,8 @@ async fn run_orchestrator_with_tools(
         .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
     let memory_context = Arc::new(MemoryContext {
         conn: Arc::new(Mutex::new(memory_conn)),
+        events: Arc::clone(&events),
+        agent_name: "orchestrator".to_string(),
     });
 
     // Create the orchestrator context with all shared state
@@ -305,7 +331,7 @@ async fn run_orchestrator_with_tools(
         registry: Arc::new(Mutex::new(AgentRegistry::new())),
         provider: Arc::clone(&provider),
         container,
-        events: Arc::new(TuiEventSender::new(tx.clone())),
+        events,
         cancel,
         prompts: prompts.clone(),
         target: target.to_string(),
@@ -326,9 +352,10 @@ async fn run_orchestrator_with_tools(
 
     let user_prompt = format!(
         "Target: {}\n\n{}\n\n{}\n\n\
-        You have tools to spawn agents (recon, scanner{}, report), wait for them, \
-        record findings, and complete the engagement.\n\n\
-        Start by spawning appropriate agents for reconnaissance.",
+        Available agent types: recon, scanner{}, report.\n\n\
+        WORKFLOW: spawn_agent -> wait_for_any -> process results -> spawn more agents -> wait_for_any -> repeat until done -> spawn report -> wait_for_agent -> complete_engagement.\n\n\
+        CRITICAL: After EVERY spawn_agent call, you MUST call wait_for_any() to get results. Never stop without waiting for spawned agents.\n\n\
+        Start by spawning a recon agent, then call wait_for_any() to get its results.",
         target,
         limitations.to_prompt_section(),
         engagement_task,

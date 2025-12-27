@@ -304,25 +304,33 @@ fn drain_events(app: &mut App) {
                 summary,
                 key_findings,
                 next_steps,
+                raw_output,
             } => {
-                // Format summary as a compact block
+                // Show raw output as separate feed entries for proper display
                 let icon = if success { "✓" } else { "✗" };
-                let mut lines = vec![format!("{} SUMMARY", icon)];
+                app.add_feed(super::app::FeedEntry::new(&agent, format!("{} AGENT COMPLETE", icon)));
+
+                // Show raw output if available for debugging
+                if let Some(output) = raw_output {
+                    for line in output.lines() {
+                        if !line.trim().is_empty() {
+                            app.add_feed(super::app::FeedEntry::new(&agent, format!("  {}", line)));
+                        }
+                    }
+                    app.add_feed(super::app::FeedEntry::new(&agent, "--- Summary ---"));
+                }
 
                 if !summary.is_empty() {
-                    lines.push(format!("│ {}", summary));
+                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  {}", summary)));
                 }
 
                 for finding in key_findings.iter().take(5) {
-                    lines.push(format!("│ • {}", finding));
+                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  • {}", finding)));
                 }
 
                 for step in next_steps.iter().take(3) {
-                    lines.push(format!("│ → {}", step));
+                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  → {}", step)));
                 }
-
-                let message = lines.join("\n");
-                app.add_feed(super::app::FeedEntry::new(&agent, message));
             }
         }
     }

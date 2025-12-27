@@ -66,5 +66,7 @@ pub enum AgentEvent {
         summary: String,
         key_findings: Vec<String>,
         next_steps: Vec<String>,
+        /// Full raw output from the agent (for debugging)
+        raw_output: Option<String>,
     },
 }
