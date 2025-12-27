@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local};
 
-use super::channel::AgentEvent;
+use super::channel::{AgentEvent, MemoryEntry};
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
 use feroxmute_core::state::models::CodeFinding;
 use tokio::sync::mpsc;
@@ -17,6 +17,7 @@ pub enum View {
     AgentDetail(String), // Agent name instead of AgentView enum
     Logs,
     Help,
+    Memory,
 }
 
 /// Metrics display
@@ -185,6 +186,14 @@ pub struct App {
     pub code_finding_counts: CodeFindingCounts,
     /// Channel receiver for agent events
     pub event_rx: Option<mpsc::Receiver<AgentEvent>>,
+    /// Memory entries for display
+    pub memory_entries: Vec<MemoryEntry>,
+    /// Currently selected memory entry index
+    pub selected_memory: usize,
+    /// Show memory detail modal
+    pub show_memory_modal: bool,
+    /// Scroll offset for modal content
+    pub memory_modal_scroll: usize,
 }
 
 impl App {
@@ -226,6 +235,10 @@ impl App {
             code_findings: Vec::new(),
             code_finding_counts: CodeFindingCounts::default(),
             event_rx,
+            memory_entries: Vec::new(),
+            selected_memory: 0,
+            show_memory_modal: false,
+            memory_modal_scroll: 0,
         }
     }
 
@@ -442,6 +455,47 @@ impl App {
     #[allow(dead_code)]
     pub fn reset_feed_scroll(&mut self) {
         self.feed_scroll_x = 0;
+    }
+
+    /// Select next memory entry
+    pub fn select_next_memory(&mut self) {
+        if self.selected_memory < self.memory_entries.len().saturating_sub(1) {
+            self.selected_memory += 1;
+        }
+    }
+
+    /// Select previous memory entry
+    pub fn select_prev_memory(&mut self) {
+        self.selected_memory = self.selected_memory.saturating_sub(1);
+    }
+
+    /// Open memory modal for selected entry
+    pub fn open_memory_modal(&mut self) {
+        if !self.memory_entries.is_empty() {
+            self.show_memory_modal = true;
+            self.memory_modal_scroll = 0;
+        }
+    }
+
+    /// Close memory modal
+    pub fn close_memory_modal(&mut self) {
+        self.show_memory_modal = false;
+        self.memory_modal_scroll = 0;
+    }
+
+    /// Scroll memory modal content up
+    pub fn scroll_memory_modal_up(&mut self) {
+        self.memory_modal_scroll = self.memory_modal_scroll.saturating_add(1);
+    }
+
+    /// Scroll memory modal content down
+    pub fn scroll_memory_modal_down(&mut self) {
+        self.memory_modal_scroll = self.memory_modal_scroll.saturating_sub(1);
+    }
+
+    /// Get currently selected memory entry
+    pub fn selected_memory_entry(&self) -> Option<&MemoryEntry> {
+        self.memory_entries.get(self.selected_memory)
     }
 }
 

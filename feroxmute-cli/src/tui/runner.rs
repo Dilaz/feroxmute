@@ -23,6 +23,7 @@ fn render(frame: &mut Frame, app: &App) {
         View::AgentDetail(agent_name) => agent_detail::render(frame, app, agent_name),
         View::Logs => render_logs(frame, app),
         View::Help => render_help(frame),
+        View::Memory => {} // TODO: render memory view
     }
 
     if app.confirm_quit {
