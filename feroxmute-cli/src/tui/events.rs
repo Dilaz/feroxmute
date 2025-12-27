@@ -47,6 +47,45 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    // Memory view specific handling
+    if app.view == View::Memory {
+        if app.show_memory_modal {
+            // Modal is open
+            match key.code {
+                KeyCode::Esc | KeyCode::Enter => {
+                    app.close_memory_modal();
+                    return EventResult::Continue;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    app.scroll_memory_modal_up();
+                    return EventResult::Continue;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    app.scroll_memory_modal_down();
+                    return EventResult::Continue;
+                }
+                _ => return EventResult::Continue,
+            }
+        } else {
+            // List view
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    app.select_prev_memory();
+                    return EventResult::Continue;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    app.select_next_memory();
+                    return EventResult::Continue;
+                }
+                KeyCode::Enter => {
+                    app.open_memory_modal();
+                    return EventResult::Continue;
+                }
+                _ => {} // Fall through to global keys
+            }
+        }
+    }
+
     match key.code {
         // Navigation
         KeyCode::Char('h') | KeyCode::Home | KeyCode::Esc => {
@@ -54,6 +93,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         }
         KeyCode::Char('l') => {
             app.navigate(View::Logs);
+        }
+        KeyCode::Char('p') => {
+            app.navigate(View::Memory);
         }
 
         // Agent detail views (number keys)
