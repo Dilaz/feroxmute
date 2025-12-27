@@ -28,6 +28,33 @@ pub struct MemoryContext {
     pub agent_name: String,
 }
 
+/// Query all memory entries and send update event
+async fn broadcast_memory_update(context: &MemoryContext) {
+    let entries = {
+        let conn = context.conn.lock().await;
+        let mut stmt = match conn.prepare(
+            "SELECT key, value, created_at, updated_at FROM scratch_pad ORDER BY key",
+        ) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        stmt.query_map([], |row| {
+            Ok(super::MemoryEntryData {
+                key: row.get(0)?,
+                value: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        })
+        .ok()
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
+    }; // conn lock released here
+
+    context.events.send_memory_update(entries);
+}
+
 // ============================================================================
 // MemoryAddTool
 // ============================================================================
@@ -99,6 +126,9 @@ impl Tool for MemoryAddTool {
             [&args.key, &args.value],
         )
         .map_err(|e| MemoryToolError::Database(e.to_string()))?;
+
+        drop(conn); // Release lock before broadcast
+        broadcast_memory_update(&self.context).await;
 
         Ok(MemoryAddOutput {
             stored: true,
@@ -338,6 +368,9 @@ impl Tool for MemoryRemoveTool {
         let rows_affected = conn
             .execute("DELETE FROM scratch_pad WHERE key = ?1", [&args.key])
             .map_err(|e| MemoryToolError::Database(e.to_string()))?;
+
+        drop(conn); // Release lock before broadcast
+        broadcast_memory_update(&self.context).await;
 
         Ok(MemoryRemoveOutput {
             removed: rows_affected > 0,
