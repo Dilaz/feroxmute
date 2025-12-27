@@ -69,4 +69,18 @@ pub enum AgentEvent {
         /// Full raw output from the agent (for debugging)
         raw_output: Option<String>,
     },
+
+    /// Memory entries updated
+    MemoryUpdated {
+        entries: Vec<MemoryEntry>,
+    },
+}
+
+/// Memory entry for TUI display
+#[derive(Debug, Clone)]
+pub struct MemoryEntry {
+    pub key: String,
+    pub value: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
