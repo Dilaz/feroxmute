@@ -333,8 +333,12 @@ fn drain_events(app: &mut App) {
                     app.add_feed(super::app::FeedEntry::new(&agent, format!("  → {}", step)));
                 }
             }
-            AgentEvent::MemoryUpdated { entries: _ } => {
-                // TODO: Handle memory updates in later task
+            AgentEvent::MemoryUpdated { entries } => {
+                app.memory_entries = entries;
+                // Clamp selection if entries were removed
+                if app.selected_memory >= app.memory_entries.len() {
+                    app.selected_memory = app.memory_entries.len().saturating_sub(1);
+                }
             }
         }
     }
