@@ -387,6 +387,7 @@ mod tests {
         fn send_thinking(&self, _agent: &str, _content: Option<String>) {}
         fn send_phase(&self, _phase: EngagementPhase) {}
         fn send_summary(&self, _agent: &str, _summary: &AgentSummary) {}
+        fn send_memory_update(&self, _entries: Vec<crate::tools::MemoryEntryData>) {}
     }
 
     fn setup_context() -> Arc<MemoryContext> {

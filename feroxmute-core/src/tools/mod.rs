@@ -20,3 +20,12 @@ pub use report::{
     AddRecommendationTool, ExportJsonTool, ExportMarkdownTool, GenerateReportTool, ReportContext,
 };
 pub use shell::DockerShellTool;
+
+/// Memory entry for event updates
+#[derive(Debug, Clone)]
+pub struct MemoryEntryData {
+    pub key: String,
+    pub value: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
