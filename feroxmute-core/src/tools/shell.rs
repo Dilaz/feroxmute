@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::agents::AgentStatus;
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolRegistry};
-use crate::tools::sast::{GitleaksOutput, GrypeOutput, SastToolOutput, SemgrepOutput};
+use crate::tools::sast::{GitleaksOutput, GrypeOutput, RoutesOutput, SastToolOutput, SemgrepOutput};
 use crate::tools::EventSender;
 
 /// Arguments for the shell tool
@@ -327,6 +327,20 @@ impl DockerShellTool {
                         &finding.tool,
                         None,
                         None,
+                    );
+                }
+            }
+        }
+
+        // Try to parse discover_routes output
+        if cmd_lower.starts_with("discover_routes") || cmd_lower.contains("discover_routes") {
+            if let Ok(routes_output) = serde_json::from_str::<RoutesOutput>(output) {
+                let count = routes_output.routes.len();
+                if count > 0 {
+                    self.events.send_feed(
+                        &self.agent_name,
+                        &format!("  -> discovered {} routes", count),
+                        false,
                     );
                 }
             }
