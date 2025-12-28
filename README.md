@@ -6,13 +6,16 @@ LLM-powered penetration testing framework with autonomous agents.
 
 feroxmute automates security testing using a hierarchy of specialized AI agents. An orchestrator plans the engagement and delegates to recon, scanner, exploit, and report agents - all executing tools inside a Kali Linux Docker container while you watch from a terminal UI.
 
+![feroxmute TUI](docs/images/screenshot.png)
+
 ## Features
 
 - **Hierarchical agent architecture** - Orchestrator delegates to specialist agents (recon, scanner, exploit, report, script)
-- **Multi-provider LLM support** - Anthropic, OpenAI, Gemini, Cohere, xAI, DeepSeek, Azure, Perplexity, Ollama, and LiteLLM (powered by [rig](https://github.com/0xPlaygrounds/rig))
+- **Multi-provider LLM support** - Anthropic, OpenAI, Gemini, Cohere, xAI, DeepSeek, Azure, Perplexity, Ollama, and LiteLLM (powered by [rig](https://github.com/0xPlaygrounds/rig)). Tested primarily with Gemini 3 Pro and Gemini 3 Flash.
 - **Docker isolation** - All tools run inside a Kali Linux container
 - **Terminal UI** - Live dashboard showing agent activity, tool output, and findings
 - **Session persistence** - SQLite-backed state with resumable sessions
+- **Agent memory** - Persistent scratchpad for orchestrator context (press `p` in TUI to view)
 - **SAST support** - Link source code to web targets for combined analysis
 - **Engagement controls** - Passive mode, port restrictions, rate limiting, scope limitations
 
