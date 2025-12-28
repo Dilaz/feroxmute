@@ -183,7 +183,10 @@ impl ContainerManager {
                     if info.state.and_then(|s| s.running) != Some(true) {
                         info!("Starting existing container: {}", self.config.name);
                         self.docker
-                            .start_container(&self.config.name, None::<StartContainerOptions<String>>)
+                            .start_container(
+                                &self.config.name,
+                                None::<StartContainerOptions<String>>,
+                            )
                             .await?;
                     }
                 }
