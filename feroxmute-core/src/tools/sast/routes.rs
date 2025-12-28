@@ -58,6 +58,39 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
                 }
             }
         }
+        "flask" => {
+            // Pattern: @app.route('/path') or @blueprint.route('/path')
+            let re = Regex::new(r#"@(?:app|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]"#)
+                .expect("Invalid flask regex pattern");
+
+            // Pattern for methods=['GET', 'POST']
+            let methods_re =
+                Regex::new(r#"methods\s*=\s*\[([^\]]+)\]"#).expect("Invalid methods regex pattern");
+
+            for (line_num, line) in content.lines().enumerate() {
+                for cap in re.captures_iter(line) {
+                    let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+
+                    // Try to extract methods, default to GET
+                    let method = if let Some(methods_cap) = methods_re.captures(line) {
+                        methods_cap
+                            .get(1)
+                            .map(|m| m.as_str().replace(['\'', '"', ' '], ""))
+                            .unwrap_or_else(|| "GET".to_string())
+                    } else {
+                        "GET".to_string()
+                    };
+
+                    routes.push(RouteInfo::new(
+                        path,
+                        &method,
+                        file,
+                        (line_num + 1) as u32,
+                        framework,
+                    ));
+                }
+            }
+        }
         _ => {}
     }
 
@@ -95,5 +128,28 @@ mod tests {
         assert_eq!(routes[1].method, "POST");
         assert_eq!(routes[2].path, "/items/:id");
         assert_eq!(routes[2].method, "DELETE");
+    }
+
+    #[test]
+    fn test_flask_route_pattern() {
+        let code = r#"
+        @app.route('/users', methods=['GET'])
+        def list_users():
+            pass
+
+        @app.route('/users/<id>', methods=['POST', 'PUT'])
+        def update_user(id):
+            pass
+
+        @blueprint.route('/items')
+        def list_items():
+            pass
+    "#;
+
+        let routes = discover_routes_in_content(code, "app.py", "flask");
+        assert_eq!(routes.len(), 3);
+        assert_eq!(routes[0].path, "/users");
+        assert_eq!(routes[1].path, "/users/<id>");
+        assert_eq!(routes[2].path, "/items");
     }
 }
