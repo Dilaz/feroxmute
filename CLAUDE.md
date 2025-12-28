@@ -15,21 +15,24 @@ cargo build --release          # Release build
 
 # Run
 cargo run -- --target example.com --provider anthropic
-cargo run -- --wizard          # Interactive setup (not yet implemented)
+cargo run -- --target example.com --source ./app  # With source code for SAST
+cargo run -- --sast-only --target ./app           # Source-only analysis
+cargo run -- --wizard          # Interactive setup
 cargo run -- --resume <path>   # Resume session
 
 # Test
 cargo test                     # Run all tests
 cargo test -p feroxmute-core   # Test core library only
+cargo test test_name           # Run single test by name
 
 # Lint and Format
 cargo fmt                      # Format code
 cargo clippy                   # Lint
 
 # Docker
-docker compose build                    # Build Kali image
-docker compose up                       # Start containers
-docker compose up --profile litellm     # Start with LiteLLM sidecar
+docker compose -f docker/compose.yml build               # Build Kali image
+docker compose -f docker/compose.yml up                  # Start containers
+docker compose -f docker/compose.yml --profile litellm up  # With LiteLLM proxy
 ```
 
 ## Architecture
@@ -50,42 +53,62 @@ docker compose up --profile litellm     # Start with LiteLLM sidecar
 ```
 
 The Orchestrator plans engagement phases and delegates to specialists. Each agent:
-1. Receives tasks from orchestrator
-2. Executes tools in the Kali Docker container
-3. Stores findings in SQLite
-4. Reports completion back
+1. Receives tasks from orchestrator via `SpawnAgentTool`
+2. Executes tools in the Kali Docker container via `DockerShellTool`
+3. Stores findings in SQLite via `RecordFindingTool`
+4. Reports completion back; orchestrator waits via `WaitForAgentTool`
 
 ### Key Modules (feroxmute-core/src/)
 
 - **agents/**: Agent implementations (orchestrator, recon, scanner, exploit, report)
-  - `traits.rs`: Agent trait definitions
+  - `traits.rs`: `Agent` trait with `execute()`, `system_prompt()`, `tools()`
   - `prompts.rs`: Prompt loading from prompts.toml
-- **providers/**: LLM provider abstraction (Anthropic, OpenAI via rig-core)
-  - `traits.rs`: Provider trait and Message types
-  - `factory.rs`: Provider instantiation
+- **providers/**: LLM provider abstraction via rig-core
+  - `traits.rs`: `LlmProvider` trait with `complete_with_shell()`, `complete_with_orchestrator()`, `complete_with_report()`
+  - `macros.rs`: `define_provider!` macro generates 95% of provider boilerplate
+  - `factory.rs`: Provider instantiation by name
+  - Supports: Anthropic, OpenAI, Gemini, Cohere, xAI, DeepSeek, Azure, Perplexity, Ollama, LiteLLM
+- **tools/**: rig-compatible tool implementations
+  - `executor.rs`: `ToolExecutor` runs commands in Kali container
+  - `docker_shell.rs`: `DockerShellTool` for agent shell access
+  - `orchestrator.rs`: `SpawnAgentTool`, `WaitForAgentTool`, `ListAgentsTool`, `CompleteEngagementTool`
+  - `memory.rs`: `MemoryAddTool`, `MemoryGetTool`, `MemoryListTool` for agent scratchpad
+  - `report.rs`: `GenerateReportTool`, `ExportJsonTool`, `ExportMarkdownTool`
 - **state/**: SQLite persistence and session management
-  - `models.rs`: Host, Port, Vulnerability data structures
-  - `session.rs`: Session lifecycle
-- **tools/**: Tool execution via Docker
-  - `executor.rs`: Runs commands in Kali container
 - **docker/**: Container management via bollard
 
 ### Key Modules (feroxmute-cli/src/)
 
 - **tui/**: Ratatui terminal UI
-  - `app.rs`: Application state
+  - `app.rs`: Application state and event handling
   - `runner.rs`: Main event loop
   - `widgets/`: Dashboard, AgentDetail views
+  - TUI keys: `q` quit, `Tab` switch view, `p` view orchestrator memory
 
 ### Data Flow
 
 1. User provides target via CLI args
-2. TUI creates session with EngagementConfig
-3. Orchestrator plans phases, delegates to specialists
-4. Specialists call LLM, execute tools in Docker container
-5. Results stored in SQLite session database
-6. Report agent generates JSON/Markdown findings
-7. TUI displays live progress
+2. TUI creates session, spawns Kali container with optional source mount
+3. Orchestrator plans phases, spawns specialists via `SpawnAgentTool`
+4. Specialists use `DockerShellTool` to run security tools (nmap, nuclei, sqlmap, etc.)
+5. Results stored via `RecordFindingTool`
+6. Report agent generates JSON/Markdown via report tools
+7. TUI displays live progress via `EventSender` channel
+
+### Provider Macro System
+
+New providers are added using `define_provider!` in `providers/macros.rs`:
+```rust
+define_provider! {
+    name: AnthropicProvider,
+    provider_name: "anthropic",
+    client_type: anthropic::Client,
+    env_var: "ANTHROPIC_API_KEY",
+    supports_tools: true,
+    client_builder: |builder, _base_url| builder,
+    has_base_url: false
+}
+```
 
 ### Session Storage
 
@@ -94,6 +117,8 @@ Sessions are stored in `~/.feroxmute/sessions/<session-id>/`:
 - `config.toml`: Engagement configuration
 - `artifacts/`: Downloaded files, evidence
 - `reports/`: Generated findings (JSON, Markdown)
+
+Logs: `~/.feroxmute/logs/feroxmute.log`
 
 ## Configuration
 

@@ -75,6 +75,21 @@ feroxmute [OPTIONS] --target <TARGET>
 | `--wizard` | Interactive setup |
 | `-v`, `-vv`, `-vvv` | Increase verbosity |
 
+## Docker
+
+The Kali container builds automatically on first run. For manual control:
+
+```bash
+# Build the Kali image
+docker compose -f docker/compose.yml build
+
+# Start containers
+docker compose -f docker/compose.yml up
+
+# Start with LiteLLM proxy sidecar
+docker compose -f docker/compose.yml --profile litellm up
+```
+
 ## Disclaimer
 
 This tool is intended for **authorized security testing only**.
