@@ -91,6 +91,92 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
                 }
             }
         }
+        "go" => {
+            // Pattern: http.HandleFunc("/path", ...) or r.Handle("/path", ...)
+            let re = Regex::new(r#"(?:http\.HandleFunc|\.Handle|\.HandleFunc)\s*\(\s*["']([^"']+)["']"#)
+                .expect("Invalid go regex pattern");
+
+            for (line_num, line) in content.lines().enumerate() {
+                for cap in re.captures_iter(line) {
+                    let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+                    routes.push(RouteInfo::new(
+                        path,
+                        "ANY",
+                        file,
+                        (line_num + 1) as u32,
+                        framework,
+                    ));
+                }
+            }
+        }
+        "axum" => {
+            // Pattern: .route("/path", ...)
+            let re = Regex::new(r#"\.route\s*\(\s*["']([^"']+)["']"#)
+                .expect("Invalid axum regex pattern");
+
+            for (line_num, line) in content.lines().enumerate() {
+                for cap in re.captures_iter(line) {
+                    let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+                    routes.push(RouteInfo::new(
+                        path,
+                        "ANY",
+                        file,
+                        (line_num + 1) as u32,
+                        framework,
+                    ));
+                }
+            }
+        }
+        "django" => {
+            // Pattern: path('route/', ...) or url(r'^route/$', ...)
+            let re = Regex::new(r#"(?:path|url)\s*\(\s*[r]?['"]([^'"]+)['"]"#)
+                .expect("Invalid django regex pattern");
+
+            for (line_num, line) in content.lines().enumerate() {
+                for cap in re.captures_iter(line) {
+                    let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+                    routes.push(RouteInfo::new(
+                        path,
+                        "ANY",
+                        file,
+                        (line_num + 1) as u32,
+                        framework,
+                    ));
+                }
+            }
+        }
+        "spring" => {
+            // Pattern: @GetMapping("/path"), @PostMapping, etc.
+            let re = Regex::new(
+                r#"@(Get|Post|Put|Delete|Patch|Request)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']"#,
+            )
+            .expect("Invalid spring regex pattern");
+
+            for (line_num, line) in content.lines().enumerate() {
+                for cap in re.captures_iter(line) {
+                    let method = cap
+                        .get(1)
+                        .map(|m| {
+                            let m = m.as_str();
+                            if m == "Request" {
+                                "ANY"
+                            } else {
+                                m
+                            }
+                        })
+                        .unwrap_or("ANY")
+                        .to_uppercase();
+                    let path = cap.get(2).map(|m| m.as_str()).unwrap_or_default();
+                    routes.push(RouteInfo::new(
+                        path,
+                        &method,
+                        file,
+                        (line_num + 1) as u32,
+                        framework,
+                    ));
+                }
+            }
+        }
         _ => {}
     }
 
@@ -151,5 +237,58 @@ mod tests {
         assert_eq!(routes[0].path, "/users");
         assert_eq!(routes[1].path, "/users/<id>");
         assert_eq!(routes[2].path, "/items");
+    }
+
+    #[test]
+    fn test_go_route_pattern() {
+        let code = r#"
+        http.HandleFunc("/api/users", handleUsers)
+        r.Handle("/api/items", itemsHandler)
+    "#;
+
+        let routes = discover_routes_in_content(code, "main.go", "go");
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].path, "/api/users");
+        assert_eq!(routes[1].path, "/api/items");
+    }
+
+    #[test]
+    fn test_axum_route_pattern() {
+        let code = r#"
+        .route("/api/users", get(list_users))
+        .route("/api/users/:id", post(create_user).delete(delete_user))
+    "#;
+
+        let routes = discover_routes_in_content(code, "main.rs", "axum");
+        assert_eq!(routes.len(), 2);
+    }
+
+    #[test]
+    fn test_django_route_pattern() {
+        let code = r#"
+        path('users/', views.user_list),
+        path('users/<int:id>/', views.user_detail),
+        url(r'^api/items/$', views.items),
+    "#;
+
+        let routes = discover_routes_in_content(code, "urls.py", "django");
+        assert_eq!(routes.len(), 3);
+    }
+
+    #[test]
+    fn test_spring_route_pattern() {
+        let code = r#"
+        @GetMapping("/api/users")
+        public List<User> getUsers() {}
+
+        @PostMapping("/api/users/{id}")
+        public User updateUser(@PathVariable Long id) {}
+
+        @RequestMapping(value = "/items", method = RequestMethod.DELETE)
+        public void deleteItems() {}
+    "#;
+
+        let routes = discover_routes_in_content(code, "UserController.java", "spring");
+        assert_eq!(routes.len(), 3);
     }
 }
