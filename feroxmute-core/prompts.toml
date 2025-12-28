@@ -854,6 +854,35 @@ These catch:
 - Known vulnerable patterns
 - Dependency issues
 
+### Phase 1.5: Route Discovery
+
+After running security scanners, discover web application routes:
+
+**discover_routes** - Find API endpoints and route definitions:
+```bash
+discover_routes /path/to/source
+```
+
+This finds routes in Express, Flask, Django, Spring, Go, and Axum applications.
+
+After discovering routes, analyze them for security concerns:
+
+1. **SQL Risk**: Routes with query parameters or database operations
+2. **Auth Endpoints**: Login, register, password reset (test for bypass)
+3. **File Operations**: Upload/download endpoints (path traversal risk)
+4. **Admin Routes**: Privileged operations (authorization testing)
+5. **Injection Risk**: Template rendering, command execution
+6. **Data Exposure**: User data exports, bulk operations
+
+Store findings in memory for the scanner agent:
+```
+memory_add(key="routes:sql_risk", value="[list of endpoints with SQL concerns]")
+memory_add(key="routes:auth", value="[auth-related endpoints]")
+memory_add(key="routes:file_ops", value="[file handling endpoints]")
+memory_add(key="routes:admin", value="[admin/privileged endpoints]")
+memory_add(key="routes:all", value="[complete route list with metadata]")
+```
+
 ### Phase 2: Manual Logic Review
 This is where you earn your keep. Tools can't understand:
 
