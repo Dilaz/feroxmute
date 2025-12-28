@@ -613,4 +613,120 @@ mod tests {
         app.toggle_output(Some("recon"));
         assert!(!app.feed[1].expanded);
     }
+
+    #[test]
+    fn test_memory_selection() {
+        let mut app = App::new("test.com", "test-session", None);
+
+        // Empty state - selection stays at 0
+        assert_eq!(app.selected_memory, 0);
+        app.select_next_memory();
+        assert_eq!(app.selected_memory, 0);
+        app.select_prev_memory();
+        assert_eq!(app.selected_memory, 0);
+
+        // Add entries
+        app.memory_entries = vec![
+            MemoryEntry {
+                key: "k1".into(),
+                value: "v1".into(),
+                created_at: "".into(),
+                updated_at: "".into(),
+            },
+            MemoryEntry {
+                key: "k2".into(),
+                value: "v2".into(),
+                created_at: "".into(),
+                updated_at: "".into(),
+            },
+            MemoryEntry {
+                key: "k3".into(),
+                value: "v3".into(),
+                created_at: "".into(),
+                updated_at: "".into(),
+            },
+        ];
+
+        // Navigate forward
+        assert_eq!(app.selected_memory, 0);
+        app.select_next_memory();
+        assert_eq!(app.selected_memory, 1);
+        app.select_next_memory();
+        assert_eq!(app.selected_memory, 2);
+        app.select_next_memory();
+        assert_eq!(app.selected_memory, 2); // Should not exceed bounds
+
+        // Navigate backward
+        app.select_prev_memory();
+        assert_eq!(app.selected_memory, 1);
+        app.select_prev_memory();
+        assert_eq!(app.selected_memory, 0);
+        app.select_prev_memory();
+        assert_eq!(app.selected_memory, 0); // Should not go below 0
+    }
+
+    #[test]
+    fn test_memory_modal() {
+        let mut app = App::new("test.com", "test-session", None);
+
+        // Cannot open modal with no entries
+        app.open_memory_modal();
+        assert!(!app.show_memory_modal);
+
+        // Add entry
+        app.memory_entries = vec![MemoryEntry {
+            key: "test".into(),
+            value: "value".into(),
+            created_at: "".into(),
+            updated_at: "".into(),
+        }];
+
+        // Open modal
+        app.open_memory_modal();
+        assert!(app.show_memory_modal);
+        assert_eq!(app.memory_modal_scroll, 0);
+
+        // Scroll
+        app.scroll_memory_modal_up();
+        assert_eq!(app.memory_modal_scroll, 1);
+        app.scroll_memory_modal_up();
+        assert_eq!(app.memory_modal_scroll, 2);
+        app.scroll_memory_modal_down();
+        assert_eq!(app.memory_modal_scroll, 1);
+
+        // Close modal resets scroll
+        app.close_memory_modal();
+        assert!(!app.show_memory_modal);
+        assert_eq!(app.memory_modal_scroll, 0);
+    }
+
+    #[test]
+    fn test_selected_memory_entry() {
+        let mut app = App::new("test.com", "test-session", None);
+
+        // No entries - returns None
+        assert!(app.selected_memory_entry().is_none());
+
+        // Add entries
+        app.memory_entries = vec![
+            MemoryEntry {
+                key: "first".into(),
+                value: "v1".into(),
+                created_at: "".into(),
+                updated_at: "".into(),
+            },
+            MemoryEntry {
+                key: "second".into(),
+                value: "v2".into(),
+                created_at: "".into(),
+                updated_at: "".into(),
+            },
+        ];
+
+        // Get selected entry
+        assert_eq!(app.selected_memory_entry().unwrap().key, "first");
+
+        app.select_next_memory();
+        assert_eq!(app.selected_memory_entry().unwrap().key, "second");
+    }
 }

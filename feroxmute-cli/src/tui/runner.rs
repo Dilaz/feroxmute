@@ -183,6 +183,10 @@ fn render_help(frame: &mut Frame) {
             Span::raw("Logs view"),
         ]),
         Line::from(vec![
+            Span::styled("  p          ", Style::default().fg(Color::Yellow)),
+            Span::raw("Memory view"),
+        ]),
+        Line::from(vec![
             Span::styled("  1-9        ", Style::default().fg(Color::Yellow)),
             Span::raw("Agent details (1=orchestrator, 2-9=spawned)"),
         ]),

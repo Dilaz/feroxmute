@@ -144,6 +144,8 @@ pub trait EventSender: Send + Sync {
     fn send_phase(&self, phase: EngagementPhase);
     /// Send agent summary (when subagent completes)
     fn send_summary(&self, agent: &str, summary: &AgentSummary);
+    /// Send memory entries update
+    fn send_memory_update(&self, entries: Vec<super::MemoryEntryData>);
 }
 
 /// Shared context for all orchestrator tools

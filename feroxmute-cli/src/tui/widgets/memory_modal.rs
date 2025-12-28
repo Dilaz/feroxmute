@@ -1,5 +1,7 @@
 //! Memory modal popup widget
 
+#![allow(clippy::indexing_slicing)]
+
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
