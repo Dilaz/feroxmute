@@ -355,8 +355,38 @@ fn drain_events(app: &mut App) {
                     app.selected_memory = app.memory_entries.len().saturating_sub(1);
                 }
             }
-            AgentEvent::CodeFinding { agent: _, finding: _ } => {
-                // TODO: Handle SAST findings in TUI (will be implemented in subsequent tasks)
+            AgentEvent::CodeFinding { agent, finding } => {
+                // Convert event to CodeFinding model
+                let code_finding = feroxmute_core::state::models::CodeFinding::new(
+                    &finding.file_path,
+                    finding.severity,
+                    finding.finding_type,
+                    &finding.title,
+                    &finding.tool,
+                );
+                let code_finding = if let Some(line) = finding.line_number {
+                    code_finding.with_line(line)
+                } else {
+                    code_finding
+                };
+                let code_finding = if let Some(ref cve) = finding.cve_id {
+                    code_finding.with_cve(cve)
+                } else {
+                    code_finding
+                };
+                let code_finding = if let Some(ref pkg) = finding.package_name {
+                    code_finding.with_package(pkg, "")
+                } else {
+                    code_finding
+                };
+
+                app.add_code_finding(code_finding);
+
+                // Also add to feed for visibility
+                app.add_feed(super::app::FeedEntry::new(
+                    &agent,
+                    format!("[{:?}] {}", finding.severity, finding.title),
+                ));
             }
         }
     }

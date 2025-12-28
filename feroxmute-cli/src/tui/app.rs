@@ -6,7 +6,7 @@ use chrono::{DateTime, Local};
 
 use super::channel::{AgentEvent, MemoryEntry};
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
-use feroxmute_core::state::models::CodeFinding;
+use feroxmute_core::state::models::{CodeFinding, FindingType};
 use tokio::sync::mpsc;
 
 /// Active view in the TUI
@@ -360,6 +360,16 @@ impl App {
         if let Some(info) = self.agents.get_mut(agent) {
             info.thinking = thinking;
         }
+    }
+
+    /// Add a code finding and update counts
+    pub fn add_code_finding(&mut self, finding: CodeFinding) {
+        match finding.finding_type {
+            FindingType::Dependency => self.code_finding_counts.dependencies += 1,
+            FindingType::Sast => self.code_finding_counts.sast += 1,
+            FindingType::Secret => self.code_finding_counts.secrets += 1,
+        }
+        self.code_findings.push(finding);
     }
 
     /// Update metrics
