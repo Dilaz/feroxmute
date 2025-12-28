@@ -183,6 +183,25 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
     routes
 }
 
+/// Discover routes by auto-detecting framework
+pub fn discover_routes_all_frameworks(content: &str, file: &str) -> Vec<RouteInfo> {
+    // First try to detect framework
+    if let Some(framework) = detect_framework(content) {
+        return discover_routes_in_content(content, file, framework);
+    }
+
+    // If no framework detected, try all patterns
+    let frameworks = ["express", "flask", "django", "spring", "go", "axum"];
+    let mut all_routes = Vec::new();
+
+    for framework in frameworks {
+        let routes = discover_routes_in_content(content, file, framework);
+        all_routes.extend(routes);
+    }
+
+    all_routes
+}
+
 /// Detect web framework from file content
 pub fn detect_framework(content: &str) -> Option<&'static str> {
     let content_lower = content.to_lowercase();
@@ -343,5 +362,17 @@ mod tests {
         assert_eq!(detect_framework("import \"net/http\""), Some("go"));
         assert_eq!(detect_framework("use axum::Router;"), Some("axum"));
         assert_eq!(detect_framework("some random code"), None);
+    }
+
+    #[test]
+    fn test_discover_routes_all_frameworks() {
+        let express_code = r#"
+            const express = require('express');
+            app.get('/users', getUsers);
+        "#;
+
+        let routes = discover_routes_all_frameworks(express_code, "app.js");
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].framework, "express");
     }
 }
