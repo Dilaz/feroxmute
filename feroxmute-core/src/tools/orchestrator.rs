@@ -816,6 +816,8 @@ pub struct RecordFindingArgs {
     pub finding: String,
     #[serde(default)]
     pub category: Option<String>,
+    #[serde(default)]
+    pub severity: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -855,6 +857,10 @@ impl Tool for RecordFindingTool {
                     "category": {
                         "type": "string",
                         "description": "Category: asset, vulnerability, info, recommendation"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "description": "Severity level for vulnerabilities: critical, high, medium, low, info. Required when category is 'vulnerability'."
                     }
                 },
                 "required": ["finding"]
@@ -872,6 +878,21 @@ impl Tool for RecordFindingTool {
         self.context
             .events
             .send_feed("orchestrator", &format!("Recorded: {}", formatted), false);
+
+        // Send vulnerability event to update TUI counts
+        if category.eq_ignore_ascii_case("vulnerability") {
+            let severity = match args.severity.as_deref().unwrap_or("medium") {
+                "critical" | "Critical" | "CRITICAL" => Severity::Critical,
+                "high" | "High" | "HIGH" => Severity::High,
+                "medium" | "Medium" | "MEDIUM" => Severity::Medium,
+                "low" | "Low" | "LOW" => Severity::Low,
+                "info" | "Info" | "INFO" | "informational" => Severity::Info,
+                _ => Severity::Medium,
+            };
+            self.context
+                .events
+                .send_vulnerability(severity, &args.finding);
+        }
 
         Ok(RecordFindingOutput {
             recorded: true,
