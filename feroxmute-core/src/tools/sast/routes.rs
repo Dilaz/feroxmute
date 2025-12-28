@@ -1,8 +1,54 @@
 use std::path::Path;
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
+
+// Compiled regex patterns for each framework
+#[allow(clippy::expect_used)] // Static initialization with hardcoded regex - panic is appropriate
+static EXPRESS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]"#)
+        .expect("Hardcoded express regex pattern should be valid")
+});
+
+#[allow(clippy::expect_used)]
+static FLASK_ROUTE_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"@(?:app|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]"#)
+        .expect("Hardcoded flask route regex pattern should be valid")
+});
+
+#[allow(clippy::expect_used)]
+static FLASK_METHODS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"methods\s*=\s*\[([^\]]+)\]"#)
+        .expect("Hardcoded flask methods regex pattern should be valid")
+});
+
+#[allow(clippy::expect_used)]
+static GO_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?:http\.HandleFunc|\.Handle|\.HandleFunc)\s*\(\s*["']([^"']+)["']"#)
+        .expect("Hardcoded go regex pattern should be valid")
+});
+
+#[allow(clippy::expect_used)]
+static AXUM_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"\.route\s*\(\s*["']([^"']+)["']"#)
+        .expect("Hardcoded axum regex pattern should be valid")
+});
+
+#[allow(clippy::expect_used)]
+static DJANGO_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?:path|url)\s*\(\s*[r]?['"]([^'"]+)['"]"#)
+        .expect("Hardcoded django regex pattern should be valid")
+});
+
+#[allow(clippy::expect_used)]
+static SPRING_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"@(Get|Post|Put|Delete|Patch|Request)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']"#,
+    )
+    .expect("Hardcoded spring regex pattern should be valid")
+});
 
 /// Information about a discovered web route
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,14 +84,8 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
 
     match framework {
         "express" => {
-            // Pattern: app.get('/path', ...) or router.post('/path', ...)
-            let re = Regex::new(
-                r#"(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*['"]([^'"]+)['"]"#,
-            )
-            .expect("Invalid express regex pattern");
-
             for (line_num, line) in content.lines().enumerate() {
-                for cap in re.captures_iter(line) {
+                for cap in EXPRESS_REGEX.captures_iter(line) {
                     let method = cap
                         .get(1)
                         .map(|m| m.as_str().to_uppercase())
@@ -62,20 +102,12 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
             }
         }
         "flask" => {
-            // Pattern: @app.route('/path') or @blueprint.route('/path')
-            let re = Regex::new(r#"@(?:app|blueprint)\.route\s*\(\s*['"]([^'"]+)['"]"#)
-                .expect("Invalid flask regex pattern");
-
-            // Pattern for methods=['GET', 'POST']
-            let methods_re =
-                Regex::new(r#"methods\s*=\s*\[([^\]]+)\]"#).expect("Invalid methods regex pattern");
-
             for (line_num, line) in content.lines().enumerate() {
-                for cap in re.captures_iter(line) {
+                for cap in FLASK_ROUTE_REGEX.captures_iter(line) {
                     let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
 
                     // Try to extract methods, default to GET
-                    let method = if let Some(methods_cap) = methods_re.captures(line) {
+                    let method = if let Some(methods_cap) = FLASK_METHODS_REGEX.captures(line) {
                         methods_cap
                             .get(1)
                             .map(|m| m.as_str().replace(['\'', '"', ' '], ""))
@@ -95,12 +127,8 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
             }
         }
         "go" => {
-            // Pattern: http.HandleFunc("/path", ...) or r.Handle("/path", ...)
-            let re = Regex::new(r#"(?:http\.HandleFunc|\.Handle|\.HandleFunc)\s*\(\s*["']([^"']+)["']"#)
-                .expect("Invalid go regex pattern");
-
             for (line_num, line) in content.lines().enumerate() {
-                for cap in re.captures_iter(line) {
+                for cap in GO_REGEX.captures_iter(line) {
                     let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
                     routes.push(RouteInfo::new(
                         path,
@@ -113,12 +141,8 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
             }
         }
         "axum" => {
-            // Pattern: .route("/path", ...)
-            let re = Regex::new(r#"\.route\s*\(\s*["']([^"']+)["']"#)
-                .expect("Invalid axum regex pattern");
-
             for (line_num, line) in content.lines().enumerate() {
-                for cap in re.captures_iter(line) {
+                for cap in AXUM_REGEX.captures_iter(line) {
                     let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
                     routes.push(RouteInfo::new(
                         path,
@@ -131,12 +155,8 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
             }
         }
         "django" => {
-            // Pattern: path('route/', ...) or url(r'^route/$', ...)
-            let re = Regex::new(r#"(?:path|url)\s*\(\s*[r]?['"]([^'"]+)['"]"#)
-                .expect("Invalid django regex pattern");
-
             for (line_num, line) in content.lines().enumerate() {
-                for cap in re.captures_iter(line) {
+                for cap in DJANGO_REGEX.captures_iter(line) {
                     let path = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
                     routes.push(RouteInfo::new(
                         path,
@@ -149,14 +169,8 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
             }
         }
         "spring" => {
-            // Pattern: @GetMapping("/path"), @PostMapping, etc.
-            let re = Regex::new(
-                r#"@(Get|Post|Put|Delete|Patch|Request)Mapping\s*\(\s*(?:value\s*=\s*)?["']([^"']+)["']"#,
-            )
-            .expect("Invalid spring regex pattern");
-
             for (line_num, line) in content.lines().enumerate() {
-                for cap in re.captures_iter(line) {
+                for cap in SPRING_REGEX.captures_iter(line) {
                     let method = cap
                         .get(1)
                         .map(|m| {
@@ -399,10 +413,7 @@ mod tests {
             detect_framework("const express = require('express');"),
             Some("express")
         );
-        assert_eq!(
-            detect_framework("from flask import Flask"),
-            Some("flask")
-        );
+        assert_eq!(detect_framework("from flask import Flask"), Some("flask"));
         assert_eq!(
             detect_framework("from django.urls import path"),
             Some("django")

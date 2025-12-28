@@ -11,7 +11,9 @@ use thiserror::Error;
 use crate::agents::AgentStatus;
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolRegistry};
-use crate::tools::sast::{GitleaksOutput, GrypeOutput, RoutesOutput, SastToolOutput, SemgrepOutput};
+use crate::tools::sast::{
+    GitleaksOutput, GrypeOutput, RoutesOutput, SastToolOutput, SemgrepOutput,
+};
 use crate::tools::EventSender;
 
 /// Arguments for the shell tool
