@@ -14,13 +14,25 @@ use ratatui::{backend::CrosstermBackend, Frame, Terminal};
 use super::app::{App, View};
 use super::channel::{AgentEvent, VulnSeverity};
 use super::events::{handle_event, poll_event, EventResult};
-use super::widgets::{agent_detail, dashboard, memory, memory_modal};
+use super::widgets::{agent_detail, dashboard, memory, memory_modal, sast};
 
 /// Render the current view
 fn render(frame: &mut Frame, app: &App) {
     match &app.view {
         View::Dashboard => dashboard::render(frame, app),
-        View::AgentDetail(agent_name) => agent_detail::render(frame, app, agent_name),
+        View::AgentDetail(agent_name) => {
+            let is_sast = app
+                .agents
+                .get(agent_name)
+                .map(|a| a.agent_type == "sast")
+                .unwrap_or(false);
+
+            if is_sast {
+                sast::render(frame, app, agent_name, frame.area())
+            } else {
+                agent_detail::render(frame, app, agent_name)
+            }
+        }
         View::Logs => render_logs(frame, app),
         View::Help => render_help(frame),
         View::Memory => {
