@@ -9,12 +9,13 @@ use feroxmute_core::agents::{
 use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::LlmProvider;
+use feroxmute_core::state::models::FindingType;
 use feroxmute_core::state::Severity;
 use feroxmute_core::tools::{EventSender, MemoryContext, OrchestratorContext};
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-use crate::tui::channel::MemoryEntry;
+use crate::tui::channel::{CodeFindingEvent, MemoryEntry};
 use crate::tui::{AgentEvent, VulnSeverity};
 
 /// Event sender implementation that wraps the TUI channel
@@ -184,6 +185,37 @@ impl EventSender for TuiEventSender {
                 .await;
         });
     }
+
+    fn send_code_finding(
+        &self,
+        agent: &str,
+        file_path: &str,
+        line_number: Option<u32>,
+        severity: Severity,
+        finding_type: FindingType,
+        title: &str,
+        tool: &str,
+        cve_id: Option<&str>,
+        package_name: Option<&str>,
+    ) {
+        let tx = self.tx.clone();
+        let agent = agent.to_string();
+        let finding = CodeFindingEvent {
+            file_path: file_path.to_string(),
+            line_number,
+            severity,
+            finding_type,
+            title: title.to_string(),
+            tool: tool.to_string(),
+            cve_id: cve_id.map(String::from),
+            package_name: package_name.map(String::from),
+        };
+        tokio::spawn(async move {
+            let _ = tx
+                .send(AgentEvent::CodeFinding { agent, finding })
+                .await;
+        });
+    }
 }
 
 /// Run the orchestrator agent with TUI feedback
@@ -194,7 +226,7 @@ pub async fn run_orchestrator(
     container: Arc<ContainerManager>,
     tx: mpsc::Sender<AgentEvent>,
     cancel: CancellationToken,
-    has_source_target: bool,
+    source_path: Option<String>,
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
 ) -> Result<()> {
@@ -222,7 +254,7 @@ pub async fn run_orchestrator(
     // Create orchestrator
     let prompts = Prompts::default();
     let mut orchestrator = OrchestratorAgent::with_prompts(prompts.clone());
-    if has_source_target {
+    if source_path.is_some() {
         orchestrator = orchestrator.with_source_target();
     }
 
@@ -231,7 +263,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), has_source_target, Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed)) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed)) => {
             match result {
                 Ok(output) => {
                     // Check if engagement was properly completed via complete_engagement tool
@@ -328,7 +360,7 @@ async fn run_orchestrator_with_tools(
     container: Arc<ContainerManager>,
     prompts: &Prompts,
     cancel: CancellationToken,
-    has_source_target: bool,
+    source_path: Option<String>,
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
     engagement_completed: Arc<std::sync::atomic::AtomicBool>,
@@ -361,7 +393,10 @@ async fn run_orchestrator_with_tools(
         limitations: Arc::clone(&limitations),
         memory: memory_context,
         engagement_completed,
+        source_path: source_path.clone(),
     });
+
+    let has_source_target = source_path.is_some();
 
     // Build user prompt with limitations
     let engagement_task = match &instruction {
@@ -372,16 +407,41 @@ async fn run_orchestrator_with_tools(
         None => "Engagement Task: Perform security assessment".to_string(),
     };
 
+    let source_section = if has_source_target {
+        "\n\n## Source Code Available - IMPORTANT\n\
+        You have access to the target's SOURCE CODE. This is a significant advantage.\n\n\
+        **Your FIRST action must be to spawn BOTH agents in parallel:**\n\
+        1. spawn_agent(sast) - Analyze source for vulnerabilities, hardcoded secrets, API keys, and security issues\n\
+        2. spawn_agent(recon) - Map the live target's attack surface\n\n\
+        Running SAST and recon in parallel is optimal - SAST findings (like hardcoded credentials, \
+        API endpoints in code, or vulnerable dependencies) directly inform what the scanner should test."
+    } else {
+        ""
+    };
+
+    let workflow = if has_source_target {
+        "WORKFLOW: spawn_agent(sast) AND spawn_agent(recon) IN PARALLEL -> wait_for_any (repeat until both done) -> spawn scanner (informed by both sast and recon findings) -> wait_for_any -> spawn report -> wait_for_agent -> complete_engagement."
+    } else {
+        "WORKFLOW: spawn_agent(recon) -> wait_for_any -> spawn scanner -> wait_for_any -> spawn report -> wait_for_agent -> complete_engagement."
+    };
+
     let user_prompt = format!(
-        "Target: {}\n\n{}\n\n{}\n\n\
+        "Target: {}\n\n{}\n\n{}{}\n\n\
         Available agent types: recon, scanner{}, report.\n\n\
-        WORKFLOW: spawn_agent -> wait_for_any -> process results -> spawn more agents -> wait_for_any -> repeat until done -> spawn report -> wait_for_agent -> complete_engagement.\n\n\
+        {}\n\n\
         CRITICAL: After EVERY spawn_agent call, you MUST call wait_for_any() to get results. Never stop without waiting for spawned agents.\n\n\
-        Start by spawning a recon agent, then call wait_for_any() to get its results.",
+        {}",
         target,
         limitations.to_prompt_section(),
         engagement_task,
-        if has_source_target { ", sast" } else { "" }
+        source_section,
+        if has_source_target { ", sast" } else { "" },
+        workflow,
+        if has_source_target {
+            "START NOW: Spawn both 'sast' and 'recon' agents immediately (two spawn_agent calls), then wait_for_any()."
+        } else {
+            "Start by spawning a recon agent, then call wait_for_any() to get its results."
+        }
     );
 
     // Use rig's built-in tool loop via the provider
