@@ -204,6 +204,10 @@ impl EngagementLimitations {
         allowed.insert(Report);
         allowed.insert(Utility);
 
+        // SAST is always allowed - it's orthogonal to web/network scope
+        // (it analyzes source code, not live targets)
+        allowed.insert(Sast);
+
         // Conditional
         if !no_exploit {
             allowed.insert(WebExploit);

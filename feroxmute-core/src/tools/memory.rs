@@ -389,6 +389,7 @@ impl Tool for MemoryRemoveTool {
 mod tests {
     use super::*;
     use crate::agents::{AgentStatus, EngagementPhase};
+    use crate::state::models::FindingType;
     use crate::state::{run_migrations, Severity};
     use crate::tools::orchestrator::AgentSummary;
 
@@ -427,6 +428,19 @@ mod tests {
         fn send_phase(&self, _phase: EngagementPhase) {}
         fn send_summary(&self, _agent: &str, _summary: &AgentSummary) {}
         fn send_memory_update(&self, _entries: Vec<crate::tools::MemoryEntryData>) {}
+        fn send_code_finding(
+            &self,
+            _agent: &str,
+            _file_path: &str,
+            _line_number: Option<u32>,
+            _severity: Severity,
+            _finding_type: FindingType,
+            _title: &str,
+            _tool: &str,
+            _cve_id: Option<&str>,
+            _package_name: Option<&str>,
+        ) {
+        }
     }
 
     fn setup_context() -> Arc<MemoryContext> {

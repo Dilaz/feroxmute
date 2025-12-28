@@ -22,18 +22,18 @@ pub fn render(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
 
     let constraints = if show_thinking {
         vec![
-            Constraint::Length(4),  // Header
-            Constraint::Length(4),  // Summary
-            Constraint::Min(8),     // Feed/output
-            Constraint::Length(6),  // Thinking
-            Constraint::Length(1),  // Footer
+            Constraint::Length(4), // Header
+            Constraint::Length(4), // Summary
+            Constraint::Min(8),    // Feed/output
+            Constraint::Length(6), // Thinking
+            Constraint::Length(1), // Footer
         ]
     } else {
         vec![
-            Constraint::Length(4),  // Header
-            Constraint::Length(4),  // Summary
-            Constraint::Min(10),    // Feed/output
-            Constraint::Length(1),  // Footer
+            Constraint::Length(4), // Header
+            Constraint::Length(4), // Summary
+            Constraint::Min(10),   // Feed/output
+            Constraint::Length(1), // Footer
         ]
     };
 
@@ -92,32 +92,30 @@ fn render_summary(frame: &mut Frame, app: &App, area: Rect) {
     let counts = &app.code_finding_counts;
     let total = counts.dependencies + counts.sast + counts.secrets;
 
-    let summary_text = vec![
-        Line::from(vec![
-            Span::styled("Dependencies: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("{}", counts.dependencies),
-                Style::default().fg(Color::Cyan),
-            ),
-            Span::raw("  │  "),
-            Span::styled("Code: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("{}", counts.sast),
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::raw("  │  "),
-            Span::styled("Secrets: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("{}", counts.secrets),
-                Style::default().fg(Color::LightRed),
-            ),
-            Span::raw("  "),
-            Span::styled(
-                format!("({} total)", total),
-                Style::default().fg(Color::DarkGray),
-            ),
-        ]),
-    ];
+    let summary_text = vec![Line::from(vec![
+        Span::styled("Dependencies: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{}", counts.dependencies),
+            Style::default().fg(Color::Cyan),
+        ),
+        Span::raw("  │  "),
+        Span::styled("Code: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{}", counts.sast),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::raw("  │  "),
+        Span::styled("Secrets: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            format!("{}", counts.secrets),
+            Style::default().fg(Color::LightRed),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("({} total)", total),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ])];
 
     let summary = Paragraph::new(summary_text)
         .block(Block::default().borders(Borders::ALL).title(" Findings "));

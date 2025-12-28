@@ -211,9 +211,7 @@ impl EventSender for TuiEventSender {
             package_name: package_name.map(String::from),
         };
         tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::CodeFinding { agent, finding })
-                .await;
+            let _ = tx.send(AgentEvent::CodeFinding { agent, finding }).await;
         });
     }
 }

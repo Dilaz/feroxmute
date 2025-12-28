@@ -1,4 +1,8 @@
 //! Color and style helpers for severity and status indicators
+//!
+//! Note: Some functions are currently unused but reserved for the SAST-specific view.
+
+#![allow(dead_code)]
 
 use feroxmute_core::state::models::Severity;
 use ratatui::style::{Color, Modifier, Style};

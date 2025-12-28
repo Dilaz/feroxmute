@@ -15,13 +15,8 @@ use crate::tui::app::App;
 
 /// Render the agent detail view
 pub fn render(frame: &mut Frame, app: &App, agent_name: &str) {
-    // Delegate to SAST widget for SAST agent type
-    if let Some(info) = app.agents.get(agent_name) {
-        if info.agent_type == "sast" {
-            super::sast::render(frame, app, frame.area());
-            return;
-        }
-    }
+    // Note: SAST-specific view (sast.rs) is available but requires CodeFinding events
+    // to be implemented. For now, SAST agents use the standard agent detail view.
 
     let thinking = app.agents.get(agent_name).and_then(|a| a.thinking.as_ref());
     let show_thinking = app.show_thinking && thinking.is_some();

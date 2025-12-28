@@ -104,7 +104,7 @@ complete_engagement(summary="Tested auth, file upload, and API endpoints. Found 
 
 ### Agent Management
 - `spawn_agent(agent_type, name, instructions)`: Start a specialist agent
-  - Types: recon, scanner, exploit, report, sast
+  - Types: recon, scanner, report (plus 'sast' when source code is provided)
   - Give clear, specific instructions based on what you've learned
 - `wait_for_any()`: Wait for any running agent to complete, returns their output
 - `wait_for_agent(name)`: Wait for a specific agent by name

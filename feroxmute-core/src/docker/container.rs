@@ -33,6 +33,16 @@ impl Default for ContainerConfig {
     }
 }
 
+impl ContainerConfig {
+    /// Add a source directory mount for SAST analysis
+    pub fn with_source_mount(mut self, host_path: &str) -> Self {
+        // Mount source code at /source in the container
+        self.volumes
+            .push((host_path.to_string(), "/source".to_string()));
+        self
+    }
+}
+
 /// Docker container manager
 pub struct ContainerManager {
     docker: Docker,

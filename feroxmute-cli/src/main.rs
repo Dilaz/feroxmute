@@ -187,23 +187,46 @@ async fn main() -> Result<()> {
         // Parse all targets into a TargetCollection
         let mut targets = TargetCollection::from_strings(&args.target)?;
 
-        // If --source is explicitly provided, link it to the primary web target
+        // If --source is explicitly provided, add it to the collection and link to primary web target
         if let Some(ref source_path) = args.source {
             let source_str = source_path.to_string_lossy().to_string();
-            let web_raw = targets.web_targets().first().map(|t| t.raw.clone());
-            if let Some(web_target_raw) = web_raw {
-                let linked = targets.link_source_to_web(&source_str, &web_target_raw);
-                if linked {
-                    tracing::info!(
-                        "Explicitly linked source {} to {}",
-                        source_str,
-                        web_target_raw
-                    );
-                } else {
-                    tracing::warn!("Failed to link source {} to {}", source_str, web_target_raw);
+
+            // First, parse and add the source to the collection
+            match feroxmute_core::targets::Target::parse(&source_str) {
+                Ok(source_target) => {
+                    if source_target.is_source() {
+                        targets.add_target(source_target);
+
+                        // Now link it to the primary web target
+                        let web_raw = targets.web_targets().first().map(|t| t.raw.clone());
+                        if let Some(web_target_raw) = web_raw {
+                            let linked = targets.link_source_to_web(&source_str, &web_target_raw);
+                            if linked {
+                                tracing::info!(
+                                    "Explicitly linked source {} to {}",
+                                    source_str,
+                                    web_target_raw
+                                );
+                            } else {
+                                tracing::warn!(
+                                    "Failed to link source {} to {}",
+                                    source_str,
+                                    web_target_raw
+                                );
+                            }
+                        } else {
+                            tracing::warn!("--source provided but no web target found");
+                        }
+                    } else {
+                        tracing::warn!(
+                            "--source path {} is not a valid source directory",
+                            source_str
+                        );
+                    }
                 }
-            } else {
-                tracing::warn!("--source provided but no web target found");
+                Err(e) => {
+                    tracing::warn!("Failed to parse --source path {}: {}", source_str, e);
+                }
             }
         }
 
@@ -332,6 +355,20 @@ async fn main() -> Result<()> {
             ));
         }
 
+        // Extract source path for container mounting (prefer linked, then standalone)
+        let host_source_path: Option<String> = targets
+            .groups
+            .iter()
+            .find_map(|g| g.source_target.as_ref().map(|s| s.raw.clone()))
+            .or_else(|| targets.standalone_sources.first().map(|s| s.raw.clone()));
+
+        // Create container config with source mount if available
+        let container_config = if let Some(ref source) = host_source_path {
+            ContainerConfig::default().with_source_mount(source)
+        } else {
+            ContainerConfig::default()
+        };
+
         // Start the Kali container
         app.add_feed(tui::FeedEntry::new(
             "system",
@@ -357,8 +394,14 @@ async fn main() -> Result<()> {
         // Spawn agent task on LocalSet
         let agent_target = target.clone();
         let agent_cancel = cancel.clone();
-        let has_source = !targets.standalone_sources.is_empty()
-            || targets.groups.iter().any(|g| g.source_target.is_some());
+
+        // If source is mounted, use container path /source instead of host path
+        let source_path: Option<String> = if host_source_path.is_some() {
+            Some("/source".to_string())
+        } else {
+            None
+        };
+
         let container = Arc::new(container);
 
         // Build engagement limitations from CLI args
@@ -407,7 +450,7 @@ async fn main() -> Result<()> {
                 container,
                 tx,
                 agent_cancel,
-                has_source,
+                source_path,
                 limitations,
                 instruction,
             )
