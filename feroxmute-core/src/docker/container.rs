@@ -136,14 +136,44 @@ impl ContainerManager {
         // Check if container already exists
         match self.docker.inspect_container(&self.config.name, None).await {
             Ok(info) => {
-                self.container_id = Some(info.id.unwrap_or_default());
+                // Check if existing mounts match required mounts
+                let existing_binds = info
+                    .host_config
+                    .as_ref()
+                    .and_then(|hc| hc.binds.as_ref())
+                    .cloned()
+                    .unwrap_or_default();
 
-                // Start if not running
-                if info.state.and_then(|s| s.running) != Some(true) {
-                    info!("Starting existing container: {}", self.config.name);
-                    self.docker
-                        .start_container(&self.config.name, None::<StartContainerOptions<String>>)
-                        .await?;
+                let required_binds: Vec<String> = self
+                    .config
+                    .volumes
+                    .iter()
+                    .map(|(h, c)| format!("{}:{}", h, c))
+                    .collect();
+
+                // If mounts differ and we need source mount, recreate container
+                let needs_recreate = !required_binds.is_empty()
+                    && !required_binds.iter().all(|b| existing_binds.contains(b));
+
+                if needs_recreate {
+                    info!(
+                        "Recreating container with updated mounts: {:?}",
+                        required_binds
+                    );
+                    // Stop and remove existing container, ignore errors
+                    let _ = self.stop().await;
+                    let _ = self.remove().await;
+                    self.create_container().await?;
+                } else {
+                    self.container_id = Some(info.id.unwrap_or_default());
+
+                    // Start if not running
+                    if info.state.and_then(|s| s.running) != Some(true) {
+                        info!("Starting existing container: {}", self.config.name);
+                        self.docker
+                            .start_container(&self.config.name, None::<StartContainerOptions<String>>)
+                            .await?;
+                    }
                 }
             }
             Err(bollard::errors::Error::DockerResponseServerError {
