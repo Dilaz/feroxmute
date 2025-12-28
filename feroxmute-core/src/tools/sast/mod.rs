@@ -1,11 +1,13 @@
 mod ast_grep;
 mod gitleaks;
 mod grype;
+mod routes;
 mod semgrep;
 
 pub use ast_grep::{AstGrepMatch, AstGrepOutput};
 pub use gitleaks::{GitleaksFinding, GitleaksOutput};
 pub use grype::{GrypeFinding, GrypeOutput};
+pub use routes::{RouteInfo, RoutesOutput};
 pub use semgrep::{SemgrepOutput, SemgrepResult};
 
 use crate::state::models::CodeFinding;
