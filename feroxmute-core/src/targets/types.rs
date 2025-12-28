@@ -110,12 +110,13 @@ pub enum TargetParseError {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_https_url() {
-        let target = Target::parse("https://example.com").unwrap();
+        let target = Target::parse("https://example.com").expect("should parse https url");
         assert!(
             matches!(target.target_type, TargetType::Web { url } if url == "https://example.com")
         );
@@ -123,25 +124,25 @@ mod tests {
 
     #[test]
     fn test_parse_http_url() {
-        let target = Target::parse("http://example.com").unwrap();
+        let target = Target::parse("http://example.com").expect("should parse http url");
         assert!(matches!(target.target_type, TargetType::Web { .. }));
     }
 
     #[test]
     fn test_parse_domain_as_web() {
-        let target = Target::parse("example.com").unwrap();
+        let target = Target::parse("example.com").expect("should parse domain");
         assert!(matches!(target.target_type, TargetType::Web { .. }));
     }
 
     #[test]
     fn test_parse_github_url() {
-        let target = Target::parse("https://github.com/owner/repo").unwrap();
+        let target = Target::parse("https://github.com/owner/repo").expect("should parse github url");
         assert!(matches!(target.target_type, TargetType::Repository { .. }));
     }
 
     #[test]
     fn test_parse_git_ssh_url() {
-        let target = Target::parse("git@github.com:owner/repo.git").unwrap();
+        let target = Target::parse("git@github.com:owner/repo.git").expect("should parse git ssh url");
         assert!(matches!(target.target_type, TargetType::Repository { .. }));
     }
 

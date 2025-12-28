@@ -436,6 +436,7 @@ impl ReconAgent {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -466,7 +467,10 @@ mod tests {
         });
         let cmd = agent.build_command_args("subfinder", &args);
 
-        assert_eq!(cmd[0], "subfinder");
+        assert_eq!(
+            cmd.first().expect("command should have at least one element"),
+            "subfinder"
+        );
         assert!(cmd.contains(&"-d".to_string()));
         assert!(cmd.contains(&"example.com".to_string()));
         assert!(cmd.contains(&"-silent".to_string()));
@@ -483,7 +487,10 @@ mod tests {
         });
         let cmd = agent.build_command_args("naabu", &args);
 
-        assert_eq!(cmd[0], "naabu");
+        assert_eq!(
+            cmd.first().expect("command should have at least one element"),
+            "naabu"
+        );
         assert!(cmd.contains(&"-host".to_string()));
         assert!(cmd.contains(&"192.168.1.1".to_string()));
         assert!(cmd.contains(&"-p".to_string()));

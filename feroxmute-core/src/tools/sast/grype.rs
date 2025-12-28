@@ -118,6 +118,7 @@ impl SastToolOutput for GrypeOutput {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -143,17 +144,18 @@ mod tests {
             }]
         }"#;
 
-        let output = GrypeOutput::parse(json).unwrap();
+        let output = GrypeOutput::parse(json).expect("should parse grype output");
         assert_eq!(output.matches.len(), 1);
 
         let findings = output.to_code_findings();
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Critical);
-        assert_eq!(findings[0].package_name, Some("lodash".to_string()));
-        assert_eq!(findings[0].package_version, Some("4.17.20".to_string()));
-        assert_eq!(findings[0].fixed_version, Some("4.17.21".to_string()));
-        assert_eq!(findings[0].finding_type, FindingType::Dependency);
-        assert_eq!(findings[0].tool, "grype");
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.severity, Severity::Critical);
+        assert_eq!(first_finding.package_name, Some("lodash".to_string()));
+        assert_eq!(first_finding.package_version, Some("4.17.20".to_string()));
+        assert_eq!(first_finding.fixed_version, Some("4.17.21".to_string()));
+        assert_eq!(first_finding.finding_type, FindingType::Dependency);
+        assert_eq!(first_finding.tool, "grype");
     }
 
     #[test]
@@ -192,27 +194,29 @@ mod tests {
             ]
         }"#;
 
-        let output = GrypeOutput::parse(json).unwrap();
+        let output = GrypeOutput::parse(json).expect("should parse multiple vulnerabilities");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 2);
 
         // First finding
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[0].cve_id, Some("CVE-2024-1111".to_string()));
-        assert_eq!(findings[0].file_path, "Cargo.lock");
+        let first_finding = findings.first().expect("should have first finding");
+        assert_eq!(first_finding.severity, Severity::High);
+        assert_eq!(first_finding.cve_id, Some("CVE-2024-1111".to_string()));
+        assert_eq!(first_finding.file_path, "Cargo.lock");
 
         // Second finding
-        assert_eq!(findings[1].severity, Severity::Medium);
-        assert_eq!(findings[1].cve_id, Some("CVE-2024-2222".to_string()));
-        assert_eq!(findings[1].fixed_version, Some("2.5.0".to_string()));
+        let second_finding = findings.get(1).expect("should have second finding");
+        assert_eq!(second_finding.severity, Severity::Medium);
+        assert_eq!(second_finding.cve_id, Some("CVE-2024-2222".to_string()));
+        assert_eq!(second_finding.fixed_version, Some("2.5.0".to_string()));
     }
 
     #[test]
     fn test_parse_empty_grype_output() {
         let json = r#"{"matches": []}"#;
 
-        let output = GrypeOutput::parse(json).unwrap();
+        let output = GrypeOutput::parse(json).expect("should parse empty output");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 0);
@@ -244,10 +248,11 @@ mod tests {
 
         for (grype_severity, expected_severity) in test_cases {
             let json = json_template.replace("SEVERITY_PLACEHOLDER", grype_severity);
-            let output = GrypeOutput::parse(&json).unwrap();
+            let output = GrypeOutput::parse(&json).expect("should parse severity test");
             let findings = output.to_code_findings();
+            let first_finding = findings.first().expect("should have one finding");
             assert_eq!(
-                findings[0].severity, expected_severity,
+                first_finding.severity, expected_severity,
                 "Failed for severity: {}",
                 grype_severity
             );

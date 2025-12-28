@@ -672,13 +672,14 @@ impl CodeFinding {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::state::run_migrations;
 
     fn setup_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("migrations should succeed");
         conn
     }
 
@@ -687,13 +688,16 @@ mod tests {
         let conn = setup_db();
 
         let host = Host::new("192.168.1.1", Some("example.com".to_string()));
-        host.insert(&conn).unwrap();
+        host.insert(&conn).expect("should insert host");
 
-        let found = Host::find_by_address(&conn, "192.168.1.1").unwrap();
+        let found = Host::find_by_address(&conn, "192.168.1.1").expect("should find host");
         assert!(found.is_some());
-        assert_eq!(found.unwrap().hostname, Some("example.com".to_string()));
+        assert_eq!(
+            found.expect("host should exist").hostname,
+            Some("example.com".to_string())
+        );
 
-        let all = Host::all(&conn).unwrap();
+        let all = Host::all(&conn).expect("should get all hosts");
         assert_eq!(all.len(), 1);
     }
 
@@ -702,18 +706,18 @@ mod tests {
         let conn = setup_db();
 
         let host = Host::new("192.168.1.1", None);
-        host.insert(&conn).unwrap();
+        host.insert(&conn).expect("should insert host");
 
         let port = Port::new(&host.id, 80, "tcp").with_service("http");
-        port.insert(&conn).unwrap();
+        port.insert(&conn).expect("should insert port 80");
 
         let port2 = Port::new(&host.id, 443, "tcp").with_service("https");
-        port2.insert(&conn).unwrap();
+        port2.insert(&conn).expect("should insert port 443");
 
-        let ports = Port::for_host(&conn, &host.id).unwrap();
+        let ports = Port::for_host(&conn, &host.id).expect("should get ports for host");
         assert_eq!(ports.len(), 2);
-        assert_eq!(ports[0].port, 80);
-        assert_eq!(ports[1].port, 443);
+        assert_eq!(ports.first().expect("should have first port").port, 80);
+        assert_eq!(ports.get(1).expect("should have second port").port, 443);
     }
 
     #[test]
@@ -730,17 +734,20 @@ mod tests {
         .with_cwe("CWE-89")
         .with_cvss(9.8);
 
-        vuln.insert(&conn).unwrap();
+        vuln.insert(&conn).expect("should insert vulnerability");
 
-        let vulns = Vulnerability::all(&conn).unwrap();
+        let vulns = Vulnerability::all(&conn).expect("should get all vulnerabilities");
         assert_eq!(vulns.len(), 1);
-        assert_eq!(vulns[0].severity, Severity::Critical);
-        assert_eq!(vulns[0].status, VulnStatus::Potential);
+        let first_vuln = vulns.first().expect("should have one vulnerability");
+        assert_eq!(first_vuln.severity, Severity::Critical);
+        assert_eq!(first_vuln.status, VulnStatus::Potential);
 
         // Verify the vulnerability
-        vuln.verify(&conn, "exploit_agent").unwrap();
+        vuln.verify(&conn, "exploit_agent")
+            .expect("should verify vulnerability");
 
-        let counts = Vulnerability::count_by_status(&conn).unwrap();
+        let counts =
+            Vulnerability::count_by_status(&conn).expect("should count vulnerabilities by status");
         assert_eq!(counts.verified, 1);
         assert_eq!(counts.potential, 0);
     }
@@ -758,13 +765,14 @@ mod tests {
         .with_line(42)
         .with_cwe("CWE-89");
 
-        finding.insert(&conn).unwrap();
+        finding.insert(&conn).expect("should insert code finding");
 
-        let findings = CodeFinding::all(&conn).unwrap();
+        let findings = CodeFinding::all(&conn).expect("should get all code findings");
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].title, "SQL Injection");
-        assert_eq!(findings[0].line_number, Some(42));
-        assert_eq!(findings[0].cwe_id, Some("CWE-89".to_string()));
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.title, "SQL Injection");
+        assert_eq!(first_finding.line_number, Some(42));
+        assert_eq!(first_finding.cwe_id, Some("CWE-89".to_string()));
     }
 
     #[test]
@@ -781,14 +789,17 @@ mod tests {
         .with_package("lodash", "4.17.20")
         .with_fixed_version("4.17.21");
 
-        finding.insert(&conn).unwrap();
+        finding
+            .insert(&conn)
+            .expect("should insert dependency finding");
 
-        let findings = CodeFinding::all(&conn).unwrap();
+        let findings = CodeFinding::all(&conn).expect("should get all findings");
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].package_name, Some("lodash".to_string()));
-        assert_eq!(findings[0].package_version, Some("4.17.20".to_string()));
-        assert_eq!(findings[0].fixed_version, Some("4.17.21".to_string()));
-        assert_eq!(findings[0].finding_type, FindingType::Dependency);
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.package_name, Some("lodash".to_string()));
+        assert_eq!(first_finding.package_version, Some("4.17.20".to_string()));
+        assert_eq!(first_finding.fixed_version, Some("4.17.21".to_string()));
+        assert_eq!(first_finding.finding_type, FindingType::Dependency);
     }
 
     #[test]
@@ -805,12 +816,13 @@ mod tests {
         .with_description("Hardcoded AWS credentials detected")
         .with_snippet("AWS_ACCESS_KEY=AKIA****");
 
-        finding.insert(&conn).unwrap();
+        finding.insert(&conn).expect("should insert secret finding");
 
-        let findings = CodeFinding::all(&conn).unwrap();
+        let findings = CodeFinding::all(&conn).expect("should get all findings");
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].finding_type, FindingType::Secret);
-        assert_eq!(findings[0].severity, Severity::High);
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.finding_type, FindingType::Secret);
+        assert_eq!(first_finding.severity, Severity::High);
     }
 
     #[test]
@@ -826,7 +838,7 @@ mod tests {
             "tool",
         )
         .insert(&conn)
-        .unwrap();
+        .expect("should insert finding 1");
         CodeFinding::new(
             "file2.rs",
             Severity::Critical,
@@ -835,7 +847,7 @@ mod tests {
             "tool",
         )
         .insert(&conn)
-        .unwrap();
+        .expect("should insert finding 2");
         CodeFinding::new(
             "file3.rs",
             Severity::High,
@@ -844,7 +856,7 @@ mod tests {
             "tool",
         )
         .insert(&conn)
-        .unwrap();
+        .expect("should insert finding 3");
         CodeFinding::new(
             "file4.rs",
             Severity::Medium,
@@ -853,9 +865,9 @@ mod tests {
             "tool",
         )
         .insert(&conn)
-        .unwrap();
+        .expect("should insert finding 4");
 
-        let counts = CodeFinding::count_by_severity(&conn).unwrap();
+        let counts = CodeFinding::count_by_severity(&conn).expect("should count by severity");
         assert_eq!(counts.get(&Severity::Critical), Some(&2));
         assert_eq!(counts.get(&Severity::High), Some(&1));
         assert_eq!(counts.get(&Severity::Medium), Some(&1));
@@ -871,15 +883,16 @@ mod tests {
             .with_parameters(vec!["id".to_string(), "limit".to_string()])
             .with_auth(true);
 
-        endpoint.insert(&conn).unwrap();
+        endpoint.insert(&conn).expect("should insert endpoint");
 
-        let endpoints = CodeEndpoint::all(&conn).unwrap();
+        let endpoints = CodeEndpoint::all(&conn).expect("should get all endpoints");
         assert_eq!(endpoints.len(), 1);
-        assert_eq!(endpoints[0].route, "/api/users");
-        assert_eq!(endpoints[0].method, Some("GET".to_string()));
-        assert_eq!(endpoints[0].handler_line, Some(47));
-        assert_eq!(endpoints[0].parameters.len(), 2);
-        assert_eq!(endpoints[0].auth_required, Some(true));
+        let first_endpoint = endpoints.first().expect("should have one endpoint");
+        assert_eq!(first_endpoint.route, "/api/users");
+        assert_eq!(first_endpoint.method, Some("GET".to_string()));
+        assert_eq!(first_endpoint.handler_line, Some(47));
+        assert_eq!(first_endpoint.parameters.len(), 2);
+        assert_eq!(first_endpoint.auth_required, Some(true));
     }
 
     #[test]
@@ -888,14 +901,19 @@ mod tests {
         let endpoint1 = CodeEndpoint::new("/api/users", "src/routes/users.rs").with_method("GET");
         let endpoint2 = CodeEndpoint::new("/api/posts", "src/routes/posts.rs").with_method("POST");
 
-        endpoint1.insert(&conn).unwrap();
-        endpoint2.insert(&conn).unwrap();
+        endpoint1.insert(&conn).expect("should insert endpoint 1");
+        endpoint2.insert(&conn).expect("should insert endpoint 2");
 
-        let found = CodeEndpoint::find_by_route(&conn, "/api/users").unwrap();
+        let found =
+            CodeEndpoint::find_by_route(&conn, "/api/users").expect("should find by route");
         assert!(found.is_some());
-        assert_eq!(found.unwrap().handler_file, "src/routes/users.rs");
+        assert_eq!(
+            found.expect("should have endpoint").handler_file,
+            "src/routes/users.rs"
+        );
 
-        let not_found = CodeEndpoint::find_by_route(&conn, "/api/invalid").unwrap();
+        let not_found =
+            CodeEndpoint::find_by_route(&conn, "/api/invalid").expect("should search for route");
         assert!(not_found.is_none());
     }
 
@@ -904,15 +922,16 @@ mod tests {
         let conn = setup_db();
         let endpoint = CodeEndpoint::new("/health", "src/main.rs");
 
-        endpoint.insert(&conn).unwrap();
+        endpoint.insert(&conn).expect("should insert endpoint");
 
-        let endpoints = CodeEndpoint::all(&conn).unwrap();
+        let endpoints = CodeEndpoint::all(&conn).expect("should get all endpoints");
         assert_eq!(endpoints.len(), 1);
-        assert_eq!(endpoints[0].route, "/health");
-        assert_eq!(endpoints[0].method, None);
-        assert_eq!(endpoints[0].handler_line, None);
-        assert_eq!(endpoints[0].parameters.len(), 0);
-        assert_eq!(endpoints[0].auth_required, None);
+        let first_endpoint = endpoints.first().expect("should have one endpoint");
+        assert_eq!(first_endpoint.route, "/health");
+        assert_eq!(first_endpoint.method, None);
+        assert_eq!(first_endpoint.handler_line, None);
+        assert_eq!(first_endpoint.parameters.len(), 0);
+        assert_eq!(first_endpoint.auth_required, None);
     }
 
     #[test]
@@ -930,11 +949,11 @@ mod tests {
             .with_parameters(params.clone())
             .with_auth(false);
 
-        endpoint.insert(&conn).unwrap();
+        endpoint.insert(&conn).expect("should insert endpoint");
 
         let found = CodeEndpoint::find_by_route(&conn, "/api/search")
-            .unwrap()
-            .unwrap();
+            .expect("should find by route")
+            .expect("endpoint should exist");
         assert_eq!(found.parameters, params);
         assert_eq!(found.auth_required, Some(false));
         assert_eq!(found.handler_line, Some(120));

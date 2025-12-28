@@ -493,6 +493,7 @@ impl ScannerAgent {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -526,7 +527,10 @@ mod tests {
         });
         let cmd = agent.build_command_args("nuclei", &args);
 
-        assert_eq!(cmd[0], "nuclei");
+        assert_eq!(
+            cmd.first().expect("command should have at least one element"),
+            "nuclei"
+        );
         assert!(cmd.contains(&"-u".to_string()));
         assert!(cmd.contains(&"https://example.com".to_string()));
         assert!(cmd.contains(&"-tags".to_string()));

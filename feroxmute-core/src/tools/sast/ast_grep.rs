@@ -75,6 +75,7 @@ impl SastToolOutput for AstGrepOutput {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -92,15 +93,16 @@ mod tests {
             "severity": "error"
         }]"#;
 
-        let output = AstGrepOutput::parse(json).unwrap();
+        let output = AstGrepOutput::parse(json).expect("should parse ast-grep output");
         assert_eq!(output.0.len(), 1);
 
         let findings = output.to_code_findings();
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[0].line_number, Some(42));
-        assert_eq!(findings[0].finding_type, FindingType::Sast);
-        assert_eq!(findings[0].tool, "ast-grep");
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.severity, Severity::High);
+        assert_eq!(first_finding.line_number, Some(42));
+        assert_eq!(first_finding.finding_type, FindingType::Sast);
+        assert_eq!(first_finding.tool, "ast-grep");
     }
 
     #[test]
@@ -114,13 +116,14 @@ mod tests {
             "text": "unsafe { some_operation() }"
         }]"#;
 
-        let output = AstGrepOutput::parse(json).unwrap();
+        let output = AstGrepOutput::parse(json).expect("should parse ast-grep with defaults");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Medium);
-        assert_eq!(findings[0].title, "Pattern match found");
-        assert!(findings[0].snippet.is_some());
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.severity, Severity::Medium);
+        assert_eq!(first_finding.title, "Pattern match found");
+        assert!(first_finding.snippet.is_some());
     }
 
     #[test]
@@ -146,11 +149,12 @@ mod tests {
                 severity_str
             );
 
-            let output = AstGrepOutput::parse(&json).unwrap();
+            let output = AstGrepOutput::parse(&json).expect("should parse severity test");
             let findings = output.to_code_findings();
 
+            let first_finding = findings.first().expect("should have one finding");
             assert_eq!(
-                findings[0].severity, expected,
+                first_finding.severity, expected,
                 "Failed for severity: {}",
                 severity_str
             );
@@ -161,7 +165,7 @@ mod tests {
     fn test_parse_empty_ast_grep_output() {
         let json = r#"[]"#;
 
-        let output = AstGrepOutput::parse(json).unwrap();
+        let output = AstGrepOutput::parse(json).expect("should parse empty output");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 0);
@@ -181,13 +185,15 @@ mod tests {
             "severity": "high"
         }]"#;
 
-        let output = AstGrepOutput::parse(json).unwrap();
+        let output =
+            AstGrepOutput::parse(json).expect("should parse ast-grep with rule id and message");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].title, "Hardcoded credentials detected");
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[0].file_path, "src/api.rs");
-        assert_eq!(findings[0].line_number, Some(25));
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.title, "Hardcoded credentials detected");
+        assert_eq!(first_finding.severity, Severity::High);
+        assert_eq!(first_finding.file_path, "src/api.rs");
+        assert_eq!(first_finding.line_number, Some(25));
     }
 }

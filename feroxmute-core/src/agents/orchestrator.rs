@@ -373,6 +373,7 @@ impl OrchestratorAgent {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -427,6 +428,10 @@ mod tests {
         }));
 
         assert_eq!(agent.findings().len(), 1);
-        assert!(agent.findings()[0].contains("ASSET"));
+        assert!(agent
+            .findings()
+            .first()
+            .expect("findings should have at least one entry")
+            .contains("ASSET"));
     }
 }

@@ -19,21 +19,22 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use rusqlite::Connection;
 
     #[test]
     fn test_migrations_run_successfully() {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("migrations should succeed");
 
         // Verify tables exist
         let tables: Vec<String> = conn
             .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-            .unwrap()
+            .expect("should prepare statement")
             .query_map([], |row| row.get(0))
-            .unwrap()
+            .expect("should execute query")
             .filter_map(|r| r.ok())
             .collect();
 
@@ -45,8 +46,8 @@ mod tests {
 
     #[test]
     fn test_migrations_idempotent() {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
-        run_migrations(&conn).unwrap(); // Should not fail
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("first migration should succeed");
+        run_migrations(&conn).expect("second migration should also succeed"); // Should not fail
     }
 }

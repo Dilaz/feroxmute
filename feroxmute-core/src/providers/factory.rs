@@ -149,6 +149,7 @@ pub fn create_provider(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -225,8 +226,9 @@ mod tests {
         };
         let result = create_provider(&config, MetricsTracker::new());
         assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(err.to_string().contains("base_url"));
+        if let Err(err) = result {
+            assert!(err.to_string().contains("base_url"));
+        }
 
         if let Some(key) = original_key {
             std::env::set_var("AZURE_OPENAI_API_KEY", key);

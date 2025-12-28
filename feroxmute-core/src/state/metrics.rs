@@ -199,13 +199,14 @@ impl MetricsTracker {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::state::run_migrations;
 
     fn setup_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("migrations should succeed");
         conn
     }
 
@@ -213,15 +214,15 @@ mod tests {
     fn test_metrics_load_save() {
         let conn = setup_db();
 
-        let mut metrics = Metrics::load(&conn).unwrap();
+        let mut metrics = Metrics::load(&conn).expect("should load metrics");
         assert_eq!(metrics.tool_calls, 0);
 
         metrics.tool_calls = 42;
         metrics.tokens.input = 1000;
         metrics.tokens.output = 500;
-        metrics.save(&conn).unwrap();
+        metrics.save(&conn).expect("should save metrics");
 
-        let loaded = Metrics::load(&conn).unwrap();
+        let loaded = Metrics::load(&conn).expect("should load updated metrics");
         assert_eq!(loaded.tool_calls, 42);
         assert_eq!(loaded.tokens.input, 1000);
     }
@@ -259,7 +260,7 @@ mod tests {
             tracker.record_tool_call();
         }
 
-        handle.join().unwrap();
+        handle.join().expect("thread should complete");
 
         assert_eq!(tracker.snapshot().tool_calls, 200);
     }

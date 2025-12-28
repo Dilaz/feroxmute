@@ -145,6 +145,7 @@ impl Session {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::config::TargetConfig;
@@ -166,10 +167,10 @@ mod tests {
 
     #[test]
     fn test_create_new_session() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("should create temp dir");
         let config = test_config();
 
-        let session = Session::new(config, temp.path()).unwrap();
+        let session = Session::new(config, temp.path()).expect("should create session");
 
         assert!(session.id.contains("example-com"));
         assert!(session.path.exists());
@@ -180,14 +181,14 @@ mod tests {
 
     #[test]
     fn test_resume_session() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("should create temp dir");
         let config = test_config();
 
-        let original = Session::new(config, temp.path()).unwrap();
+        let original = Session::new(config, temp.path()).expect("should create session");
         let session_path = original.path.clone();
         drop(original);
 
-        let resumed = Session::resume(&session_path).unwrap();
+        let resumed = Session::resume(&session_path).expect("should resume session");
 
         assert!(resumed.id.contains("example-com"));
         assert_eq!(resumed.config.target.host, "example.com");

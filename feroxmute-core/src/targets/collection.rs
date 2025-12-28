@@ -83,29 +83,37 @@ impl Default for TargetCollection {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_from_strings_single_web() {
         let inputs = vec!["https://example.com".to_string()];
-        let collection = TargetCollection::from_strings(&inputs).unwrap();
+        let collection =
+            TargetCollection::from_strings(&inputs).expect("should create collection");
         assert_eq!(collection.groups.len(), 1);
-        assert!(collection.groups[0].source_target.is_none());
+        assert!(collection
+            .groups
+            .first()
+            .expect("should have one group")
+            .source_target
+            .is_none());
     }
 
     #[test]
     fn test_from_strings_web_and_source() {
         // Note: This test needs a real directory, use temp
         let inputs = vec!["https://example.com".to_string()];
-        let collection = TargetCollection::from_strings(&inputs).unwrap();
+        let collection =
+            TargetCollection::from_strings(&inputs).expect("should create collection");
         assert_eq!(collection.groups.len(), 1);
     }
 
     #[test]
     fn test_link_source_to_web() {
         let mut collection = TargetCollection::new();
-        let web = Target::parse("https://example.com").unwrap();
+        let web = Target::parse("https://example.com").expect("should parse url");
         collection.add_target(web);
 
         assert!(!collection.has_linked_source("https://example.com"));

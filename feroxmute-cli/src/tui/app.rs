@@ -500,6 +500,7 @@ impl App {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -563,9 +564,12 @@ mod tests {
     fn test_agent_thinking() {
         let mut app = App::new("test.com", "test-session", None);
         app.update_agent_thinking("orchestrator", Some("Planning...".to_string()));
+
+        let agent = app.agents.get("orchestrator");
+        assert!(agent.is_some(), "orchestrator should exist");
         assert_eq!(
-            app.agents.get("orchestrator").unwrap().thinking,
-            Some("Planning...".to_string())
+            agent.map(|a| a.thinking.clone()),
+            Some(Some("Planning...".to_string()))
         );
 
         app.selected_agent = Some("orchestrator".to_string());
@@ -603,15 +607,21 @@ mod tests {
         app.add_feed(entry_with_output);
 
         // Initially not expanded
-        assert!(!app.feed[1].expanded);
+        let entry = app.feed.get(1);
+        assert!(entry.is_some(), "should have second entry");
+        assert!(!entry.map(|e| e.expanded).unwrap_or(true));
 
         // Toggle should expand
         app.toggle_output(Some("recon"));
-        assert!(app.feed[1].expanded);
+        let entry = app.feed.get(1);
+        assert!(entry.is_some(), "should have second entry");
+        assert!(entry.map(|e| e.expanded).unwrap_or(false));
 
         // Toggle again should collapse
         app.toggle_output(Some("recon"));
-        assert!(!app.feed[1].expanded);
+        let entry = app.feed.get(1);
+        assert!(entry.is_some(), "should have second entry");
+        assert!(!entry.map(|e| e.expanded).unwrap_or(true));
     }
 
     #[test]
@@ -724,9 +734,13 @@ mod tests {
         ];
 
         // Get selected entry
-        assert_eq!(app.selected_memory_entry().unwrap().key, "first");
+        let entry = app.selected_memory_entry();
+        assert!(entry.is_some(), "should have selected entry");
+        assert_eq!(entry.map(|e| e.key.clone()), Some("first".to_string()));
 
         app.select_next_memory();
-        assert_eq!(app.selected_memory_entry().unwrap().key, "second");
+        let entry = app.selected_memory_entry();
+        assert!(entry.is_some(), "should have selected entry");
+        assert_eq!(entry.map(|e| e.key.clone()), Some("second".to_string()));
     }
 }

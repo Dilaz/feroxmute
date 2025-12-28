@@ -75,6 +75,7 @@ impl SastToolOutput for GitleaksOutput {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -90,14 +91,15 @@ mod tests {
             "RuleID": "aws-access-key-id"
         }]"#;
 
-        let output = GitleaksOutput::parse(json).unwrap();
+        let output = GitleaksOutput::parse(json).expect("should parse gitleaks output");
         assert_eq!(output.0.len(), 1);
 
         let findings = output.to_code_findings();
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[0].finding_type, FindingType::Secret);
-        assert_eq!(findings[0].tool, "gitleaks");
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.severity, Severity::High);
+        assert_eq!(first_finding.finding_type, FindingType::Secret);
+        assert_eq!(first_finding.tool, "gitleaks");
     }
 
     #[test]
@@ -112,13 +114,17 @@ mod tests {
             "RuleID": "generic-api-key"
         }]"#;
 
-        let output = GitleaksOutput::parse(json).unwrap();
+        let output = GitleaksOutput::parse(json).expect("should parse gitleaks redaction test");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 1);
-        assert!(findings[0].snippet.is_some());
+        let first_finding = findings.first().expect("should have one finding");
+        assert!(first_finding.snippet.is_some());
 
-        let snippet = findings[0].snippet.as_ref().unwrap();
+        let snippet = first_finding
+            .snippet
+            .as_ref()
+            .expect("snippet should exist");
         // Check that the secret is redacted
         assert!(snippet.contains("sk_l..."));
         assert!(snippet.contains("...mnop"));
@@ -137,10 +143,14 @@ mod tests {
             "RuleID": "test-key"
         }]"#;
 
-        let output = GitleaksOutput::parse(json).unwrap();
+        let output = GitleaksOutput::parse(json).expect("should parse short secret test");
         let findings = output.to_code_findings();
 
-        let snippet = findings[0].snippet.as_ref().unwrap();
+        let first_finding = findings.first().expect("should have one finding");
+        let snippet = first_finding
+            .snippet
+            .as_ref()
+            .expect("snippet should exist");
         // Short secrets (<=8 chars) should be completely redacted
         assert!(snippet.contains("****"));
     }
@@ -168,30 +178,32 @@ mod tests {
             }
         ]"#;
 
-        let output = GitleaksOutput::parse(json).unwrap();
+        let output = GitleaksOutput::parse(json).expect("should parse multiple findings");
         assert_eq!(output.0.len(), 2);
 
         let findings = output.to_code_findings();
         assert_eq!(findings.len(), 2);
 
         // All secrets should be High severity
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[1].severity, Severity::High);
+        let first_finding = findings.first().expect("should have first finding");
+        let second_finding = findings.get(1).expect("should have second finding");
+        assert_eq!(first_finding.severity, Severity::High);
+        assert_eq!(second_finding.severity, Severity::High);
 
         // All should be Secret finding type
-        assert_eq!(findings[0].finding_type, FindingType::Secret);
-        assert_eq!(findings[1].finding_type, FindingType::Secret);
+        assert_eq!(first_finding.finding_type, FindingType::Secret);
+        assert_eq!(second_finding.finding_type, FindingType::Secret);
 
         // Check titles contain rule IDs
-        assert!(findings[0].title.contains("aws-access-key-id"));
-        assert!(findings[1].title.contains("private-key"));
+        assert!(first_finding.title.contains("aws-access-key-id"));
+        assert!(second_finding.title.contains("private-key"));
     }
 
     #[test]
     fn test_parse_empty_gitleaks_output() {
         let json = r#"[]"#;
 
-        let output = GitleaksOutput::parse(json).unwrap();
+        let output = GitleaksOutput::parse(json).expect("should parse empty output");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 0);
@@ -209,11 +221,15 @@ mod tests {
             "RuleID": "github-pat"
         }]"#;
 
-        let output = GitleaksOutput::parse(json).unwrap();
+        let output = GitleaksOutput::parse(json).expect("should parse github pat finding");
         let findings = output.to_code_findings();
 
-        assert!(findings[0].description.is_some());
-        let desc = findings[0].description.as_ref().unwrap();
+        let first_finding = findings.first().expect("should have one finding");
+        assert!(first_finding.description.is_some());
+        let desc = first_finding
+            .description
+            .as_ref()
+            .expect("description should exist");
         assert!(desc.contains("github-pat"));
         assert!(desc.contains("Remove and rotate"));
     }

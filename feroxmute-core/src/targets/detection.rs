@@ -168,6 +168,7 @@ impl RelationshipDetector {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -191,12 +192,12 @@ mod tests {
 
     #[test]
     fn test_no_relationship_without_evidence() {
-        let temp_dir = TempDir::new().unwrap();
-        let temp_path = temp_dir.path().to_str().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
+        let temp_path = temp_dir.path().to_str().expect("path should be valid utf-8");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(Target::parse(temp_path).expect("should parse path"));
 
         let hints = RelationshipDetector::detect(&collection);
         assert!(
@@ -207,170 +208,202 @@ mod tests {
 
     #[test]
     fn test_detect_relationship_via_env_file() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create .env file with domain reference
         let env_path = temp_path.join(".env");
-        let mut env_file = std::fs::File::create(&env_path).unwrap();
-        writeln!(env_file, "API_URL=https://example.com/api").unwrap();
-        writeln!(env_file, "DATABASE_URL=postgres://localhost").unwrap();
+        let mut env_file =
+            std::fs::File::create(&env_path).expect("should create .env file");
+        writeln!(env_file, "API_URL=https://example.com/api").expect("should write to file");
+        writeln!(env_file, "DATABASE_URL=postgres://localhost").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(hints.len(), 1, "Should detect one relationship");
+        let first_hint = hints.first().expect("should have one hint");
         assert!(
-            hints[0].confidence >= 0.3,
+            first_hint.confidence >= 0.3,
             "Confidence should be at least 0.3"
         );
         assert!(
-            hints[0].reason.contains(".env"),
+            first_hint.reason.contains(".env"),
             "Reason should mention .env file"
         );
     }
 
     #[test]
     fn test_detect_relationship_via_package_json() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create package.json with homepage
         let package_json = temp_path.join("package.json");
-        let mut pkg_file = std::fs::File::create(&package_json).unwrap();
+        let mut pkg_file =
+            std::fs::File::create(&package_json).expect("should create package.json");
         writeln!(
             pkg_file,
             r#"{{"name": "test", "homepage": "https://example.com"}}"#
         )
-        .unwrap();
+        .expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(hints.len(), 1, "Should detect one relationship");
+        let first_hint = hints.first().expect("should have one hint");
         assert!(
-            hints[0].confidence >= 0.3,
+            first_hint.confidence >= 0.3,
             "Confidence should be at least 0.3"
         );
         assert!(
-            hints[0].reason.contains("package.json"),
+            first_hint.reason.contains("package.json"),
             "Reason should mention package.json"
         );
     }
 
     #[test]
     fn test_detect_relationship_via_config_file() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create config.toml with domain reference
         let config_path = temp_path.join("config.toml");
-        let mut config_file = std::fs::File::create(&config_path).unwrap();
-        writeln!(config_file, "[server]").unwrap();
-        writeln!(config_file, "host = \"example.com\"").unwrap();
+        let mut config_file =
+            std::fs::File::create(&config_path).expect("should create config.toml");
+        writeln!(config_file, "[server]").expect("should write to file");
+        writeln!(config_file, "host = \"example.com\"").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(hints.len(), 1, "Should detect one relationship");
+        let first_hint = hints.first().expect("should have one hint");
         assert!(
-            hints[0].confidence >= 0.3,
+            first_hint.confidence >= 0.3,
             "Confidence should be at least 0.3"
         );
         assert!(
-            hints[0].reason.contains("config"),
+            first_hint.reason.contains("config"),
             "Reason should mention config files"
         );
     }
 
     #[test]
     fn test_detect_relationship_via_docker_compose() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create docker-compose.yml with domain reference (0.2 points)
         let compose_path = temp_path.join("docker-compose.yml");
-        let mut compose_file = std::fs::File::create(&compose_path).unwrap();
-        writeln!(compose_file, "services:").unwrap();
-        writeln!(compose_file, "  web:").unwrap();
-        writeln!(compose_file, "    environment:").unwrap();
-        writeln!(compose_file, "      - DOMAIN=example.com").unwrap();
+        let mut compose_file =
+            std::fs::File::create(&compose_path).expect("should create docker-compose.yml");
+        writeln!(compose_file, "services:").expect("should write to file");
+        writeln!(compose_file, "  web:").expect("should write to file");
+        writeln!(compose_file, "    environment:").expect("should write to file");
+        writeln!(compose_file, "      - DOMAIN=example.com").expect("should write to file");
 
         // Add .env to push over 0.3 threshold (0.2 + 0.3 = 0.5)
         let env_path = temp_path.join(".env");
-        let mut env_file = std::fs::File::create(&env_path).unwrap();
-        writeln!(env_file, "API_URL=https://example.com/api").unwrap();
+        let mut env_file =
+            std::fs::File::create(&env_path).expect("should create .env file");
+        writeln!(env_file, "API_URL=https://example.com/api").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(hints.len(), 1, "Should detect one relationship");
+        let first_hint = hints.first().expect("should have one hint");
         assert!(
-            hints[0].confidence >= 0.5,
+            first_hint.confidence >= 0.5,
             "Confidence should be at least 0.5"
         );
         assert!(
-            hints[0].reason.contains("docker-compose"),
+            first_hint.reason.contains("docker-compose"),
             "Reason should mention docker-compose"
         );
     }
 
     #[test]
     fn test_high_confidence_with_multiple_signals() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create multiple files with domain reference
         let env_path = temp_path.join(".env");
-        let mut env_file = std::fs::File::create(&env_path).unwrap();
-        writeln!(env_file, "API_URL=https://example.com/api").unwrap();
+        let mut env_file =
+            std::fs::File::create(&env_path).expect("should create .env file");
+        writeln!(env_file, "API_URL=https://example.com/api").expect("should write to file");
 
         let package_json = temp_path.join("package.json");
-        let mut pkg_file = std::fs::File::create(&package_json).unwrap();
-        writeln!(pkg_file, r#"{{"homepage": "https://example.com"}}"#).unwrap();
+        let mut pkg_file =
+            std::fs::File::create(&package_json).expect("should create package.json");
+        writeln!(pkg_file, r#"{{"homepage": "https://example.com"}}"#).expect("should write to file");
 
         let config_path = temp_path.join("config.toml");
-        let mut config_file = std::fs::File::create(&config_path).unwrap();
-        writeln!(config_file, "domain = \"example.com\"").unwrap();
+        let mut config_file =
+            std::fs::File::create(&config_path).expect("should create config.toml");
+        writeln!(config_file, "domain = \"example.com\"").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(hints.len(), 1, "Should detect one relationship");
+        let first_hint = hints.first().expect("should have one hint");
         // 0.3 (env) + 0.3 (package.json) + 0.4 (config) = 1.0
         assert!(
-            hints[0].confidence >= 0.9,
+            first_hint.confidence >= 0.9,
             "Confidence should be high with multiple signals"
         );
         assert!(
-            hints[0].reason.contains(","),
+            first_hint.reason.contains(","),
             "Reason should list multiple signals"
         );
     }
 
     #[test]
     fn test_no_relationship_different_domains() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create .env file with different domain
         let env_path = temp_path.join(".env");
-        let mut env_file = std::fs::File::create(&env_path).unwrap();
-        writeln!(env_file, "API_URL=https://different.com/api").unwrap();
+        let mut env_file =
+            std::fs::File::create(&env_path).expect("should create .env file");
+        writeln!(env_file, "API_URL=https://different.com/api").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert!(
@@ -381,17 +414,21 @@ mod tests {
 
     #[test]
     fn test_case_insensitive_domain_matching() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create .env file with uppercase domain
         let env_path = temp_path.join(".env");
-        let mut env_file = std::fs::File::create(&env_path).unwrap();
-        writeln!(env_file, "API_URL=https://EXAMPLE.COM/api").unwrap();
+        let mut env_file =
+            std::fs::File::create(&env_path).expect("should create .env file");
+        writeln!(env_file, "API_URL=https://EXAMPLE.COM/api").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(
@@ -403,17 +440,21 @@ mod tests {
 
     #[test]
     fn test_subdomain_detection() {
-        let temp_dir = TempDir::new().unwrap();
+        let temp_dir = TempDir::new().expect("should create temp dir");
         let temp_path = temp_dir.path();
 
         // Create .env file with subdomain reference
         let env_path = temp_path.join(".env");
-        let mut env_file = std::fs::File::create(&env_path).unwrap();
-        writeln!(env_file, "API_URL=https://api.example.com").unwrap();
+        let mut env_file =
+            std::fs::File::create(&env_path).expect("should create .env file");
+        writeln!(env_file, "API_URL=https://api.example.com").expect("should write to file");
 
         let mut collection = TargetCollection::new();
-        collection.add_target(Target::parse("https://api.example.com").unwrap());
-        collection.add_target(Target::parse(temp_path.to_str().unwrap()).unwrap());
+        collection.add_target(Target::parse("https://api.example.com").expect("should parse url"));
+        collection.add_target(
+            Target::parse(temp_path.to_str().expect("path should be valid utf-8"))
+                .expect("should parse path"),
+        );
 
         let hints = RelationshipDetector::detect(&collection);
         assert_eq!(hints.len(), 1, "Should detect subdomain relationship");

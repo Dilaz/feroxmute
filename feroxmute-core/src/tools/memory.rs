@@ -385,6 +385,7 @@ impl Tool for MemoryRemoveTool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::agents::{AgentStatus, EngagementPhase};
@@ -429,8 +430,8 @@ mod tests {
     }
 
     fn setup_context() -> Arc<MemoryContext> {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("migrations should succeed");
         Arc::new(MemoryContext {
             conn: Arc::new(Mutex::new(conn)),
             events: Arc::new(NoopEventSender),
@@ -451,7 +452,7 @@ mod tests {
                 value: "test-value".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should add memory");
         assert!(result.stored);
 
         // Get it back
@@ -460,7 +461,7 @@ mod tests {
                 key: "test-key".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should get memory");
         assert!(result.found);
         assert_eq!(result.value, Some("test-value".to_string()));
     }
@@ -475,7 +476,7 @@ mod tests {
                 key: "nonexistent".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should get memory");
         assert!(!result.found);
         assert_eq!(result.value, None);
     }
@@ -493,27 +494,27 @@ mod tests {
                 value: "a.com, b.com".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should add memory 1");
         add_tool
             .call(MemoryAddArgs {
                 key: "recon-ports".to_string(),
                 value: "80, 443".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should add memory 2");
         add_tool
             .call(MemoryAddArgs {
                 key: "scanner-results".to_string(),
                 value: "vulns found".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should add memory 3");
 
         // List all
         let result = list_tool
             .call(MemoryListArgs { prefix: None })
             .await
-            .unwrap();
+            .expect("should list all memory");
         assert_eq!(result.keys.len(), 3);
 
         // List with prefix
@@ -522,7 +523,7 @@ mod tests {
                 prefix: Some("recon-".to_string()),
             })
             .await
-            .unwrap();
+            .expect("should list memory with prefix");
         assert_eq!(result.keys.len(), 2);
         assert!(result.keys.contains(&"recon-subdomains".to_string()));
         assert!(result.keys.contains(&"recon-ports".to_string()));
@@ -542,14 +543,14 @@ mod tests {
                 value: "value".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should add memory");
 
         let result = remove_tool
             .call(MemoryRemoveArgs {
                 key: "to-remove".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should remove memory");
         assert!(result.removed);
 
         // Verify it's gone
@@ -558,7 +559,7 @@ mod tests {
                 key: "to-remove".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should get memory after removal");
         assert!(!result.found);
     }
 
@@ -575,7 +576,7 @@ mod tests {
                 value: "value1".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should add initial value");
 
         // Update with same key
         add_tool
@@ -584,7 +585,7 @@ mod tests {
                 value: "value2".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should update value");
 
         // Should have new value
         let result = get_tool
@@ -592,7 +593,7 @@ mod tests {
                 key: "key".to_string(),
             })
             .await
-            .unwrap();
+            .expect("should get updated value");
         assert_eq!(result.value, Some("value2".to_string()));
     }
 }

@@ -209,6 +209,7 @@ impl EngagementConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -219,7 +220,7 @@ mod tests {
 name = "openai"
 model = "gpt-4o"
 "#;
-        let config = EngagementConfig::parse(toml).unwrap();
+        let config = EngagementConfig::parse(toml).expect("valid provider-only config should parse");
         assert_eq!(config.provider.name, ProviderName::OpenAi);
         assert_eq!(config.provider.model, "gpt-4o");
         assert_eq!(config.target.host, ""); // Target defaults to empty
@@ -231,7 +232,7 @@ model = "gpt-4o"
 [target]
 host = "example.com"
 "#;
-        let config = EngagementConfig::parse(toml).unwrap();
+        let config = EngagementConfig::parse(toml).expect("valid target config should parse");
         assert_eq!(config.target.host, "example.com");
         assert_eq!(config.target.scope, Scope::Web);
     }
@@ -260,7 +261,7 @@ model = "claude-sonnet-4-20250514"
 [output]
 export_html = true
 "#;
-        let config = EngagementConfig::parse(toml).unwrap();
+        let config = EngagementConfig::parse(toml).expect("valid full config should parse");
         assert_eq!(config.target.host, "example.com");
         assert_eq!(config.target.ports, vec![80, 443, 8080]);
         assert!(config.constraints.no_exploit);
@@ -280,7 +281,7 @@ host = "example.com"
 type = "bearer"
 token = "${TEST_TOKEN}"
 "#;
-        let mut config = EngagementConfig::parse(toml).unwrap();
+        let mut config = EngagementConfig::parse(toml).expect("config with env var should parse");
         config.expand_env_vars();
         assert_eq!(config.auth.token, Some("expanded_value".to_string()));
         std::env::remove_var("TEST_TOKEN");
@@ -297,7 +298,7 @@ name = "anthropic"
 model = "claude-sonnet-4-20250514"
 api_key = "sk-ant-test123"
 "#;
-        let config = EngagementConfig::parse(toml).unwrap();
+        let config = EngagementConfig::parse(toml).expect("config with api_key should parse");
         assert_eq!(config.provider.name, ProviderName::Anthropic);
         assert_eq!(config.provider.api_key, Some("sk-ant-test123".to_string()));
     }
@@ -306,7 +307,7 @@ api_key = "sk-ant-test123"
     fn test_global_config_path() {
         let path = EngagementConfig::global_config_path();
         assert!(path.is_some());
-        let path = path.unwrap();
+        let path = path.expect("global config path should exist");
         assert!(path.ends_with(".feroxmute/config.toml"));
     }
 }

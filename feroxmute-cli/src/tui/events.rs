@@ -212,6 +212,7 @@ pub fn handle_event(app: &mut App, event: Event) -> EventResult {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

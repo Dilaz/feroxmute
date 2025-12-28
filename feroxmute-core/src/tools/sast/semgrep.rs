@@ -94,6 +94,7 @@ impl SastToolOutput for SemgrepOutput {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -114,14 +115,15 @@ mod tests {
             "errors": []
         }"#;
 
-        let output = SemgrepOutput::parse(json).unwrap();
+        let output = SemgrepOutput::parse(json).expect("should parse semgrep output");
         assert_eq!(output.results.len(), 1);
 
         let findings = output.to_code_findings();
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::High);
-        assert_eq!(findings[0].tool, "semgrep");
-        assert_eq!(findings[0].finding_type, FindingType::Sast);
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.severity, Severity::High);
+        assert_eq!(first_finding.tool, "semgrep");
+        assert_eq!(first_finding.finding_type, FindingType::Sast);
     }
 
     #[test]
@@ -145,20 +147,21 @@ mod tests {
             "errors": []
         }"#;
 
-        let output = SemgrepOutput::parse(json).unwrap();
+        let output = SemgrepOutput::parse(json).expect("should parse semgrep with cwe");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].severity, Severity::Medium);
-        assert_eq!(findings[0].cwe_id, Some("CWE-89".to_string()));
-        assert!(findings[0].snippet.is_some());
+        let first_finding = findings.first().expect("should have one finding");
+        assert_eq!(first_finding.severity, Severity::Medium);
+        assert_eq!(first_finding.cwe_id, Some("CWE-89".to_string()));
+        assert!(first_finding.snippet.is_some());
     }
 
     #[test]
     fn test_parse_empty_semgrep_output() {
         let json = r#"{"results": [], "errors": []}"#;
 
-        let output = SemgrepOutput::parse(json).unwrap();
+        let output = SemgrepOutput::parse(json).expect("should parse empty output");
         let findings = output.to_code_findings();
 
         assert_eq!(findings.len(), 0);

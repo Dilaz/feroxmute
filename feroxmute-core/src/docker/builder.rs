@@ -88,6 +88,7 @@ pub fn create_build_context(docker_dir: &Path) -> Result<Vec<u8>> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::io::Read;

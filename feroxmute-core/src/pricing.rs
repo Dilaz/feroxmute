@@ -88,6 +88,7 @@ fn normalize_model_name(model: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -101,7 +102,9 @@ mod tests {
     #[test]
     fn test_get_pricing() {
         let config = PricingConfig::load();
-        let pricing = config.get("anthropic", "claude-4-5-sonnet").unwrap();
+        let pricing = config
+            .get("anthropic", "claude-4-5-sonnet")
+            .expect("pricing should exist for claude-4-5-sonnet");
         assert_eq!(pricing.input, 3.0);
         assert_eq!(pricing.output, 15.0);
     }
