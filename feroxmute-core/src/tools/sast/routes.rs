@@ -1,5 +1,8 @@
+use std::path::Path;
+
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use walkdir::WalkDir;
 
 /// Information about a discovered web route
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +205,55 @@ pub fn discover_routes_all_frameworks(content: &str, file: &str) -> Vec<RouteInf
     all_routes
 }
 
+/// Discover routes in a directory
+///
+/// # Errors
+///
+/// Returns error if directory cannot be read
+pub fn discover_routes(source_path: &Path) -> Result<RoutesOutput, std::io::Error> {
+    let mut all_routes = Vec::new();
+
+    // File extensions to scan
+    let extensions = ["js", "ts", "jsx", "tsx", "py", "java", "go", "rs"];
+
+    for entry in WalkDir::new(source_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+
+        // Skip node_modules, venv, target, etc.
+        let path_str = path.to_string_lossy();
+        if path_str.contains("node_modules")
+            || path_str.contains("venv")
+            || path_str.contains("/target/")
+            || path_str.contains("/.git/")
+        {
+            continue;
+        }
+
+        // Check extension
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !extensions.contains(&ext) {
+            continue;
+        }
+
+        // Read and scan file
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let file_str = path
+                .strip_prefix(source_path)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .to_string();
+            let routes = discover_routes_all_frameworks(&content, &file_str);
+            all_routes.extend(routes);
+        }
+    }
+
+    Ok(RoutesOutput { routes: all_routes })
+}
+
 /// Detect web framework from file content
 pub fn detect_framework(content: &str) -> Option<&'static str> {
     let content_lower = content.to_lowercase();
@@ -374,5 +426,26 @@ mod tests {
         let routes = discover_routes_all_frameworks(express_code, "app.js");
         assert_eq!(routes.len(), 1);
         assert_eq!(routes[0].framework, "express");
+    }
+
+    #[test]
+    fn test_routes_output_to_json() {
+        let routes = vec![
+            RouteInfo::new("/api/users", "GET", "src/routes.js", 10, "express"),
+            RouteInfo::new("/api/items", "POST", "src/routes.js", 20, "express"),
+        ];
+        let output = RoutesOutput { routes };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("/api/users"));
+        assert!(json.contains("/api/items"));
+    }
+
+    #[test]
+    fn test_routes_output_parse() {
+        let json = r#"{"routes":[{"path":"/api/users","method":"GET","file":"app.js","line":10,"framework":"express"}]}"#;
+        let output: RoutesOutput = serde_json::from_str(json).unwrap();
+        assert_eq!(output.routes.len(), 1);
+        assert_eq!(output.routes[0].path, "/api/users");
     }
 }

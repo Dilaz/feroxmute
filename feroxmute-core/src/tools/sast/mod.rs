@@ -7,7 +7,7 @@ mod semgrep;
 pub use ast_grep::{AstGrepMatch, AstGrepOutput};
 pub use gitleaks::{GitleaksFinding, GitleaksOutput};
 pub use grype::{GrypeFinding, GrypeOutput};
-pub use routes::{RouteInfo, RoutesOutput};
+pub use routes::{discover_routes, RouteInfo, RoutesOutput};
 pub use semgrep::{SemgrepOutput, SemgrepResult};
 
 use crate::state::models::CodeFinding;
