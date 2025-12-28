@@ -355,6 +355,9 @@ fn drain_events(app: &mut App) {
                     app.selected_memory = app.memory_entries.len().saturating_sub(1);
                 }
             }
+            AgentEvent::CodeFinding { agent: _, finding: _ } => {
+                // TODO: Handle SAST findings in TUI (will be implemented in subsequent tasks)
+            }
         }
     }
 }

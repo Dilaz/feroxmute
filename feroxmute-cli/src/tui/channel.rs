@@ -1,6 +1,7 @@
 //! Channel communication between agent and TUI
 
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
+use feroxmute_core::state::models::{FindingType, Severity};
 
 /// Vulnerability severity for TUI display
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +73,12 @@ pub enum AgentEvent {
 
     /// Memory entries updated
     MemoryUpdated { entries: Vec<MemoryEntry> },
+
+    /// Code finding from SAST tools
+    CodeFinding {
+        agent: String,
+        finding: CodeFindingEvent,
+    },
 }
 
 /// Memory entry for TUI display
@@ -81,4 +88,17 @@ pub struct MemoryEntry {
     pub value: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Code finding event for SAST TUI updates
+#[derive(Debug, Clone)]
+pub struct CodeFindingEvent {
+    pub file_path: String,
+    pub line_number: Option<u32>,
+    pub severity: Severity,
+    pub finding_type: FindingType,
+    pub title: String,
+    pub tool: String,
+    pub cve_id: Option<String>,
+    pub package_name: Option<String>,
 }
