@@ -89,7 +89,8 @@ fn render_header(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
 fn render_output(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
     let mut lines: Vec<Line> = Vec::new();
 
-    for entry in app.feed.iter().filter(|e| e.agent == agent_name) {
+    // Use indexed lookup for efficient agent-specific filtering
+    for entry in app.get_agent_feed(agent_name) {
         let style = if entry.is_error {
             Style::default().fg(Color::Red)
         } else {
@@ -127,9 +128,15 @@ fn render_output(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
         lines
     };
 
+    // Clamp scroll to content height to prevent scrolling past content
+    let content_height = content.len();
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = content_height.saturating_sub(visible_height);
+    let clamped_scroll = app.log_scroll.min(max_scroll);
+
     let output = Paragraph::new(content)
         .wrap(Wrap { trim: false })
-        .scroll((app.log_scroll as u16, 0))
+        .scroll((clamped_scroll as u16, 0))
         .block(Block::default().borders(Borders::ALL).title(" Output "));
     frame.render_widget(output, area);
 }

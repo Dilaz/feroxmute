@@ -136,6 +136,9 @@ impl FeedEntry {
     }
 }
 
+/// Maximum number of feed entries to retain
+const FEED_MAX_SIZE: usize = 500;
+
 /// TUI Application state
 pub struct App {
     /// Current view
@@ -170,6 +173,8 @@ pub struct App {
     pub agent_spawn_counter: usize,
     /// Activity feed
     pub feed: Vec<FeedEntry>,
+    /// Per-agent feed indices for efficient filtering
+    pub agent_feed_indices: std::collections::HashMap<String, Vec<usize>>,
     /// Scroll offset for logs
     pub log_scroll: usize,
     /// Selected feed item
@@ -227,6 +232,7 @@ impl App {
             selected_agent: Some("orchestrator".to_string()),
             agent_spawn_counter: 0,
             feed: Vec::new(),
+            agent_feed_indices: std::collections::HashMap::new(),
             log_scroll: 0,
             selected_feed: 0,
             feed_scroll_x: 0,
@@ -286,10 +292,39 @@ impl App {
 
     /// Add a feed entry
     pub fn add_feed(&mut self, entry: FeedEntry) {
+        let agent = entry.agent.clone();
+        let idx = self.feed.len();
         self.feed.push(entry);
-        // Keep only last 100 entries
-        if self.feed.len() > 100 {
+
+        // Track index for this agent
+        self.agent_feed_indices.entry(agent).or_default().push(idx);
+
+        // Keep only last FEED_MAX_SIZE entries
+        if self.feed.len() > FEED_MAX_SIZE {
             self.feed.remove(0);
+            // Decrement all indices and remove invalid ones
+            for indices in self.agent_feed_indices.values_mut() {
+                indices.retain_mut(|i| {
+                    if *i > 0 {
+                        *i -= 1;
+                        true
+                    } else {
+                        false
+                    }
+                });
+            }
+        }
+    }
+
+    /// Get feed entries for a specific agent
+    pub fn get_agent_feed(&self, agent_name: &str) -> Vec<&FeedEntry> {
+        if let Some(indices) = self.agent_feed_indices.get(agent_name) {
+            indices
+                .iter()
+                .filter_map(|&idx| self.feed.get(idx))
+                .collect()
+        } else {
+            Vec::new()
         }
     }
 
