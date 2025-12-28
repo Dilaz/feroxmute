@@ -468,7 +468,8 @@ mod tests {
         let cmd = agent.build_command_args("subfinder", &args);
 
         assert_eq!(
-            cmd.first().expect("command should have at least one element"),
+            cmd.first()
+                .expect("command should have at least one element"),
             "subfinder"
         );
         assert!(cmd.contains(&"-d".to_string()));
@@ -488,7 +489,8 @@ mod tests {
         let cmd = agent.build_command_args("naabu", &args);
 
         assert_eq!(
-            cmd.first().expect("command should have at least one element"),
+            cmd.first()
+                .expect("command should have at least one element"),
             "naabu"
         );
         assert!(cmd.contains(&"-host".to_string()));

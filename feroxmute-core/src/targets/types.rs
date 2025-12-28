@@ -136,13 +136,15 @@ mod tests {
 
     #[test]
     fn test_parse_github_url() {
-        let target = Target::parse("https://github.com/owner/repo").expect("should parse github url");
+        let target =
+            Target::parse("https://github.com/owner/repo").expect("should parse github url");
         assert!(matches!(target.target_type, TargetType::Repository { .. }));
     }
 
     #[test]
     fn test_parse_git_ssh_url() {
-        let target = Target::parse("git@github.com:owner/repo.git").expect("should parse git ssh url");
+        let target =
+            Target::parse("git@github.com:owner/repo.git").expect("should parse git ssh url");
         assert!(matches!(target.target_type, TargetType::Repository { .. }));
     }
 

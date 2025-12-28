@@ -904,8 +904,7 @@ mod tests {
         endpoint1.insert(&conn).expect("should insert endpoint 1");
         endpoint2.insert(&conn).expect("should insert endpoint 2");
 
-        let found =
-            CodeEndpoint::find_by_route(&conn, "/api/users").expect("should find by route");
+        let found = CodeEndpoint::find_by_route(&conn, "/api/users").expect("should find by route");
         assert!(found.is_some());
         assert_eq!(
             found.expect("should have endpoint").handler_file,

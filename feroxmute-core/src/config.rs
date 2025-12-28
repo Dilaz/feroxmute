@@ -220,7 +220,8 @@ mod tests {
 name = "openai"
 model = "gpt-4o"
 "#;
-        let config = EngagementConfig::parse(toml).expect("valid provider-only config should parse");
+        let config =
+            EngagementConfig::parse(toml).expect("valid provider-only config should parse");
         assert_eq!(config.provider.name, ProviderName::OpenAi);
         assert_eq!(config.provider.model, "gpt-4o");
         assert_eq!(config.target.host, ""); // Target defaults to empty

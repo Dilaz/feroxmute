@@ -90,8 +90,7 @@ mod tests {
     #[test]
     fn test_from_strings_single_web() {
         let inputs = vec!["https://example.com".to_string()];
-        let collection =
-            TargetCollection::from_strings(&inputs).expect("should create collection");
+        let collection = TargetCollection::from_strings(&inputs).expect("should create collection");
         assert_eq!(collection.groups.len(), 1);
         assert!(collection
             .groups
@@ -105,8 +104,7 @@ mod tests {
     fn test_from_strings_web_and_source() {
         // Note: This test needs a real directory, use temp
         let inputs = vec!["https://example.com".to_string()];
-        let collection =
-            TargetCollection::from_strings(&inputs).expect("should create collection");
+        let collection = TargetCollection::from_strings(&inputs).expect("should create collection");
         assert_eq!(collection.groups.len(), 1);
     }
 

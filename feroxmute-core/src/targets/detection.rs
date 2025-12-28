@@ -193,7 +193,10 @@ mod tests {
     #[test]
     fn test_no_relationship_without_evidence() {
         let temp_dir = TempDir::new().expect("should create temp dir");
-        let temp_path = temp_dir.path().to_str().expect("path should be valid utf-8");
+        let temp_path = temp_dir
+            .path()
+            .to_str()
+            .expect("path should be valid utf-8");
 
         let mut collection = TargetCollection::new();
         collection.add_target(Target::parse("https://example.com").expect("should parse url"));
@@ -213,8 +216,7 @@ mod tests {
 
         // Create .env file with domain reference
         let env_path = temp_path.join(".env");
-        let mut env_file =
-            std::fs::File::create(&env_path).expect("should create .env file");
+        let mut env_file = std::fs::File::create(&env_path).expect("should create .env file");
         writeln!(env_file, "API_URL=https://example.com/api").expect("should write to file");
         writeln!(env_file, "DATABASE_URL=postgres://localhost").expect("should write to file");
 
@@ -321,8 +323,7 @@ mod tests {
 
         // Add .env to push over 0.3 threshold (0.2 + 0.3 = 0.5)
         let env_path = temp_path.join(".env");
-        let mut env_file =
-            std::fs::File::create(&env_path).expect("should create .env file");
+        let mut env_file = std::fs::File::create(&env_path).expect("should create .env file");
         writeln!(env_file, "API_URL=https://example.com/api").expect("should write to file");
 
         let mut collection = TargetCollection::new();
@@ -352,14 +353,14 @@ mod tests {
 
         // Create multiple files with domain reference
         let env_path = temp_path.join(".env");
-        let mut env_file =
-            std::fs::File::create(&env_path).expect("should create .env file");
+        let mut env_file = std::fs::File::create(&env_path).expect("should create .env file");
         writeln!(env_file, "API_URL=https://example.com/api").expect("should write to file");
 
         let package_json = temp_path.join("package.json");
         let mut pkg_file =
             std::fs::File::create(&package_json).expect("should create package.json");
-        writeln!(pkg_file, r#"{{"homepage": "https://example.com"}}"#).expect("should write to file");
+        writeln!(pkg_file, r#"{{"homepage": "https://example.com"}}"#)
+            .expect("should write to file");
 
         let config_path = temp_path.join("config.toml");
         let mut config_file =
@@ -394,8 +395,7 @@ mod tests {
 
         // Create .env file with different domain
         let env_path = temp_path.join(".env");
-        let mut env_file =
-            std::fs::File::create(&env_path).expect("should create .env file");
+        let mut env_file = std::fs::File::create(&env_path).expect("should create .env file");
         writeln!(env_file, "API_URL=https://different.com/api").expect("should write to file");
 
         let mut collection = TargetCollection::new();
@@ -419,8 +419,7 @@ mod tests {
 
         // Create .env file with uppercase domain
         let env_path = temp_path.join(".env");
-        let mut env_file =
-            std::fs::File::create(&env_path).expect("should create .env file");
+        let mut env_file = std::fs::File::create(&env_path).expect("should create .env file");
         writeln!(env_file, "API_URL=https://EXAMPLE.COM/api").expect("should write to file");
 
         let mut collection = TargetCollection::new();
@@ -445,8 +444,7 @@ mod tests {
 
         // Create .env file with subdomain reference
         let env_path = temp_path.join(".env");
-        let mut env_file =
-            std::fs::File::create(&env_path).expect("should create .env file");
+        let mut env_file = std::fs::File::create(&env_path).expect("should create .env file");
         writeln!(env_file, "API_URL=https://api.example.com").expect("should write to file");
 
         let mut collection = TargetCollection::new();

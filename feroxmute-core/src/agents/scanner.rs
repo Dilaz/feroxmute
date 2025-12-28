@@ -528,7 +528,8 @@ mod tests {
         let cmd = agent.build_command_args("nuclei", &args);
 
         assert_eq!(
-            cmd.first().expect("command should have at least one element"),
+            cmd.first()
+                .expect("command should have at least one element"),
             "nuclei"
         );
         assert!(cmd.contains(&"-u".to_string()));
