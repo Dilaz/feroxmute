@@ -373,6 +373,8 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw(" quit  "),
         Span::styled(&agents_hint, Style::default().fg(Color::Yellow)),
         Span::raw(" agents  "),
+        Span::styled("p", Style::default().fg(Color::Yellow)),
+        Span::raw(" memory  "),
         Span::styled("l", Style::default().fg(Color::Yellow)),
         Span::raw(" logs  "),
         Span::styled("t", Style::default().fg(Color::Yellow)),
