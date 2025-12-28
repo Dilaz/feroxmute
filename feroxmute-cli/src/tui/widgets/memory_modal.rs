@@ -77,15 +77,13 @@ fn render_modal_content(frame: &mut Frame, app: &App, entry: &MemoryEntry, area:
     frame.render_widget(content, inner_area);
 
     // Timestamps
-    let timestamps = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled("Created: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&entry.created_at, Style::default().fg(Color::Gray)),
-            Span::raw("  "),
-            Span::styled("Updated: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(&entry.updated_at, Style::default().fg(Color::Gray)),
-        ]),
-    ])
+    let timestamps = Paragraph::new(vec![Line::from(vec![
+        Span::styled("Created: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(&entry.created_at, Style::default().fg(Color::Gray)),
+        Span::raw("  "),
+        Span::styled("Updated: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(&entry.updated_at, Style::default().fg(Color::Gray)),
+    ])])
     .block(Block::default().borders(Borders::TOP));
 
     frame.render_widget(timestamps, chunks[1]);

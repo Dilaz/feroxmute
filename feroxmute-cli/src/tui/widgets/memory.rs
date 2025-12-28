@@ -17,13 +17,19 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header = Row::new(vec!["Key", "Value", "Updated"])
-        .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
+    let header = Row::new(vec!["Key", "Value", "Updated"]).style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
 
     // Calculate column widths
     let key_width = (area.width as f32 * 0.3) as u16;
     let updated_width = 10;
-    let value_width = area.width.saturating_sub(key_width + updated_width + 6).max(5); // 6 for borders/spacing, min 5
+    let value_width = area
+        .width
+        .saturating_sub(key_width + updated_width + 6)
+        .max(5); // 6 for borders/spacing, min 5
 
     let rows: Vec<Row> = app
         .memory_entries
@@ -32,7 +38,9 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .map(|(i, entry)| {
             let is_selected = i == app.selected_memory;
             let style = if is_selected {
-                Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };

@@ -268,23 +268,18 @@ impl Agent for ScannerAgent {
                             .get("severity")
                             .and_then(|v| v.as_str())
                             .unwrap_or("info");
-                        let severity: Severity =
-                            severity_str.parse().unwrap_or(Severity::Info);
+                        let severity: Severity = severity_str.parse().unwrap_or(Severity::Info);
                         let description = args
                             .get("description")
                             .and_then(|v| v.as_str())
                             .unwrap_or("");
-                        let endpoint = args
-                            .get("endpoint")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                        let endpoint = args.get("endpoint").and_then(|v| v.as_str()).unwrap_or("");
                         let evidence = args.get("evidence").and_then(|v| v.as_str());
                         let remediation = args.get("remediation").and_then(|v| v.as_str());
 
-                        let mut vuln =
-                            Vulnerability::new(title, "web", severity, self.name())
-                                .with_description(description)
-                                .with_asset(endpoint);
+                        let mut vuln = Vulnerability::new(title, "web", severity, self.name())
+                            .with_description(description)
+                            .with_asset(endpoint);
 
                         if let Some(ev) = evidence {
                             vuln = vuln.with_evidence(ev);

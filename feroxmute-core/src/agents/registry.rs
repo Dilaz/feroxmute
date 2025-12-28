@@ -239,7 +239,10 @@ mod tests {
         );
 
         let instructions = registry.get_agent_instructions("test-agent");
-        assert_eq!(instructions, Some("Enumerate subdomains for example.com".to_string()));
+        assert_eq!(
+            instructions,
+            Some("Enumerate subdomains for example.com".to_string())
+        );
 
         let missing = registry.get_agent_instructions("nonexistent");
         assert_eq!(missing, None);

@@ -113,7 +113,10 @@ impl Tool for DockerShellTool {
 
         // Extract tool name for status display (truncate command with args)
         let tool_display = if args.command.len() > 25 {
-            format!("{}...", &args.command[..args.command.floor_char_boundary(22)])
+            format!(
+                "{}...",
+                &args.command[..args.command.floor_char_boundary(22)]
+            )
         } else {
             args.command.clone()
         };

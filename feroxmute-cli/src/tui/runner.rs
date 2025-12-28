@@ -318,7 +318,10 @@ fn drain_events(app: &mut App) {
             } => {
                 // Show raw output as separate feed entries for proper display
                 let icon = if success { "✓" } else { "✗" };
-                app.add_feed(super::app::FeedEntry::new(&agent, format!("{} AGENT COMPLETE", icon)));
+                app.add_feed(super::app::FeedEntry::new(
+                    &agent,
+                    format!("{} AGENT COMPLETE", icon),
+                ));
 
                 // Show raw output if available for debugging
                 if let Some(output) = raw_output {
@@ -335,7 +338,10 @@ fn drain_events(app: &mut App) {
                 }
 
                 for finding in key_findings.iter().take(5) {
-                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  • {}", finding)));
+                    app.add_feed(super::app::FeedEntry::new(
+                        &agent,
+                        format!("  • {}", finding),
+                    ));
                 }
 
                 for step in next_steps.iter().take(3) {

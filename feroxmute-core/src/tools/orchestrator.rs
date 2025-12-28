@@ -73,7 +73,9 @@ Respond with JSON only, no markdown formatting:
     );
 
     let request = CompletionRequest::new(vec![Message::user(&prompt)])
-        .with_system("You extract structured summaries from agent output. Respond with valid JSON only.")
+        .with_system(
+            "You extract structured summaries from agent output. Respond with valid JSON only.",
+        )
         .with_max_tokens(1024);
 
     match provider.complete(request).await {
@@ -465,7 +467,9 @@ impl Tool for WaitForAgentTool {
         // Get instructions before waiting (registry will be locked during wait)
         let instructions = {
             let registry = self.context.registry.lock().await;
-            registry.get_agent_instructions(&args.name).unwrap_or_default()
+            registry
+                .get_agent_instructions(&args.name)
+                .unwrap_or_default()
         };
 
         let mut registry = self.context.registry.lock().await;
@@ -605,7 +609,8 @@ impl Tool for WaitForAnyTool {
         let result = registry.wait_for_any().await;
 
         // Get instructions while we still have the lock
-        let instructions = result.as_ref()
+        let instructions = result
+            .as_ref()
             .and_then(|r| registry.get_agent_instructions(&r.name))
             .unwrap_or_default();
 
@@ -679,7 +684,10 @@ impl Tool for WaitForAnyTool {
                 } else if result.agent_type == "report" && remaining_running == 0 {
                     "REPORT COMPLETED. You may now call complete_engagement with an executive summary.".to_string()
                 } else if remaining_running > 0 {
-                    format!("{} agent(s) still running. Call wait_for_any again or spawn more agents.", remaining_running)
+                    format!(
+                        "{} agent(s) still running. Call wait_for_any again or spawn more agents.",
+                        remaining_running
+                    )
                 } else {
                     "Analyze results and spawn appropriate follow-up agents, or spawn report if all testing is done.".to_string()
                 };
@@ -701,7 +709,8 @@ impl Tool for WaitForAnyTool {
                 summary: AgentSummary::default(),
                 raw_output_truncated: "No running agents".to_string(),
                 remaining_running: 0,
-                workflow_hint: "No agents running. Spawn agents to continue the engagement.".to_string(),
+                workflow_hint: "No agents running. Spawn agents to continue the engagement."
+                    .to_string(),
             }),
         }
     }
@@ -942,17 +951,16 @@ impl Tool for CompleteEngagementTool {
         // Mark all agents as completed
         let registry = self.context.registry.lock().await;
         for (name, agent_type, _status) in registry.list_agents() {
-            self.context.events.send_status(
-                name,
-                agent_type,
-                AgentStatus::Completed,
-                None,
-            );
+            self.context
+                .events
+                .send_status(name, agent_type, AgentStatus::Completed, None);
         }
         drop(registry);
 
         // Set completion flag BEFORE cancelling so runner knows this was a clean exit
-        self.context.engagement_completed.store(true, Ordering::SeqCst);
+        self.context
+            .engagement_completed
+            .store(true, Ordering::SeqCst);
 
         // Trigger cancellation to stop the agent loop
         self.context.cancel.cancel();

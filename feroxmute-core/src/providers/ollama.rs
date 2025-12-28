@@ -210,7 +210,10 @@ impl LlmProvider for OllamaProvider {
                 continuation_count += 1;
                 events_clone.send_feed(
                     agent_name,
-                    &format!("Agent output looks incomplete. Continuing... ({}/{})", continuation_count, MAX_CONTINUATIONS),
+                    &format!(
+                        "Agent output looks incomplete. Continuing... ({}/{})",
+                        continuation_count, MAX_CONTINUATIONS
+                    ),
                     false,
                 );
                 current_prompt = format!(

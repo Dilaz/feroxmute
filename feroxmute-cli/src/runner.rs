@@ -177,7 +177,11 @@ impl EventSender for TuiEventSender {
             })
             .collect();
         tokio::spawn(async move {
-            let _ = tx.send(AgentEvent::MemoryUpdated { entries: tui_entries }).await;
+            let _ = tx
+                .send(AgentEvent::MemoryUpdated {
+                    entries: tui_entries,
+                })
+                .await;
         });
     }
 }

@@ -71,9 +71,7 @@ pub enum AgentEvent {
     },
 
     /// Memory entries updated
-    MemoryUpdated {
-        entries: Vec<MemoryEntry>,
-    },
+    MemoryUpdated { entries: Vec<MemoryEntry> },
 }
 
 /// Memory entry for TUI display

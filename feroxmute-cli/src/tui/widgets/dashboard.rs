@@ -238,7 +238,10 @@ fn agent_row_with_activity(
     // Truncate activity to fit available width (use char count for proper UTF-8 handling)
     let max_activity = activity_width.max(10); // minimum 10 chars
     let activity_display = if activity.chars().count() > max_activity {
-        let truncated: String = activity.chars().take(max_activity.saturating_sub(3)).collect();
+        let truncated: String = activity
+            .chars()
+            .take(max_activity.saturating_sub(3))
+            .collect();
         format!("{}...", truncated)
     } else {
         activity.to_string()

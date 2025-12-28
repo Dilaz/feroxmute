@@ -32,9 +32,9 @@ pub struct MemoryContext {
 async fn broadcast_memory_update(context: &MemoryContext) {
     let entries = {
         let conn = context.conn.lock().await;
-        let mut stmt = match conn.prepare(
-            "SELECT key, value, created_at, updated_at FROM scratch_pad ORDER BY key",
-        ) {
+        let mut stmt = match conn
+            .prepare("SELECT key, value, created_at, updated_at FROM scratch_pad ORDER BY key")
+        {
             Ok(s) => s,
             Err(_) => return,
         };
@@ -282,10 +282,15 @@ impl Tool for MemoryListTool {
         let keys: Vec<String> = match &args.prefix {
             Some(prefix) => {
                 // Escape SQL LIKE special characters to prevent pattern injection
-                let escaped = prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+                let escaped = prefix
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_");
                 let pattern = format!("{}%", escaped);
                 let mut stmt = conn
-                    .prepare("SELECT key FROM scratch_pad WHERE key LIKE ?1 ESCAPE '\\' ORDER BY key")
+                    .prepare(
+                        "SELECT key FROM scratch_pad WHERE key LIKE ?1 ESCAPE '\\' ORDER BY key",
+                    )
                     .map_err(|e| MemoryToolError::Database(e.to_string()))?;
                 let rows = stmt
                     .query_map([pattern], |row| row.get(0))

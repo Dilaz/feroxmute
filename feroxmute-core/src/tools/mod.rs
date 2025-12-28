@@ -9,8 +9,7 @@ pub mod shell;
 
 pub use executor::{ToolDef, ToolExecution, ToolExecutor, ToolRegistry};
 pub use memory::{
-    MemoryAddTool, MemoryContext, MemoryGetTool, MemoryListTool, MemoryRemoveTool,
-    MemoryToolError,
+    MemoryAddTool, MemoryContext, MemoryGetTool, MemoryListTool, MemoryRemoveTool, MemoryToolError,
 };
 pub use orchestrator::{
     AgentSummary, CompleteEngagementTool, EventSender, ListAgentsTool, OrchestratorContext,
