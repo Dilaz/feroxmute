@@ -150,6 +150,7 @@ pub trait EventSender: Send + Sync {
     /// Send memory entries update
     fn send_memory_update(&self, entries: Vec<super::MemoryEntryData>);
     /// Send a code finding from SAST analysis
+    #[allow(clippy::too_many_arguments)]
     fn send_code_finding(
         &self,
         agent: &str,

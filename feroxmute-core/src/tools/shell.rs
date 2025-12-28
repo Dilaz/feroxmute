@@ -252,7 +252,7 @@ impl DockerShellTool {
         }
     }
 
-    /// Parse SAST tool output and send vulnerability events
+    /// Parse SAST tool output and send code finding events
     fn parse_sast_findings(&self, command: &str, output: &str) {
         let cmd_lower = command.to_lowercase();
 
@@ -260,8 +260,17 @@ impl DockerShellTool {
         if cmd_lower.starts_with("grype") && cmd_lower.contains("-o json") {
             if let Ok(grype_output) = GrypeOutput::parse(output) {
                 for finding in grype_output.to_code_findings() {
-                    self.events
-                        .send_vulnerability(finding.severity, &finding.title);
+                    self.events.send_code_finding(
+                        &self.agent_name,
+                        &finding.file_path,
+                        finding.line_number,
+                        finding.severity,
+                        finding.finding_type,
+                        &finding.title,
+                        &finding.tool,
+                        finding.cve_id.as_deref(),
+                        finding.package_name.as_deref(),
+                    );
                 }
             }
         }
@@ -270,8 +279,17 @@ impl DockerShellTool {
         if cmd_lower.starts_with("semgrep") && cmd_lower.contains("--json") {
             if let Ok(semgrep_output) = SemgrepOutput::parse(output) {
                 for finding in semgrep_output.to_code_findings() {
-                    self.events
-                        .send_vulnerability(finding.severity, &finding.title);
+                    self.events.send_code_finding(
+                        &self.agent_name,
+                        &finding.file_path,
+                        finding.line_number,
+                        finding.severity,
+                        finding.finding_type,
+                        &finding.title,
+                        &finding.tool,
+                        finding.cwe_id.as_deref(),
+                        None,
+                    );
                 }
             }
         }
@@ -280,8 +298,36 @@ impl DockerShellTool {
         if cmd_lower.starts_with("gitleaks") && cmd_lower.contains("json") {
             if let Ok(gitleaks_output) = GitleaksOutput::parse(output) {
                 for finding in gitleaks_output.to_code_findings() {
-                    self.events
-                        .send_vulnerability(finding.severity, &finding.title);
+                    self.events.send_code_finding(
+                        &self.agent_name,
+                        &finding.file_path,
+                        finding.line_number,
+                        finding.severity,
+                        finding.finding_type,
+                        &finding.title,
+                        &finding.tool,
+                        None,
+                        None,
+                    );
+                }
+            }
+        }
+
+        // Try to parse ast-grep output
+        if cmd_lower.starts_with("ast-grep") && cmd_lower.contains("--json") {
+            if let Ok(astgrep_output) = super::sast::AstGrepOutput::parse(output) {
+                for finding in super::sast::SastToolOutput::to_code_findings(&astgrep_output) {
+                    self.events.send_code_finding(
+                        &self.agent_name,
+                        &finding.file_path,
+                        finding.line_number,
+                        finding.severity,
+                        finding.finding_type,
+                        &finding.title,
+                        &finding.tool,
+                        None,
+                        None,
+                    );
                 }
             }
         }
