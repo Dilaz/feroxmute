@@ -160,9 +160,21 @@ impl ContainerManager {
                         "Recreating container with updated mounts: {:?}",
                         required_binds
                     );
-                    // Stop and remove existing container, ignore errors
-                    let _ = self.stop().await;
-                    let _ = self.remove().await;
+                    // Stop and remove existing container by name (not id, since it's not set yet)
+                    let _ = self
+                        .docker
+                        .stop_container(&self.config.name, Some(StopContainerOptions { t: 5 }))
+                        .await;
+                    let _ = self
+                        .docker
+                        .remove_container(
+                            &self.config.name,
+                            Some(RemoveContainerOptions {
+                                force: true,
+                                ..Default::default()
+                            }),
+                        )
+                        .await;
                     self.create_container().await?;
                 } else {
                     self.container_id = Some(info.id.unwrap_or_default());
