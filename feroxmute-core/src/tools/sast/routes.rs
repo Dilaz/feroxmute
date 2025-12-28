@@ -183,6 +183,36 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
     routes
 }
 
+/// Detect web framework from file content
+pub fn detect_framework(content: &str) -> Option<&'static str> {
+    let content_lower = content.to_lowercase();
+
+    if content_lower.contains("require('express')")
+        || content_lower.contains("require(\"express\")")
+        || content_lower.contains("from 'express'")
+        || content_lower.contains("from \"express\"")
+    {
+        return Some("express");
+    }
+    if content_lower.contains("from flask import") || content_lower.contains("import flask") {
+        return Some("flask");
+    }
+    if content_lower.contains("from django") || content_lower.contains("import django") {
+        return Some("django");
+    }
+    if content_lower.contains("org.springframework") {
+        return Some("spring");
+    }
+    if content_lower.contains("\"net/http\"") || content_lower.contains("'net/http'") {
+        return Some("go");
+    }
+    if content_lower.contains("use axum::") || content_lower.contains("axum::") {
+        return Some("axum");
+    }
+
+    None
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
@@ -290,5 +320,28 @@ mod tests {
 
         let routes = discover_routes_in_content(code, "UserController.java", "spring");
         assert_eq!(routes.len(), 3);
+    }
+
+    #[test]
+    fn test_detect_framework() {
+        assert_eq!(
+            detect_framework("const express = require('express');"),
+            Some("express")
+        );
+        assert_eq!(
+            detect_framework("from flask import Flask"),
+            Some("flask")
+        );
+        assert_eq!(
+            detect_framework("from django.urls import path"),
+            Some("django")
+        );
+        assert_eq!(
+            detect_framework("import org.springframework.web.bind.annotation"),
+            Some("spring")
+        );
+        assert_eq!(detect_framework("import \"net/http\""), Some("go"));
+        assert_eq!(detect_framework("use axum::Router;"), Some("axum"));
+        assert_eq!(detect_framework("some random code"), None);
     }
 }
