@@ -220,13 +220,26 @@ macro_rules! define_provider {
                         .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&memory)))
                         .build();
 
-                    // Use non-streaming multi_turn which correctly loops through all tool calls
-                    let response = agent
-                        .prompt(&current_prompt)
-                        .extended_details()
-                        .multi_turn(50)
-                        .await
-                        .map_err(|e| $crate::Error::Provider(format!("Shell completion failed: {}", e)))?;
+                    // Use non-streaming multi_turn with 10-minute timeout
+                    const LLM_TIMEOUT_SECS: u64 = 600; // 10 minutes
+                    let result = tokio::time::timeout(
+                        std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
+                        agent.prompt(&current_prompt).extended_details().multi_turn(50)
+                    ).await;
+
+                    let response = match result {
+                        Ok(Ok(r)) => r,
+                        Ok(Err(e)) => {
+                            events_clone.send_feed(agent_name, &format!("LLM request failed: {}", e), true);
+                            events_clone.send_status(agent_name, "", $crate::agents::AgentStatus::Failed, None);
+                            return Err($crate::Error::Provider(format!("Shell completion failed: {}", e)));
+                        }
+                        Err(_) => {
+                            events_clone.send_feed(agent_name, "LLM request timed out after 10 minutes", true);
+                            events_clone.send_status(agent_name, "", $crate::agents::AgentStatus::Failed, None);
+                            return Err($crate::Error::Provider("LLM request timed out after 10 minutes".into()));
+                        }
+                    };
 
                     // Calculate cost
                     let pricing = $crate::pricing::PricingConfig::load();
@@ -266,6 +279,9 @@ macro_rules! define_provider {
                         );
                         continue;
                     }
+
+                    // Set completed status
+                    events_clone.send_status(agent_name, "", $crate::agents::AgentStatus::Completed, None);
 
                     return Ok(accumulated_output);
                 }
@@ -379,13 +395,26 @@ macro_rules! define_provider {
                     .tool($crate::tools::AddRecommendationTool::new(std::sync::Arc::clone(&context)))
                     .build();
 
-                // Use non-streaming multi_turn which correctly loops through all tool calls
-                let response = agent
-                    .prompt(user_prompt)
-                    .extended_details()
-                    .multi_turn(20)
-                    .await
-                    .map_err(|e| $crate::Error::Provider(format!("Report completion failed: {}", e)))?;
+                // Use non-streaming multi_turn with 10-minute timeout
+                const LLM_TIMEOUT_SECS: u64 = 600; // 10 minutes
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
+                    agent.prompt(user_prompt).extended_details().multi_turn(20)
+                ).await;
+
+                let response = match result {
+                    Ok(Ok(r)) => r,
+                    Ok(Err(e)) => {
+                        events.send_feed("report", &format!("LLM request failed: {}", e), true);
+                        events.send_status("report", "report", $crate::agents::AgentStatus::Failed, None);
+                        return Err($crate::Error::Provider(format!("Report completion failed: {}", e)));
+                    }
+                    Err(_) => {
+                        events.send_feed("report", "LLM request timed out after 10 minutes", true);
+                        events.send_status("report", "report", $crate::agents::AgentStatus::Failed, None);
+                        return Err($crate::Error::Provider("LLM request timed out after 10 minutes".into()));
+                    }
+                };
 
                 // Calculate cost
                 let pricing = $crate::pricing::PricingConfig::load();
@@ -402,6 +431,9 @@ macro_rules! define_provider {
                     cost,
                     0,
                 );
+
+                // Set completed status
+                events.send_status("report", "report", $crate::agents::AgentStatus::Completed, None);
 
                 Ok(response.output)
             }
