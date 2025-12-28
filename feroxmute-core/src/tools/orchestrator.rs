@@ -20,6 +20,7 @@ use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolCategory};
 use crate::providers::LlmProvider;
 use crate::reports::Report;
+use crate::state::models::FindingType;
 use crate::state::{MetricsTracker, Severity};
 use crate::tools::report::ReportContext;
 
@@ -148,6 +149,19 @@ pub trait EventSender: Send + Sync {
     fn send_summary(&self, agent: &str, summary: &AgentSummary);
     /// Send memory entries update
     fn send_memory_update(&self, entries: Vec<super::MemoryEntryData>);
+    /// Send a code finding from SAST analysis
+    fn send_code_finding(
+        &self,
+        agent: &str,
+        file_path: &str,
+        line_number: Option<u32>,
+        severity: Severity,
+        finding_type: FindingType,
+        title: &str,
+        tool: &str,
+        cve_id: Option<&str>,
+        package_name: Option<&str>,
+    );
 }
 
 /// Shared context for all orchestrator tools
@@ -166,6 +180,8 @@ pub struct OrchestratorContext {
     pub memory: Arc<super::memory::MemoryContext>,
     /// Flag to distinguish engagement completion from user cancellation
     pub engagement_completed: Arc<AtomicBool>,
+    /// Path to source code for SAST analysis (if available)
+    pub source_path: Option<String>,
 }
 
 // ============================================================================
@@ -272,9 +288,20 @@ impl Tool for SpawnAgentTool {
 
         // Get base prompt for agent type
         let base_prompt = self.context.prompts.get(&args.agent_type).unwrap_or("");
+
+        // For SAST agents, use source_path; for others, use web target
+        let agent_target = if args.agent_type == "sast" {
+            self.context
+                .source_path
+                .clone()
+                .unwrap_or_else(|| self.context.target.clone())
+        } else {
+            self.context.target.clone()
+        };
+
         let full_prompt = format!(
             "{}\n\n---\n\n## Task from Orchestrator\n\nName: {}\nInstructions: {}\nTarget: {}",
-            base_prompt, args.name, args.instructions, self.context.target
+            base_prompt, args.name, args.instructions, agent_target
         );
 
         self.context.events.send_feed(
@@ -302,7 +329,7 @@ impl Tool for SpawnAgentTool {
         let result_tx = registry.result_sender();
         let agent_name = args.name.clone();
         let agent_type = args.agent_type.clone();
-        let target = self.context.target.clone();
+        let target = agent_target; // Use source_path for SAST, web target for others
         let provider = Arc::clone(&self.context.provider);
         let container = Arc::clone(&self.context.container);
         let events = Arc::clone(&self.context.events);
