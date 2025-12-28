@@ -753,4 +753,50 @@ mod tests {
         assert!(entry.is_some(), "should have selected entry");
         assert_eq!(entry.map(|e| e.key.clone()), Some("second".to_string()));
     }
+
+    #[test]
+    fn test_add_code_finding() {
+        use feroxmute_core::state::models::{CodeFinding, FindingType, Severity};
+
+        let mut app = App::new("test.com", "test-session", None);
+
+        // Add dependency finding
+        let dep_finding = CodeFinding::new(
+            "Cargo.lock",
+            Severity::High,
+            FindingType::Dependency,
+            "CVE-2024-1234 in pkg@1.0",
+            "grype",
+        );
+        app.add_code_finding(dep_finding);
+        assert_eq!(app.code_finding_counts.dependencies, 1);
+        assert_eq!(app.code_finding_counts.sast, 0);
+        assert_eq!(app.code_finding_counts.secrets, 0);
+
+        // Add SAST finding
+        let sast_finding = CodeFinding::new(
+            "src/main.rs",
+            Severity::Medium,
+            FindingType::Sast,
+            "SQL injection",
+            "semgrep",
+        );
+        app.add_code_finding(sast_finding);
+        assert_eq!(app.code_finding_counts.dependencies, 1);
+        assert_eq!(app.code_finding_counts.sast, 1);
+
+        // Add secret finding
+        let secret_finding = CodeFinding::new(
+            ".env",
+            Severity::High,
+            FindingType::Secret,
+            "API key exposed",
+            "gitleaks",
+        );
+        app.add_code_finding(secret_finding);
+        assert_eq!(app.code_finding_counts.secrets, 1);
+
+        // Total findings
+        assert_eq!(app.code_findings.len(), 3);
+    }
 }
