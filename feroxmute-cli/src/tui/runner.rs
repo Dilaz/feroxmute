@@ -14,7 +14,7 @@ use ratatui::{backend::CrosstermBackend, Frame, Terminal};
 use super::app::{App, View};
 use super::channel::{AgentEvent, VulnSeverity};
 use super::events::{handle_event, poll_event, EventResult};
-use super::widgets::{agent_detail, dashboard};
+use super::widgets::{agent_detail, dashboard, memory, memory_modal};
 
 /// Render the current view
 fn render(frame: &mut Frame, app: &App) {
@@ -23,7 +23,12 @@ fn render(frame: &mut Frame, app: &App) {
         View::AgentDetail(agent_name) => agent_detail::render(frame, app, agent_name),
         View::Logs => render_logs(frame, app),
         View::Help => render_help(frame),
-        View::Memory => {} // TODO: render memory view
+        View::Memory => {
+            memory::render(frame, app, frame.area());
+            if app.show_memory_modal {
+                memory_modal::render(frame, app);
+            }
+        }
     }
 
     if app.confirm_quit {
