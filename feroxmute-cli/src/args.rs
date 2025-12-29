@@ -39,25 +39,25 @@ pub struct Args {
     #[arg(long)]
     pub list_sessions: bool,
 
-    /// Testing scope (web, network, full)
-    #[arg(long, default_value = "web")]
-    pub scope: String,
+    /// Enable subdomain enumeration and asset discovery
+    #[arg(long)]
+    pub discover: bool,
+
+    /// Enable port scanning (naabu, nmap)
+    #[arg(long)]
+    pub portscan: bool,
+
+    /// Enable network-level scanning beyond HTTP
+    #[arg(long)]
+    pub network: bool,
 
     /// Recon and scan only, no exploitation
     #[arg(long)]
     pub no_exploit: bool,
 
-    /// Skip port scanning
-    #[arg(long)]
-    pub no_portscan: bool,
-
     /// Passive recon only
     #[arg(long)]
     pub passive: bool,
-
-    /// Skip subdomain enumeration and asset discovery (webapp-only testing)
-    #[arg(long)]
-    pub no_discovery: bool,
 
     /// Limit port range (comma-separated)
     #[arg(long)]
