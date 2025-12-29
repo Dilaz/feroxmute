@@ -21,6 +21,23 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
 
+fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let duration = now.signed_duration_since(dt);
+
+    if duration.num_seconds() < 60 {
+        "just now".to_string()
+    } else if duration.num_minutes() < 60 {
+        format!("{}m ago", duration.num_minutes())
+    } else if duration.num_hours() < 24 {
+        format!("{}h ago", duration.num_hours())
+    } else if duration.num_days() < 7 {
+        format!("{}d ago", duration.num_days())
+    } else {
+        dt.format("%Y-%m-%d").to_string()
+    }
+}
+
 #[tokio::main]
 #[allow(clippy::print_stdout)]
 async fn main() -> Result<()> {
@@ -81,6 +98,54 @@ async fn main() -> Result<()> {
     // Load configuration
     let mut config = EngagementConfig::load_default();
     config.expand_env_vars();
+
+    if args.list_sessions {
+        let sessions_dir = config.output.session_dir.clone();
+        if !sessions_dir.exists() {
+            println!("No sessions found. Directory does not exist: {}", sessions_dir.display());
+            return Ok(());
+        }
+
+        println!("{:<40} {:<20} {:<12} {}", "SESSION ID", "TARGET", "STATUS", "LAST ACTIVITY");
+        println!("{}", "-".repeat(90));
+
+        let mut sessions: Vec<_> = std::fs::read_dir(&sessions_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_dir())
+            .collect();
+
+        // Sort by modification time (newest first)
+        sessions.sort_by(|a, b| {
+            let a_time = a.metadata().and_then(|m| m.modified()).ok();
+            let b_time = b.metadata().and_then(|m| m.modified()).ok();
+            b_time.cmp(&a_time)
+        });
+
+        for entry in sessions {
+            let path = entry.path();
+            match feroxmute_core::state::Session::resume(&path) {
+                Ok(session) => {
+                    let status = session.status()
+                        .map(|s| format!("{:?}", s))
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    let last_activity = session.last_activity()
+                        .map(|dt| format_relative_time(dt))
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    println!("{:<40} {:<20} {:<12} {}",
+                        session.id,
+                        session.config.target.host,
+                        status.to_lowercase(),
+                        last_activity
+                    );
+                }
+                Err(_) => {
+                    // Skip invalid session directories
+                }
+            }
+        }
+
+        return Ok(());
+    }
 
     // Resolve provider: CLI arg takes precedence, then config file, then default
     let provider_name = args

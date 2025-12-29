@@ -35,6 +35,10 @@ pub struct Args {
     #[arg(long)]
     pub resume: Option<PathBuf>,
 
+    /// List available sessions
+    #[arg(long)]
+    pub list_sessions: bool,
+
     /// Testing scope (web, network, full)
     #[arg(long, default_value = "web")]
     pub scope: String,
