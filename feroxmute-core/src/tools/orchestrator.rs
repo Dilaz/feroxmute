@@ -187,6 +187,8 @@ pub struct OrchestratorContext {
     pub session_db_path: Option<std::path::PathBuf>,
     /// Session ID for report metadata
     pub session_id: String,
+    /// Path to reports directory for saving report files
+    pub reports_dir: std::path::PathBuf,
 }
 
 // ============================================================================
@@ -344,6 +346,8 @@ impl Tool for SpawnAgentTool {
 
         let session_id = self.context.session_id.clone();
 
+        let reports_dir = self.context.reports_dir.clone();
+
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
             tokio::spawn(async move {
@@ -358,6 +362,7 @@ impl Tool for SpawnAgentTool {
                     metrics: MetricsTracker::new(),
                     findings,
                     report: Arc::new(Mutex::new(None::<Report>)),
+                    reports_dir,
                 });
 
                 let output = match provider

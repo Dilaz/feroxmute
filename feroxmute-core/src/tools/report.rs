@@ -44,6 +44,8 @@ pub struct ReportContext {
     pub findings: Arc<Mutex<Vec<String>>>,
     /// Generated report (mutable state shared between tools)
     pub report: Arc<Mutex<Option<Report>>>,
+    /// Path to reports directory for saving report files
+    pub reports_dir: std::path::PathBuf,
 }
 
 // ============================================================================
@@ -239,8 +241,13 @@ impl Tool for GenerateReportTool {
 
 #[derive(Debug, Deserialize)]
 pub struct ExportJsonArgs {
-    /// File path for JSON export
-    pub path: String,
+    /// Filename for JSON export (saved to session reports directory)
+    #[serde(default = "default_json_filename")]
+    pub filename: String,
+}
+
+fn default_json_filename() -> String {
+    "report.json".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -271,17 +278,17 @@ impl Tool for ExportJsonTool {
         ToolDefinition {
             name: "export_json".to_string(),
             description:
-                "Export the generated report to JSON format. Must call generate_report first."
+                "Export the generated report to JSON format. Must call generate_report first. The report is saved to the session's reports directory."
                     .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": {
+                    "filename": {
                         "type": "string",
-                        "description": "File path for JSON export (e.g., '/tmp/report.json')"
+                        "description": "Filename for the JSON export (default: 'report.json')"
                     }
                 },
-                "required": ["path"]
+                "required": []
             }),
         }
     }
@@ -290,24 +297,25 @@ impl Tool for ExportJsonTool {
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
+        let path = self.context.reports_dir.join(&args.filename);
+        let path_str = path.display().to_string();
+
+        self.context
+            .events
+            .send_feed("report", &format!("Exporting to JSON: {}", path_str), false);
+
+        export_json(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
+
         self.context.events.send_feed(
             "report",
-            &format!("Exporting to JSON: {}", args.path),
-            false,
-        );
-
-        export_json(report, &args.path).map_err(|e| ReportToolError::Export(e.to_string()))?;
-
-        self.context.events.send_feed(
-            "report",
-            &format!("JSON report exported to {}", args.path),
+            &format!("JSON report exported to {}", path_str),
             false,
         );
 
         Ok(ExportJsonOutput {
             success: true,
-            message: format!("Report exported to JSON: {}", args.path),
-            path: args.path,
+            message: format!("Report exported to JSON: {}", path_str),
+            path: path_str,
         })
     }
 }
@@ -318,8 +326,13 @@ impl Tool for ExportJsonTool {
 
 #[derive(Debug, Deserialize)]
 pub struct ExportMarkdownArgs {
-    /// File path for Markdown export
-    pub path: String,
+    /// Filename for Markdown export (saved to session reports directory)
+    #[serde(default = "default_markdown_filename")]
+    pub filename: String,
+}
+
+fn default_markdown_filename() -> String {
+    "report.md".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -350,17 +363,17 @@ impl Tool for ExportMarkdownTool {
         ToolDefinition {
             name: "export_markdown".to_string(),
             description:
-                "Export the generated report to Markdown format. Must call generate_report first."
+                "Export the generated report to Markdown format. Must call generate_report first. The report is saved to the session's reports directory."
                     .to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "path": {
+                    "filename": {
                         "type": "string",
-                        "description": "File path for Markdown export (e.g., '/tmp/report.md')"
+                        "description": "Filename for the Markdown export (default: 'report.md')"
                     }
                 },
-                "required": ["path"]
+                "required": []
             }),
         }
     }
@@ -369,24 +382,27 @@ impl Tool for ExportMarkdownTool {
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
+        let path = self.context.reports_dir.join(&args.filename);
+        let path_str = path.display().to_string();
+
         self.context.events.send_feed(
             "report",
-            &format!("Exporting to Markdown: {}", args.path),
+            &format!("Exporting to Markdown: {}", path_str),
             false,
         );
 
-        export_markdown(report, &args.path).map_err(|e| ReportToolError::Export(e.to_string()))?;
+        export_markdown(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
 
         self.context.events.send_feed(
             "report",
-            &format!("Markdown report exported to {}", args.path),
+            &format!("Markdown report exported to {}", path_str),
             false,
         );
 
         Ok(ExportMarkdownOutput {
             success: true,
-            message: format!("Report exported to Markdown: {}", args.path),
-            path: args.path,
+            message: format!("Report exported to Markdown: {}", path_str),
+            path: path_str,
         })
     }
 }

@@ -73,10 +73,16 @@ impl Session {
     /// Create a new session for an engagement
     pub fn new(config: EngagementConfig, base_dir: impl AsRef<Path>) -> Result<Self> {
         let created_at = Utc::now();
+        // Strip protocol prefix from host for cleaner session IDs
+        let host = config
+            .target
+            .host
+            .trim_start_matches("https://")
+            .trim_start_matches("http://");
         let base_id = format!(
             "{}-{}",
             created_at.format("%Y-%m-%d"),
-            config.target.host.replace('.', "-")
+            host.replace('.', "-")
         );
 
         // Find unique ID by appending counter if needed
@@ -636,6 +642,52 @@ mod tests {
             session3.id.ends_with("-3"),
             "Third session should have -3 suffix, got: {}",
             session3.id
+        );
+    }
+
+    #[test]
+    fn test_session_id_strips_protocol() {
+        let temp = TempDir::new().expect("should create temp dir");
+
+        // Test with https:// prefix
+        let mut config_https = EngagementConfig {
+            target: TargetConfig {
+                host: "https://example.com".to_string(),
+                ports: vec![80, 443],
+            },
+            capabilities: Default::default(),
+            constraints: Default::default(),
+            auth: Default::default(),
+            provider: Default::default(),
+            output: Default::default(),
+        };
+
+        let session =
+            Session::new(config_https.clone(), temp.path()).expect("should create session");
+        assert!(
+            session.id.contains("example-com"),
+            "Session ID should contain 'example-com', got: {}",
+            session.id
+        );
+        assert!(
+            !session.id.contains("https"),
+            "Session ID should not contain 'https', got: {}",
+            session.id
+        );
+        drop(session);
+
+        // Test with http:// prefix
+        config_https.target.host = "http://test.example.com".to_string();
+        let session_http = Session::new(config_https, temp.path()).expect("should create session");
+        assert!(
+            session_http.id.contains("test-example-com"),
+            "Session ID should contain 'test-example-com', got: {}",
+            session_http.id
+        );
+        assert!(
+            !session_http.id.contains("http"),
+            "Session ID should not contain 'http', got: {}",
+            session_http.id
         );
     }
 
