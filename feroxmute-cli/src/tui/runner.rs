@@ -400,6 +400,9 @@ fn drain_events(app: &mut App) {
                     format!("[{:?}] {}", finding.severity, finding.title),
                 ));
             }
+            AgentEvent::ToolCall => {
+                app.metrics.tool_calls += 1;
+            }
         }
     }
 }

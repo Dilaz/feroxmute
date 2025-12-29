@@ -163,6 +163,8 @@ pub trait EventSender: Send + Sync {
         cve_id: Option<&str>,
         package_name: Option<&str>,
     );
+    /// Notify that a tool was invoked (for tool call counting in TUI)
+    fn send_tool_call(&self);
 }
 
 /// Shared context for all orchestrator tools
@@ -266,6 +268,9 @@ impl Tool for SpawnAgentTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         // Check if agent type is allowed by limitations
         let required = agent_required_categories(&args.agent_type);
         let has_any_allowed = required
@@ -491,6 +496,9 @@ impl Tool for WaitForAgentTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         self.context.events.send_feed(
             "orchestrator",
             &format!("Waiting for agent '{}'...", args.name),
@@ -632,6 +640,9 @@ impl Tool for WaitForAnyTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         self.context.events.send_feed(
             "orchestrator",
             "Waiting for any agent to complete...",
@@ -802,6 +813,9 @@ impl Tool for ListAgentsTool {
     }
 
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         let registry = self.context.registry.lock().await;
         let agents = registry
             .list_agents()
@@ -879,6 +893,9 @@ impl Tool for RecordFindingTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         let category = args.category.as_deref().unwrap_or("info");
         let formatted = format!("[{}] {}", category.to_uppercase(), args.finding);
 
@@ -962,6 +979,9 @@ impl Tool for CompleteEngagementTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         // Check if there are still running agents (any active state)
         let registry = self.context.registry.lock().await;
         let all_agents: Vec<_> = registry.list_agents();

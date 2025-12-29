@@ -110,6 +110,9 @@ impl Tool for GenerateReportTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         self.context
             .events
             .send_feed("report", "Generating report from findings...", false);
@@ -294,6 +297,9 @@ impl Tool for ExportJsonTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
@@ -379,6 +385,9 @@ impl Tool for ExportMarkdownTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
@@ -468,6 +477,9 @@ impl Tool for AddRecommendationTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
         let mut report_lock = self.context.report.lock().await;
         let report = report_lock.as_mut().ok_or(ReportToolError::NoReport)?;
 

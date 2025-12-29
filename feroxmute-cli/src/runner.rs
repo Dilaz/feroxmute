@@ -214,6 +214,13 @@ impl EventSender for TuiEventSender {
             let _ = tx.send(AgentEvent::CodeFinding { agent, finding }).await;
         });
     }
+
+    fn send_tool_call(&self) {
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(AgentEvent::ToolCall).await;
+        });
+    }
 }
 
 /// Run the orchestrator agent with TUI feedback

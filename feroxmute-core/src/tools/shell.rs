@@ -104,6 +104,9 @@ impl Tool for DockerShellTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.events.send_tool_call();
+
         // Check if command is allowed by limitations
         if let Err(msg) = self.check_command_allowed(&args.command) {
             return Ok(ShellOutput {

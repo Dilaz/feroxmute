@@ -441,6 +441,7 @@ mod tests {
             _package_name: Option<&str>,
         ) {
         }
+        fn send_tool_call(&self) {}
     }
 
     fn setup_context() -> Arc<MemoryContext> {

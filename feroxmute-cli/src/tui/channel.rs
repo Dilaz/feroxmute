@@ -79,6 +79,9 @@ pub enum AgentEvent {
         agent: String,
         finding: CodeFindingEvent,
     },
+
+    /// A tool was invoked (for tool call counting)
+    ToolCall,
 }
 
 /// Memory entry for TUI display
