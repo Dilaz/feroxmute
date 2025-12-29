@@ -225,33 +225,94 @@ fn prepare_output(output: &str) -> (String, bool) {
     }
 }
 
+/// Extract all command names from a shell command string
+/// Handles pipes (|), AND (&&), OR (||), semicolons (;), and subshells ($(...))
+fn extract_commands(input: &str) -> Vec<&str> {
+    let mut commands = Vec::new();
+
+    // Split on shell operators
+    // This regex-free approach handles: |, &&, ||, ;
+    let mut remaining = input;
+
+    while !remaining.is_empty() {
+        // Find the next operator
+        let mut split_pos = remaining.len();
+        let mut skip_len = 0;
+
+        for (i, _) in remaining.char_indices() {
+            let rest = &remaining[i..];
+            if rest.starts_with("&&") || rest.starts_with("||") {
+                split_pos = i;
+                skip_len = 2;
+                break;
+            } else if rest.starts_with('|') || rest.starts_with(';') {
+                split_pos = i;
+                skip_len = 1;
+                break;
+            }
+        }
+
+        let segment = &remaining[..split_pos];
+
+        // Extract command name from segment (first word after stripping)
+        let trimmed = segment.trim();
+        if let Some(cmd) = trimmed.split_whitespace().next() {
+            // Handle subshells: $(cmd ...) or `cmd ...`
+            let cmd = cmd.trim_start_matches("$(").trim_start_matches('`');
+            if !cmd.is_empty() {
+                commands.push(cmd);
+            }
+        }
+
+        // Move past the operator
+        if split_pos + skip_len >= remaining.len() {
+            break;
+        }
+        remaining = &remaining[split_pos + skip_len..];
+    }
+
+    // Also check for commands in $(...) subshells
+    let mut search_pos = 0;
+    while let Some(start) = input[search_pos..].find("$(") {
+        let abs_start = search_pos + start + 2;
+        if let Some(end) = input[abs_start..].find(')') {
+            let subshell_content = &input[abs_start..abs_start + end];
+            // Recursively extract from subshell
+            for cmd in extract_commands(subshell_content) {
+                if !commands.contains(&cmd) {
+                    commands.push(cmd);
+                }
+            }
+            search_pos = abs_start + end + 1;
+        } else {
+            break;
+        }
+    }
+
+    commands
+}
+
 impl DockerShellTool {
     /// Check if a command is allowed by engagement limitations
     fn check_command_allowed(&self, command: &str) -> Result<(), String> {
-        let category = self.tool_registry.categorize(command);
+        let commands = extract_commands(command);
+        let allowed = self.limitations.allowed_categories();
 
-        match category {
-            Some(cat) if !self.limitations.is_allowed(cat) => {
-                let tool = command.split_whitespace().next().unwrap_or("unknown");
-                let msg = format!(
-                    "Blocked: '{}' requires {:?} which is not allowed in current scope",
-                    tool, cat
-                );
-                self.events.send_feed(&self.agent_name, &msg, true);
-                Err(msg)
+        for cmd in commands {
+            if let Some(category) = self.tool_registry.categorize(cmd) {
+                if !allowed.contains(&category) {
+                    let msg = format!(
+                        "Blocked: '{}' requires {:?} which is not allowed in current scope",
+                        cmd, category
+                    );
+                    self.events.send_feed(&self.agent_name, &msg, true);
+                    return Err(msg);
+                }
             }
-            None => {
-                // Unknown command - allow with warning
-                let tool = command.split_whitespace().next().unwrap_or("unknown");
-                self.events.send_feed(
-                    &self.agent_name,
-                    &format!("Warning: unrecognized command '{}' - allowing", tool),
-                    false,
-                );
-                Ok(())
-            }
-            Some(_) => Ok(()),
+            // Unknown commands are allowed (with no warning - too noisy)
         }
+
+        Ok(())
     }
 
     /// Parse SAST tool output and send code finding events
@@ -347,5 +408,56 @@ impl DockerShellTool {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_single_command() {
+        let cmds = extract_commands("naabu -host example.com");
+        assert_eq!(cmds, vec!["naabu"]);
+    }
+
+    #[test]
+    fn test_extract_pipe_commands() {
+        let cmds = extract_commands("echo test | naabu -host example.com");
+        assert_eq!(cmds, vec!["echo", "naabu"]);
+    }
+
+    #[test]
+    fn test_extract_and_chain() {
+        let cmds = extract_commands("ls && naabu -host example.com && echo done");
+        assert_eq!(cmds, vec!["ls", "naabu", "echo"]);
+    }
+
+    #[test]
+    fn test_extract_or_chain() {
+        let cmds = extract_commands("naabu || subfinder -d example.com");
+        assert_eq!(cmds, vec!["naabu", "subfinder"]);
+    }
+
+    #[test]
+    fn test_extract_semicolon() {
+        let cmds = extract_commands("echo start; naabu; echo end");
+        assert_eq!(cmds, vec!["echo", "naabu", "echo"]);
+    }
+
+    #[test]
+    fn test_extract_subshell() {
+        let cmds = extract_commands("echo $(naabu -host test)");
+        assert!(cmds.contains(&"naabu"));
+    }
+
+    #[test]
+    fn test_extract_mixed_operators() {
+        let cmds = extract_commands("cat file | grep x && naabu || subfinder; echo done");
+        assert!(cmds.contains(&"cat"));
+        assert!(cmds.contains(&"grep"));
+        assert!(cmds.contains(&"naabu"));
+        assert!(cmds.contains(&"subfinder"));
+        assert!(cmds.contains(&"echo"));
     }
 }
