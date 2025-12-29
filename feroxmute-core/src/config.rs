@@ -3,16 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Testing scope
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Scope {
-    #[default]
-    Web,
-    Network,
-    Full,
-}
-
 /// Authentication type for target
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -49,9 +39,21 @@ pub struct TargetConfig {
     #[serde(default)]
     pub host: String,
     #[serde(default)]
-    pub scope: Scope,
-    #[serde(default)]
     pub ports: Vec<u16>,
+}
+
+/// Capability flags (additive permissions)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CapabilitiesConfig {
+    /// Enable subdomain enumeration and asset discovery
+    #[serde(default)]
+    pub discover: bool,
+    /// Enable port scanning
+    #[serde(default)]
+    pub portscan: bool,
+    /// Enable network-level scanning
+    #[serde(default)]
+    pub network: bool,
 }
 
 /// Engagement constraints
@@ -61,8 +63,6 @@ pub struct Constraints {
     pub passive: bool,
     #[serde(default)]
     pub no_exploit: bool,
-    #[serde(default)]
-    pub no_portscan: bool,
     #[serde(default)]
     pub rate_limit: Option<u32>,
     #[serde(default)]
@@ -137,13 +137,15 @@ impl Default for OutputConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EngagementConfig {
     #[serde(default)]
+    pub provider: ProviderConfig,
+    #[serde(default)]
     pub target: TargetConfig,
+    #[serde(default)]
+    pub capabilities: CapabilitiesConfig,
     #[serde(default)]
     pub constraints: Constraints,
     #[serde(default)]
     pub auth: AuthConfig,
-    #[serde(default)]
-    pub provider: ProviderConfig,
     #[serde(default)]
     pub output: OutputConfig,
 }
@@ -228,14 +230,15 @@ model = "gpt-4o"
     }
 
     #[test]
-    fn test_parse_config_with_target() {
+    fn test_parse_minimal_config() {
         let toml = r#"
 [target]
 host = "example.com"
 "#;
-        let config = EngagementConfig::parse(toml).expect("valid target config should parse");
+        let config = EngagementConfig::parse(toml).expect("valid config");
         assert_eq!(config.target.host, "example.com");
-        assert_eq!(config.target.scope, Scope::Web);
+        assert!(!config.capabilities.discover);
+        assert!(!config.capabilities.portscan);
     }
 
     #[test]
@@ -243,8 +246,12 @@ host = "example.com"
         let toml = r#"
 [target]
 host = "example.com"
-scope = "web"
 ports = [80, 443, 8080]
+
+[capabilities]
+discover = true
+portscan = true
+network = true
 
 [constraints]
 passive = false
@@ -262,9 +269,12 @@ model = "claude-sonnet-4-20250514"
 [output]
 export_html = true
 "#;
-        let config = EngagementConfig::parse(toml).expect("valid full config should parse");
+        let config = EngagementConfig::parse(toml).expect("full config");
         assert_eq!(config.target.host, "example.com");
         assert_eq!(config.target.ports, vec![80, 443, 8080]);
+        assert!(config.capabilities.discover);
+        assert!(config.capabilities.portscan);
+        assert!(config.capabilities.network);
         assert!(config.constraints.no_exploit);
         assert_eq!(config.constraints.rate_limit, Some(10));
         assert_eq!(config.auth.auth_type, AuthType::Bearer);

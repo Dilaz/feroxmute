@@ -404,9 +404,9 @@ mod tests {
         EngagementConfig {
             target: TargetConfig {
                 host: "example.com".to_string(),
-                scope: Default::default(),
                 ports: vec![80, 443],
             },
+            capabilities: Default::default(),
             constraints: Default::default(),
             auth: Default::default(),
             provider: Default::default(),
