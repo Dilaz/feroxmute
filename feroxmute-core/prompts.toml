@@ -841,13 +841,18 @@ Let tools find the obvious stuff:
 
 **semgrep** - Pattern-based code analysis:
 ```bash
-semgrep --config=auto /path/to/code
-semgrep --config=p/security-audit /path/to/code
+semgrep --config=auto --json /path/to/code
+semgrep --config=p/security-audit --json /path/to/code
 ```
 
-**trufflehog** - Secret detection:
+**grype** - Dependency vulnerability scanning:
 ```bash
-trufflehog filesystem /path/to/code
+grype /path/to/code -o json
+```
+
+**gitleaks** - Secret detection:
+```bash
+gitleaks detect --source /path/to/code --report-format json --report-path /dev/stdout
 ```
 
 These catch:
