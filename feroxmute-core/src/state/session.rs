@@ -330,6 +330,62 @@ impl Session {
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(|e| e.into())
     }
+
+    /// Check if this is a resumed session (has prior activity)
+    pub fn is_resuming(&self) -> Result<bool> {
+        let agents = self.completed_agents()?;
+        let memory = self.memory_entries()?;
+        let findings = self.findings_summary()?;
+        Ok(!agents.is_empty() || !memory.is_empty() || findings.total() > 0)
+    }
+
+    /// Build resume context string for orchestrator prompt
+    pub fn resume_context(&self) -> Result<String> {
+        let agents = self.completed_agents()?;
+        let memory = self.memory_entries()?;
+        let findings = self.findings_summary()?;
+
+        let mut context = String::from("RESUMING ENGAGEMENT - Prior context:\n");
+
+        if !agents.is_empty() {
+            context.push_str(&format!("- Completed agents: {}\n", agents.join(", ")));
+        }
+
+        if !memory.is_empty() {
+            context.push_str("- Memory:\n");
+            for (key, value) in memory.iter().take(10) {
+                // Truncate long values using UTF-8 aware method
+                // Quick byte-length check first (if byte len <= 100, char count must also be <= 100)
+                let display_value = if value.len() > 100 {
+                    let truncated: String = value.chars().take(100).collect();
+                    if truncated.len() < value.len() {
+                        format!("{}...", truncated)
+                    } else {
+                        value.clone()
+                    }
+                } else {
+                    value.clone()
+                };
+                context.push_str(&format!("  - {}: {}\n", key, display_value));
+            }
+            if memory.len() > 10 {
+                context.push_str(&format!("  - ... and {} more entries\n", memory.len() - 10));
+            }
+        }
+
+        if findings.total() > 0 {
+            context.push_str(&format!(
+                "- Findings: {} Critical, {} High, {} Medium, {} Low, {} Info\n",
+                findings.critical, findings.high, findings.medium, findings.low, findings.info
+            ));
+        }
+
+        context.push_str(
+            "\nContinue from where you left off. Do NOT repeat work already done by completed agents.\n",
+        );
+
+        Ok(context)
+    }
 }
 
 #[cfg(test)]
@@ -611,5 +667,76 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM session_meta", [], |row| row.get(0))
             .expect("should query");
         assert_eq!(count, count2);
+    }
+
+    #[test]
+    fn test_is_resuming_false_for_new_session() {
+        let temp = TempDir::new().expect("should create temp dir");
+        let config = test_config();
+
+        let session = Session::new(config, temp.path()).expect("should create session");
+
+        assert!(!session.is_resuming().expect("should check"));
+    }
+
+    #[test]
+    fn test_is_resuming_true_with_completed_agents() {
+        let temp = TempDir::new().expect("should create temp dir");
+        let config = test_config();
+
+        let session = Session::new(config, temp.path()).expect("should create session");
+        session
+            .mark_agent_completed("recon-1")
+            .expect("should mark");
+
+        assert!(session.is_resuming().expect("should check"));
+    }
+
+    #[test]
+    fn test_resume_context_includes_agents_and_findings() {
+        let temp = TempDir::new().expect("should create temp dir");
+        let config = test_config();
+
+        let session = Session::new(config, temp.path()).expect("should create session");
+        session
+            .mark_agent_completed("recon-1")
+            .expect("should mark");
+        session
+            .conn()
+            .execute(
+                "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
+             VALUES ('v1', 'sqli', 'high', 'SQL Injection', 'scanner', datetime('now'))",
+                [],
+            )
+            .expect("should insert");
+
+        let context = session.resume_context().expect("should get context");
+        assert!(context.contains("RESUMING ENGAGEMENT"));
+        assert!(context.contains("recon-1"));
+        assert!(context.contains("1 High"));
+    }
+
+    #[test]
+    fn test_resume_context_handles_unicode_truncation() {
+        let temp = TempDir::new().expect("should create temp dir");
+        let config = test_config();
+
+        let session = Session::new(config, temp.path()).expect("should create session");
+
+        // Insert a memory entry with Unicode that would cause byte-slicing to fail
+        // Each emoji is 4 bytes, so 50 emojis = 200 bytes but only 50 chars
+        let unicode_value = "\u{1F512}".repeat(50); // 200 bytes, 50 chars
+        session
+            .conn()
+            .execute(
+                "INSERT INTO scratch_pad (key, value) VALUES ('unicode_test', ?1)",
+                [&unicode_value],
+            )
+            .expect("should insert");
+
+        // This should not panic - previously would panic with "byte index is not a char boundary"
+        let context = session.resume_context().expect("should get context");
+        assert!(context.contains("unicode_test"));
+        assert!(context.contains("\u{1F512}")); // Some emoji should be present
     }
 }

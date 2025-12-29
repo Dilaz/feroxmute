@@ -399,6 +399,13 @@ async fn run_orchestrator_with_tools(
 
     let has_source_target = source_path.is_some();
 
+    // Check if resuming and prepend context
+    let resume_prefix = if session.is_resuming().unwrap_or(false) {
+        session.resume_context().unwrap_or_default()
+    } else {
+        String::new()
+    };
+
     // Build user prompt with limitations
     let engagement_task = match &instruction {
         Some(instr) => format!(
@@ -427,11 +434,12 @@ async fn run_orchestrator_with_tools(
     };
 
     let user_prompt = format!(
-        "Target: {}\n\n{}\n\n{}{}\n\n\
+        "{}Target: {}\n\n{}\n\n{}{}\n\n\
         Available agent types: recon, scanner{}, report.\n\n\
         {}\n\n\
         CRITICAL: After EVERY spawn_agent call, you MUST call wait_for_any() to get results. Never stop without waiting for spawned agents.\n\n\
         {}",
+        resume_prefix,
         target,
         limitations.to_prompt_section(),
         engagement_task,
