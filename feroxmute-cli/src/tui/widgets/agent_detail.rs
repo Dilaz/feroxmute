@@ -129,15 +129,17 @@ fn render_output(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
         lines
     };
 
-    // Clamp scroll to content height to prevent scrolling past content
+    // Convert bottom-based scroll (log_scroll) to top-based scroll for Paragraph
+    // log_scroll=0 means "show newest" (bottom), so we scroll to max_scroll
+    // log_scroll=N means "show N entries older", so we scroll to max_scroll - N
     let content_height = content.len();
     let visible_height = area.height.saturating_sub(2) as usize;
     let max_scroll = content_height.saturating_sub(visible_height);
-    let clamped_scroll = app.log_scroll.min(max_scroll);
+    let scroll_from_top = max_scroll.saturating_sub(app.log_scroll);
 
     let output = Paragraph::new(content)
         .wrap(Wrap { trim: false })
-        .scroll((clamped_scroll as u16, 0))
+        .scroll((scroll_from_top as u16, 0))
         .block(Block::default().borders(Borders::ALL).title(" Output "));
     frame.render_widget(output, area);
 }
