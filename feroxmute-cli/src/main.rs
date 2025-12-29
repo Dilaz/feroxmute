@@ -559,24 +559,15 @@ async fn main() -> Result<()> {
         let container = Arc::new(container);
 
         // Build engagement limitations from CLI args
-        let limitations = Arc::new(if args.sast_only {
-            EngagementLimitations::for_sast_only()
-        } else if args.passive {
-            EngagementLimitations::for_passive()
-        } else {
-            let base = match args.scope.as_str() {
-                "network" => EngagementLimitations::for_network_scope(
-                    args.no_discovery,
-                    args.no_exploit,
-                    args.no_portscan,
-                ),
-                "full" => EngagementLimitations::for_full_scope(),
-                _ => EngagementLimitations::for_web_scope(
-                    args.no_discovery,
-                    args.no_exploit,
-                    args.no_portscan,
-                ),
-            };
+        let limitations = Arc::new({
+            let base = EngagementLimitations::from_flags(
+                args.discover,
+                args.portscan,
+                args.network,
+                args.no_exploit,
+                args.passive,
+                args.sast_only,
+            );
 
             // Apply optional port and rate limit modifiers
             let base = if let Some(ref ports) = args.ports {
