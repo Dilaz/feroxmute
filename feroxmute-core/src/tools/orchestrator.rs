@@ -185,6 +185,8 @@ pub struct OrchestratorContext {
     pub source_path: Option<String>,
     /// Path to session database for status updates
     pub session_db_path: Option<std::path::PathBuf>,
+    /// Session ID for report metadata
+    pub session_id: String,
 }
 
 // ============================================================================
@@ -340,6 +342,8 @@ impl Tool for SpawnAgentTool {
         let limitations = Arc::clone(&self.context.limitations);
         let memory = Arc::clone(&self.context.memory);
 
+        let session_id = self.context.session_id.clone();
+
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
             tokio::spawn(async move {
@@ -349,8 +353,7 @@ impl Tool for SpawnAgentTool {
                 let report_context = Arc::new(ReportContext {
                     events: Arc::clone(&events),
                     target: target.clone(),
-                    session_id: "session".to_string(),
-                    scope: "web".to_string(),
+                    session_id,
                     start_time: Utc::now(),
                     metrics: MetricsTracker::new(),
                     findings,

@@ -83,15 +83,12 @@ pub struct ReportMetadata {
     pub generated_at: DateTime<Utc>,
     /// Session ID
     pub session_id: String,
-    /// Engagement scope
-    pub scope: String,
 }
 
 impl ReportMetadata {
     pub fn new(
         target: impl Into<String>,
         session_id: impl Into<String>,
-        scope: impl Into<String>,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> Self {
@@ -103,7 +100,6 @@ impl ReportMetadata {
             end_time,
             generated_at: Utc::now(),
             session_id: session_id.into(),
-            scope: scope.into(),
         }
     }
 }
@@ -280,8 +276,7 @@ mod tests {
 
     #[test]
     fn test_report_update_summary() {
-        let metadata =
-            ReportMetadata::new("example.com", "test-session", "web", Utc::now(), Utc::now());
+        let metadata = ReportMetadata::new("example.com", "test-session", Utc::now(), Utc::now());
         let mut report = Report::new(metadata);
 
         report.add_finding(Finding {

@@ -244,11 +244,11 @@ impl ReportAgent {
         let end_time = Utc::now();
 
         // Generate the report
+        // Note: session_id is not available in AgentContext, using target as fallback
         let mut report = generate_report(
             ctx.conn,
             ctx.target,
-            "session", // TODO: pass actual session ID
-            "web",     // TODO: pass actual scope
+            ctx.target, // Using target as session identifier
             self.start_time,
             end_time,
             &self.metrics,

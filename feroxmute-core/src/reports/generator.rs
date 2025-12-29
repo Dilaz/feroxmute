@@ -15,13 +15,12 @@ pub fn generate_report(
     conn: &Connection,
     target: &str,
     session_id: &str,
-    scope: &str,
     start_time: DateTime<Utc>,
     end_time: DateTime<Utc>,
     metrics: &MetricsTracker,
 ) -> Result<Report> {
     // Create metadata
-    let metadata = ReportMetadata::new(target, session_id, scope, start_time, end_time);
+    let metadata = ReportMetadata::new(target, session_id, start_time, end_time);
 
     let mut report = Report::new(metadata);
 
@@ -86,7 +85,6 @@ pub fn generate_markdown(report: &Report) -> String {
     // Metadata
     md.push_str("## Report Information\n\n");
     md.push_str(&format!("- **Target:** {}\n", report.metadata.target));
-    md.push_str(&format!("- **Scope:** {}\n", report.metadata.scope));
     md.push_str(&format!(
         "- **Session ID:** {}\n",
         report.metadata.session_id
@@ -222,8 +220,7 @@ mod tests {
 
     #[test]
     fn test_generate_markdown_empty_report() {
-        let metadata =
-            ReportMetadata::new("example.com", "test-session", "web", Utc::now(), Utc::now());
+        let metadata = ReportMetadata::new("example.com", "test-session", Utc::now(), Utc::now());
         let report = Report::new(metadata);
 
         let markdown = generate_markdown(&report);
@@ -235,8 +232,7 @@ mod tests {
 
     #[test]
     fn test_generate_markdown_with_findings() {
-        let metadata =
-            ReportMetadata::new("example.com", "test-session", "web", Utc::now(), Utc::now());
+        let metadata = ReportMetadata::new("example.com", "test-session", Utc::now(), Utc::now());
         let mut report = Report::new(metadata);
 
         report.add_finding(Finding {

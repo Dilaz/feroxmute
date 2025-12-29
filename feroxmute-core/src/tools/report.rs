@@ -36,8 +36,6 @@ pub struct ReportContext {
     pub target: String,
     /// Session ID
     pub session_id: String,
-    /// Engagement scope
-    pub scope: String,
     /// Start time of engagement
     pub start_time: DateTime<Utc>,
     /// Metrics tracker
@@ -181,7 +179,6 @@ impl Tool for GenerateReportTool {
             metadata: ReportMetadata::new(
                 &self.context.target,
                 &self.context.session_id,
-                &self.context.scope,
                 self.context.start_time,
                 end_time,
             ),
