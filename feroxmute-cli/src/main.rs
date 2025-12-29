@@ -37,6 +37,7 @@ fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
+#[allow(clippy::print_stdout)]
 fn find_session_by_pattern(
     sessions_dir: &std::path::Path,
     pattern: &std::path::Path,
@@ -71,7 +72,7 @@ fn find_session_by_pattern(
 
     match matches.len() {
         0 => anyhow::bail!("No session found matching: {}", pattern_str),
-        1 => Ok(matches.into_iter().next().expect("len is 1").path()),
+        1 => Ok(matches.swap_remove(0).path()),
         _ => {
             println!(
                 "Multiple sessions match '{}'. Please be more specific:",
@@ -152,8 +153,8 @@ async fn main() -> Result<()> {
         }
 
         println!(
-            "{:<40} {:<20} {:<12} {}",
-            "SESSION ID", "TARGET", "STATUS", "LAST ACTIVITY"
+            "{:<40} {:<20} {:<12} LAST ACTIVITY",
+            "SESSION ID", "TARGET", "STATUS"
         );
         println!("{}", "-".repeat(90));
 
@@ -451,6 +452,10 @@ async fn main() -> Result<()> {
             feroxmute_core::state::Session::new(session_config, &config.output.session_dir)?
         };
 
+        // Session is wrapped in Arc for sharing with runner, even though it's !Sync
+        // (rusqlite::Connection contains RefCell). This is safe because we use it
+        // on a single-threaded LocalSet.
+        #[allow(clippy::arc_with_non_send_sync)]
         let session = Arc::new(session);
 
         // Create channel for agent events

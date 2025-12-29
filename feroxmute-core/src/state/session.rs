@@ -24,13 +24,17 @@ impl SessionStatus {
             SessionStatus::Interrupted => "interrupted",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for SessionStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
-            "running" => Some(SessionStatus::Running),
-            "completed" => Some(SessionStatus::Completed),
-            "interrupted" => Some(SessionStatus::Interrupted),
-            _ => None,
+            "running" => Ok(SessionStatus::Running),
+            "completed" => Ok(SessionStatus::Completed),
+            "interrupted" => Ok(SessionStatus::Interrupted),
+            _ => Err(()),
         }
     }
 }
@@ -229,8 +233,9 @@ impl Session {
                 .query_row("SELECT status FROM session_state WHERE id = 1", [], |row| {
                     row.get(0)
                 })?;
-        SessionStatus::from_str(&status_str)
-            .ok_or_else(|| Error::Config(format!("Invalid session status: {}", status_str)))
+        status_str
+            .parse()
+            .map_err(|_| Error::Config(format!("Invalid session status: {}", status_str)))
     }
 
     /// Update session status
@@ -453,19 +458,10 @@ mod tests {
 
     #[test]
     fn test_session_status_from_str() {
-        assert_eq!(
-            SessionStatus::from_str("running"),
-            Some(SessionStatus::Running)
-        );
-        assert_eq!(
-            SessionStatus::from_str("completed"),
-            Some(SessionStatus::Completed)
-        );
-        assert_eq!(
-            SessionStatus::from_str("interrupted"),
-            Some(SessionStatus::Interrupted)
-        );
-        assert_eq!(SessionStatus::from_str("invalid"), None);
+        assert_eq!("running".parse(), Ok(SessionStatus::Running));
+        assert_eq!("completed".parse(), Ok(SessionStatus::Completed));
+        assert_eq!("interrupted".parse(), Ok(SessionStatus::Interrupted));
+        assert!("invalid".parse::<SessionStatus>().is_err());
     }
 
     #[test]
