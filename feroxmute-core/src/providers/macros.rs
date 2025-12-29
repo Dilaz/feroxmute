@@ -215,6 +215,11 @@ macro_rules! define_provider {
                             agent_name.to_string(),
                             std::sync::Arc::clone(&limitations),
                         ))
+                        .tool($crate::tools::RunScriptTool::new(
+                            std::sync::Arc::clone(&container),
+                            std::sync::Arc::clone(&events),
+                            agent_name.to_string(),
+                        ))
                         .tool($crate::tools::MemoryAddTool::new(std::sync::Arc::clone(&memory)))
                         .tool($crate::tools::MemoryGetTool::new(std::sync::Arc::clone(&memory)))
                         .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&memory)))

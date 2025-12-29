@@ -5,6 +5,7 @@ pub mod memory;
 pub mod orchestrator;
 pub mod report;
 pub mod sast;
+pub mod script;
 pub mod shell;
 
 pub use executor::{ToolDef, ToolExecution, ToolExecutor, ToolRegistry};
@@ -18,6 +19,7 @@ pub use orchestrator::{
 pub use report::{
     AddRecommendationTool, ExportJsonTool, ExportMarkdownTool, GenerateReportTool, ReportContext,
 };
+pub use script::{RunScriptTool, ScriptError};
 pub use shell::DockerShellTool;
 
 /// Memory entry for event updates

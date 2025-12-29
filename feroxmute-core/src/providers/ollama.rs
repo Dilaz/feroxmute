@@ -14,7 +14,7 @@ use crate::state::MetricsTracker;
 use crate::tools::{
     AddRecommendationTool, CompleteEngagementTool, DockerShellTool, EventSender, ExportJsonTool,
     ExportMarkdownTool, GenerateReportTool, ListAgentsTool, OrchestratorContext, RecordFindingTool,
-    ReportContext, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+    ReportContext, RunScriptTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
 
@@ -166,6 +166,11 @@ impl LlmProvider for OllamaProvider {
                     Arc::clone(&events),
                     agent_name.to_string(),
                     Arc::clone(&limitations),
+                ))
+                .tool(RunScriptTool::new(
+                    Arc::clone(&container),
+                    Arc::clone(&events),
+                    agent_name.to_string(),
                 ))
                 .tool(MemoryAddTool::new(Arc::clone(&memory)))
                 .tool(MemoryGetTool::new(Arc::clone(&memory)))
