@@ -58,7 +58,8 @@ impl Prompts {
 
     /// Get prompt with conditional sections processed
     pub fn get_with_context(&self, agent: &str, ctx: &PromptContext) -> Option<String> {
-        self.get(agent).map(|prompt| process_conditionals(prompt, ctx))
+        self.get(agent)
+            .map(|prompt| process_conditionals(prompt, ctx))
     }
 }
 
