@@ -11,8 +11,8 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use crate::reports::{
-    export_json, export_markdown, Finding, Report, ReportMetadata, ReportMetrics, ReportSummary,
-    RiskRating, SeverityCounts, StatusCounts,
+    export_html, export_json, export_markdown, export_pdf, Finding, Report, ReportMetadata,
+    ReportMetrics, ReportSummary, RiskRating, SeverityCounts, StatusCounts,
 };
 use crate::state::MetricsTracker;
 use crate::tools::EventSender;
@@ -411,6 +411,182 @@ impl Tool for ExportMarkdownTool {
         Ok(ExportMarkdownOutput {
             success: true,
             message: format!("Report exported to Markdown: {}", path_str),
+            path: path_str,
+        })
+    }
+}
+
+// ============================================================================
+// ExportHtmlTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ExportHtmlArgs {
+    /// Filename for HTML export (saved to session reports directory)
+    #[serde(default = "default_html_filename")]
+    pub filename: String,
+}
+
+fn default_html_filename() -> String {
+    "report.html".to_string()
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportHtmlOutput {
+    pub success: bool,
+    pub message: String,
+    pub path: String,
+}
+
+pub struct ExportHtmlTool {
+    context: Arc<ReportContext>,
+}
+
+impl ExportHtmlTool {
+    pub fn new(context: Arc<ReportContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for ExportHtmlTool {
+    const NAME: &'static str = "export_html";
+
+    type Error = ReportToolError;
+    type Args = ExportHtmlArgs;
+    type Output = ExportHtmlOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "export_html".to_string(),
+            description:
+                "Export the generated report to HTML format with styling. Must call generate_report first. The report is saved to the session's reports directory."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename for the HTML export (default: 'report.html')"
+                    }
+                },
+                "required": []
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
+        let report_lock = self.context.report.lock().await;
+        let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
+
+        let path = self.context.reports_dir.join(&args.filename);
+        let path_str = path.display().to_string();
+
+        self.context
+            .events
+            .send_feed("report", &format!("Exporting to HTML: {}", path_str), false);
+
+        export_html(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
+
+        self.context.events.send_feed(
+            "report",
+            &format!("HTML report exported to {}", path_str),
+            false,
+        );
+
+        Ok(ExportHtmlOutput {
+            success: true,
+            message: format!("Report exported to HTML: {}", path_str),
+            path: path_str,
+        })
+    }
+}
+
+// ============================================================================
+// ExportPdfTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ExportPdfArgs {
+    /// Filename for PDF export (saved to session reports directory)
+    #[serde(default = "default_pdf_filename")]
+    pub filename: String,
+}
+
+fn default_pdf_filename() -> String {
+    "report.pdf".to_string()
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportPdfOutput {
+    pub success: bool,
+    pub message: String,
+    pub path: String,
+}
+
+pub struct ExportPdfTool {
+    context: Arc<ReportContext>,
+}
+
+impl ExportPdfTool {
+    pub fn new(context: Arc<ReportContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for ExportPdfTool {
+    const NAME: &'static str = "export_pdf";
+
+    type Error = ReportToolError;
+    type Args = ExportPdfArgs;
+    type Output = ExportPdfOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "export_pdf".to_string(),
+            description:
+                "Export the generated report to PDF format. Must call generate_report first. The report is saved to the session's reports directory."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "Filename for the PDF export (default: 'report.pdf')"
+                    }
+                },
+                "required": []
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
+        let report_lock = self.context.report.lock().await;
+        let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
+
+        let path = self.context.reports_dir.join(&args.filename);
+        let path_str = path.display().to_string();
+
+        self.context
+            .events
+            .send_feed("report", &format!("Exporting to PDF: {}", path_str), false);
+
+        export_pdf(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
+
+        self.context.events.send_feed(
+            "report",
+            &format!("PDF report exported to {}", path_str),
+            false,
+        );
+
+        Ok(ExportPdfOutput {
+            success: true,
+            message: format!("Report exported to PDF: {}", path_str),
             path: path_str,
         })
     }

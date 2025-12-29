@@ -48,4 +48,8 @@ pub enum Error {
     #[error("Session not found: {0}")]
     #[diagnostic(code(feroxmute::session))]
     SessionNotFound(String),
+
+    #[error("Report generation error: {0}")]
+    #[diagnostic(code(feroxmute::report))]
+    Report(String),
 }

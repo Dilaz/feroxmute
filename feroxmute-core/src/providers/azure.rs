@@ -12,9 +12,10 @@ use crate::limitations::EngagementLimitations;
 use crate::pricing::PricingConfig;
 use crate::state::MetricsTracker;
 use crate::tools::{
-    AddRecommendationTool, CompleteEngagementTool, DockerShellTool, EventSender, ExportJsonTool,
-    ExportMarkdownTool, GenerateReportTool, ListAgentsTool, OrchestratorContext, RecordFindingTool,
-    ReportContext, RunScriptTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+    AddRecommendationTool, CompleteEngagementTool, DockerShellTool, EventSender, ExportHtmlTool,
+    ExportJsonTool, ExportMarkdownTool, ExportPdfTool, GenerateReportTool, ListAgentsTool,
+    OrchestratorContext, RecordFindingTool, ReportContext, RunScriptTool, SpawnAgentTool,
+    WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
 
@@ -290,6 +291,8 @@ impl LlmProvider for AzureProvider {
             .tool(GenerateReportTool::new(Arc::clone(&context)))
             .tool(ExportJsonTool::new(Arc::clone(&context)))
             .tool(ExportMarkdownTool::new(Arc::clone(&context)))
+            .tool(ExportHtmlTool::new(Arc::clone(&context)))
+            .tool(ExportPdfTool::new(Arc::clone(&context)))
             .tool(AddRecommendationTool::new(Arc::clone(&context)))
             .build();
 

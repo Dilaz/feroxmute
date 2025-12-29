@@ -397,6 +397,8 @@ macro_rules! define_provider {
                     .tool($crate::tools::GenerateReportTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::ExportJsonTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::ExportMarkdownTool::new(std::sync::Arc::clone(&context)))
+                    .tool($crate::tools::ExportHtmlTool::new(std::sync::Arc::clone(&context)))
+                    .tool($crate::tools::ExportPdfTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::AddRecommendationTool::new(std::sync::Arc::clone(&context)))
                     .build();
 

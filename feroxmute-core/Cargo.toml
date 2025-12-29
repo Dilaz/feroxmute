@@ -26,6 +26,7 @@ regex = "1.12.2"
 once_cell = "1.21.3"
 backon.workspace = true
 walkdir = "2"
+printpdf = "0.7"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

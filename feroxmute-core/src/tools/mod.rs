@@ -17,7 +17,8 @@ pub use orchestrator::{
     OrchestratorToolError, RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 pub use report::{
-    AddRecommendationTool, ExportJsonTool, ExportMarkdownTool, GenerateReportTool, ReportContext,
+    AddRecommendationTool, ExportHtmlTool, ExportJsonTool, ExportMarkdownTool, ExportPdfTool,
+    GenerateReportTool, ReportContext,
 };
 pub use script::{RunScriptTool, ScriptError};
 pub use shell::DockerShellTool;
