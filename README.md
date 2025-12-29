@@ -65,15 +65,35 @@ feroxmute [OPTIONS] --target <TARGET>
 | `--passive` | Passive reconnaissance only, no active scanning |
 | `--sast-only` | Source code analysis only, no web testing |
 | `--source <PATH>` | Link source code directory to target |
-| `--scope <SCOPE>` | Engagement scope: `web`, `network`, or `full` |
+| `--discover` | Enable subdomain enumeration and asset discovery |
+| `--portscan` | Enable port scanning (naabu, nmap) |
+| `--network` | Enable network-level scanning beyond HTTP |
 | `--no-exploit` | Disable exploitation phase |
-| `--no-portscan` | Skip port scanning |
 | `--ports <LIST>` | Limit to specific ports (e.g., `80,443,8080`) |
 | `--rate-limit <N>` | Max requests per second |
 | `--instruction <TEXT>` | Custom objective for the orchestrator |
 | `--resume <PATH>` | Resume a previous session |
 | `--wizard` | Interactive setup |
 | `-v`, `-vv`, `-vvv` | Increase verbosity |
+
+### Examples
+
+```bash
+# Default: Test a web application thoroughly (no discovery, no portscan)
+feroxmute --target https://app.example.com
+
+# Enable subdomain discovery for broader coverage
+feroxmute --target example.com --discover
+
+# Full network penetration test
+feroxmute --target 10.0.0.0/24 --discover --portscan --network
+
+# Combine web target with source code analysis
+feroxmute --target https://app.example.com --source ./src
+
+# Source code analysis only
+feroxmute --sast-only --target ./my-project
+```
 
 ## Docker
 
