@@ -309,13 +309,7 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
     y -= Mm(8.0);
 
     // Underline
-    current_layer.use_text(
-        "=".repeat(60),
-        10.0,
-        x,
-        y,
-        &font,
-    );
+    current_layer.use_text("=".repeat(60), 10.0, x, y, &font);
     y -= section_gap;
 
     // Metadata
@@ -403,13 +397,7 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
     y -= line_height;
 
     if report.findings.is_empty() {
-        current_layer.use_text(
-            "No vulnerabilities were identified.",
-            10.0,
-            x,
-            y,
-            &font,
-        );
+        current_layer.use_text("No vulnerabilities were identified.", 10.0, x, y, &font);
     } else {
         for (i, finding) in report.findings.iter().take(10).enumerate() {
             if y < Mm(40.0) {
@@ -475,7 +463,9 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
     doc.save(&mut buffer)
         .map_err(|e| crate::Error::Report(format!("Failed to save PDF: {}", e)))?;
 
-    Ok(buffer.into_inner().map_err(|e| crate::Error::Report(e.to_string()))?)
+    buffer
+        .into_inner()
+        .map_err(|e| crate::Error::Report(e.to_string()))
 }
 
 /// Wrap text to specified width
@@ -484,11 +474,9 @@ fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     let mut current_line = String::new();
 
     for word in text.split_whitespace() {
-        if current_line.len() + word.len() + 1 > max_chars {
-            if !current_line.is_empty() {
-                lines.push(current_line);
-                current_line = String::new();
-            }
+        if current_line.len() + word.len() + 1 > max_chars && !current_line.is_empty() {
+            lines.push(current_line);
+            current_line = String::new();
         }
         if !current_line.is_empty() {
             current_line.push(' ');
