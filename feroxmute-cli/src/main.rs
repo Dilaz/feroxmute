@@ -37,11 +37,17 @@ fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
-fn find_session_by_pattern(sessions_dir: &std::path::Path, pattern: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+fn find_session_by_pattern(
+    sessions_dir: &std::path::Path,
+    pattern: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
     let pattern_str = pattern.to_string_lossy();
 
     if !sessions_dir.exists() {
-        anyhow::bail!("Sessions directory does not exist: {}", sessions_dir.display());
+        anyhow::bail!(
+            "Sessions directory does not exist: {}",
+            sessions_dir.display()
+        );
     }
 
     let mut matches: Vec<_> = std::fs::read_dir(sessions_dir)?
@@ -67,7 +73,10 @@ fn find_session_by_pattern(sessions_dir: &std::path::Path, pattern: &std::path::
         0 => anyhow::bail!("No session found matching: {}", pattern_str),
         1 => Ok(matches.into_iter().next().expect("len is 1").path()),
         _ => {
-            println!("Multiple sessions match '{}'. Please be more specific:", pattern_str);
+            println!(
+                "Multiple sessions match '{}'. Please be more specific:",
+                pattern_str
+            );
             for entry in &matches {
                 println!("  {}", entry.file_name().to_string_lossy());
             }
@@ -135,11 +144,17 @@ async fn main() -> Result<()> {
     if args.list_sessions {
         let sessions_dir = config.output.session_dir.clone();
         if !sessions_dir.exists() {
-            println!("No sessions found. Directory does not exist: {}", sessions_dir.display());
+            println!(
+                "No sessions found. Directory does not exist: {}",
+                sessions_dir.display()
+            );
             return Ok(());
         }
 
-        println!("{:<40} {:<20} {:<12} {}", "SESSION ID", "TARGET", "STATUS", "LAST ACTIVITY");
+        println!(
+            "{:<40} {:<20} {:<12} {}",
+            "SESSION ID", "TARGET", "STATUS", "LAST ACTIVITY"
+        );
         println!("{}", "-".repeat(90));
 
         let mut sessions: Vec<_> = std::fs::read_dir(&sessions_dir)?
@@ -158,13 +173,16 @@ async fn main() -> Result<()> {
             let path = entry.path();
             match feroxmute_core::state::Session::resume(&path) {
                 Ok(session) => {
-                    let status = session.status()
+                    let status = session
+                        .status()
                         .map(|s| format!("{:?}", s))
                         .unwrap_or_else(|_| "unknown".to_string());
-                    let last_activity = session.last_activity()
+                    let last_activity = session
+                        .last_activity()
                         .map(format_relative_time)
                         .unwrap_or_else(|_| "unknown".to_string());
-                    println!("{:<40} {:<20} {:<12} {}",
+                    println!(
+                        "{:<40} {:<20} {:<12} {}",
                         session.id,
                         session.config.target.host,
                         status.to_lowercase(),
@@ -574,6 +592,7 @@ async fn main() -> Result<()> {
         });
 
         let instruction = args.instruction.clone();
+        let session_for_agent = Arc::clone(&session);
         let agent_handle = local.spawn_local(async move {
             runner::run_orchestrator(
                 agent_target,
@@ -584,7 +603,7 @@ async fn main() -> Result<()> {
                 source_path,
                 limitations,
                 instruction,
-                Arc::clone(&session),
+                session_for_agent,
             )
             .await
         });
@@ -609,6 +628,15 @@ async fn main() -> Result<()> {
 
         // Wait for TUI to finish
         tui_handle.await??;
+
+        // Set session status based on how engagement ended
+        if session
+            .status()
+            .unwrap_or(feroxmute_core::state::SessionStatus::Running)
+            != feroxmute_core::state::SessionStatus::Completed
+        {
+            let _ = session.set_status(feroxmute_core::state::SessionStatus::Interrupted);
+        }
     } else {
         println!("No target specified. Use --target or --wizard");
     }

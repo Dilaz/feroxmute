@@ -395,6 +395,7 @@ async fn run_orchestrator_with_tools(
         memory: memory_context,
         engagement_completed,
         source_path: source_path.clone(),
+        session_db_path: Some(session.path.join("session.db")),
     });
 
     let has_source_target = source_path.is_some();

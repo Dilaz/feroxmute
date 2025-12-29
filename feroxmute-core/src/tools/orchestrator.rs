@@ -183,6 +183,8 @@ pub struct OrchestratorContext {
     pub engagement_completed: Arc<AtomicBool>,
     /// Path to source code for SAST analysis (if available)
     pub source_path: Option<String>,
+    /// Path to session database for status updates
+    pub session_db_path: Option<std::path::PathBuf>,
 }
 
 // ============================================================================
@@ -1010,6 +1012,31 @@ impl Tool for CompleteEngagementTool {
         self.context
             .engagement_completed
             .store(true, Ordering::SeqCst);
+
+        // Mark session as completed
+        if let Some(ref db_path) = self.context.session_db_path {
+            match rusqlite::Connection::open(db_path) {
+                Ok(conn) => {
+                    if let Err(e) = conn.execute(
+                        "UPDATE session_state SET status = 'completed', last_activity_at = datetime('now') WHERE id = 1",
+                        [],
+                    ) {
+                        self.context.events.send_feed(
+                            "orchestrator",
+                            &format!("Warning: Failed to persist completion status: {}", e),
+                            true,
+                        );
+                    }
+                }
+                Err(e) => {
+                    self.context.events.send_feed(
+                        "orchestrator",
+                        &format!("Warning: Failed to open session DB: {}", e),
+                        true,
+                    );
+                }
+            }
+        }
 
         // Trigger cancellation to stop the agent loop
         self.context.cancel.cancel();
