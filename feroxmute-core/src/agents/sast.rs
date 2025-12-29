@@ -208,20 +208,6 @@ impl SastAgent {
 
         Ok(Vec::new())
     }
-
-    /// Read a file from the source directory (for future use)
-    #[allow(dead_code)]
-    async fn _read_file(&self, ctx: &AgentContext<'_>, relative_path: &str) -> Result<String> {
-        let full_path = self.source_path.join(relative_path);
-        let path_str = full_path.to_string_lossy();
-
-        let result = ctx
-            .executor
-            .execute_raw(vec!["cat", &path_str], None, "sast", ctx.conn)
-            .await?;
-
-        Ok(result.output.unwrap_or_default())
-    }
 }
 
 impl Default for SastAgent {
@@ -296,20 +282,6 @@ impl Agent for SastAgent {
                             "description": "The ast-grep pattern to search for"
                         }
                     }
-                }),
-            },
-            ToolDefinition {
-                name: "read_file".to_string(),
-                description: "Read a source file for manual analysis".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path to file relative to source root"
-                        }
-                    },
-                    "required": ["path"]
                 }),
             },
         ]
@@ -411,7 +383,6 @@ mod tests {
         assert!(tools.iter().any(|t| t.name == "run_grype"));
         assert!(tools.iter().any(|t| t.name == "run_gitleaks"));
         assert!(tools.iter().any(|t| t.name == "run_ast_grep"));
-        assert!(tools.iter().any(|t| t.name == "read_file"));
     }
 
     #[test]
