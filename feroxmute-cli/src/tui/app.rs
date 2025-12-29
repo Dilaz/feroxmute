@@ -55,13 +55,6 @@ pub struct CodeFindingCounts {
     pub secrets: u32,
 }
 
-impl CodeFindingCounts {
-    #[allow(dead_code)]
-    pub fn total(&self) -> u32 {
-        self.dependencies + self.sast + self.secrets
-    }
-}
-
 /// Status for each agent
 #[derive(Debug, Clone, Default)]
 pub struct AgentStatuses {
@@ -405,23 +398,6 @@ impl App {
             FindingType::Secret => self.code_finding_counts.secrets += 1,
         }
         self.code_findings.push(finding);
-    }
-
-    /// Update metrics
-    #[allow(dead_code)]
-    pub fn update_metrics(
-        &mut self,
-        input: u64,
-        output: u64,
-        cache_read: u64,
-        tool_calls: u64,
-        cost: f64,
-    ) {
-        self.metrics.input_tokens += input;
-        self.metrics.output_tokens += output;
-        self.metrics.cache_read_tokens += cache_read;
-        self.metrics.tool_calls += tool_calls;
-        self.metrics.estimated_cost_usd += cost;
     }
 
     /// Navigate to view
