@@ -219,11 +219,13 @@ katana -u https://example.com -d 2 -jc -kf all
 ```
 This finds: Hidden endpoints, API routes in JS files, form actions, linked resources.
 
+{{#if discover}}
 **subfinder** - Discover subdomains (for broader scope):
 ```bash
 subfinder -d example.com -silent
 ```
 Useful when testing an entire domain, not just a single application.
+{{/if}}
 
 **curl** - Quick manual checks when you need specifics:
 ```bash
