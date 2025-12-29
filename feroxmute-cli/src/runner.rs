@@ -227,6 +227,7 @@ pub async fn run_orchestrator(
     source_path: Option<String>,
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
+    session: Arc<feroxmute_core::state::Session>,
 ) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -261,7 +262,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed)) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session)) => {
             match result {
                 Ok(output) => {
                     // Check if engagement was properly completed via complete_engagement tool
@@ -362,16 +363,18 @@ async fn run_orchestrator_with_tools(
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
     engagement_completed: Arc<std::sync::atomic::AtomicBool>,
+    session: Arc<feroxmute_core::state::Session>,
 ) -> Result<String> {
     // Create TuiEventSender first so it can be shared
     let events: Arc<dyn feroxmute_core::tools::EventSender> =
         Arc::new(TuiEventSender::new(tx.clone()));
 
-    // Create memory context with in-memory DB (TODO: use session DB when available)
-    let memory_conn = rusqlite::Connection::open_in_memory()
-        .map_err(|e| anyhow::anyhow!("Failed to create memory DB: {}", e))?;
-    feroxmute_core::state::run_migrations(&memory_conn)
-        .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
+    // Use session DB for persistent storage.
+    // We open a separate connection because the MemoryContext wraps it in Arc<Mutex<>>
+    // for concurrent access from async tool calls, while Session owns its main connection.
+    let memory_conn = session
+        .open_connection()
+        .map_err(|e| anyhow::anyhow!("Failed to open session DB: {}", e))?;
     let memory_context = Arc::new(MemoryContext {
         conn: Arc::new(Mutex::new(memory_conn)),
         events: Arc::clone(&events),

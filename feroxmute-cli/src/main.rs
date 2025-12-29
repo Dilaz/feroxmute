@@ -19,7 +19,6 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use uuid::Uuid;
 
 fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
@@ -35,6 +34,45 @@ fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
         format!("{}d ago", duration.num_days())
     } else {
         dt.format("%Y-%m-%d").to_string()
+    }
+}
+
+fn find_session_by_pattern(sessions_dir: &std::path::Path, pattern: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+    let pattern_str = pattern.to_string_lossy();
+
+    if !sessions_dir.exists() {
+        anyhow::bail!("Sessions directory does not exist: {}", sessions_dir.display());
+    }
+
+    let mut matches: Vec<_> = std::fs::read_dir(sessions_dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.contains(pattern_str.as_ref()) ||
+            // Also match by target hostname
+            feroxmute_core::state::Session::resume(e.path())
+                .map(|s| s.config.target.host.contains(pattern_str.as_ref()))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    // Sort by modification time (newest first)
+    matches.sort_by(|a, b| {
+        let a_time = a.metadata().and_then(|m| m.modified()).ok();
+        let b_time = b.metadata().and_then(|m| m.modified()).ok();
+        b_time.cmp(&a_time)
+    });
+
+    match matches.len() {
+        0 => anyhow::bail!("No session found matching: {}", pattern_str),
+        1 => Ok(matches.into_iter().next().expect("len is 1").path()),
+        _ => {
+            println!("Multiple sessions match '{}'. Please be more specific:", pattern_str);
+            for entry in &matches {
+                println!("  {}", entry.file_name().to_string_lossy());
+            }
+            anyhow::bail!("Ambiguous session pattern");
+        }
     }
 }
 
@@ -90,11 +128,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    if let Some(ref session) = args.resume {
-        println!("Resuming session: {}", session.display());
-        return Ok(());
-    }
-
     // Load configuration
     let mut config = EngagementConfig::load_default();
     config.expand_env_vars();
@@ -129,7 +162,7 @@ async fn main() -> Result<()> {
                         .map(|s| format!("{:?}", s))
                         .unwrap_or_else(|_| "unknown".to_string());
                     let last_activity = session.last_activity()
-                        .map(|dt| format_relative_time(dt))
+                        .map(format_relative_time)
                         .unwrap_or_else(|_| "unknown".to_string());
                     println!("{:<40} {:<20} {:<12} {}",
                         session.id,
@@ -366,8 +399,41 @@ async fn main() -> Result<()> {
             }
         };
 
-        // Create session ID
-        let session_id = Uuid::new_v4().to_string()[..8].to_string();
+        // Create or resume session
+        let session = if let Some(ref resume_path) = args.resume {
+            // Try exact path first, then search in sessions dir
+            let path = if resume_path.exists() {
+                resume_path.clone()
+            } else {
+                // Search for partial match in sessions directory
+                find_session_by_pattern(&config.output.session_dir, resume_path)?
+            };
+
+            let session = feroxmute_core::state::Session::resume(&path)?;
+
+            // Warn if resuming completed session
+            if session.status()? == feroxmute_core::state::SessionStatus::Completed {
+                print!("This engagement was completed. Resume anyway? [y/N]: ");
+                io::stdout().flush()?;
+                let mut response = String::new();
+                io::stdin().read_line(&mut response)?;
+                if !response.trim().to_lowercase().starts_with('y') {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+
+            // Set status back to Running
+            session.set_status(feroxmute_core::state::SessionStatus::Running)?;
+            session
+        } else {
+            // Update config with CLI target
+            let mut session_config = config.clone();
+            session_config.target.host = target.clone();
+            feroxmute_core::state::Session::new(session_config, &config.output.session_dir)?
+        };
+
+        let session = Arc::new(session);
 
         // Create channel for agent events
         let (tx, rx) = mpsc::channel::<tui::AgentEvent>(100);
@@ -376,7 +442,7 @@ async fn main() -> Result<()> {
         let cancel = CancellationToken::new();
 
         // Create TUI app with receiver
-        let mut app = tui::App::new(&target, &session_id, Some(rx));
+        let mut app = tui::App::new(&target, &session.id, Some(rx));
 
         // Add initial feed entries
         app.add_feed(tui::FeedEntry::new(
@@ -518,6 +584,7 @@ async fn main() -> Result<()> {
                 source_path,
                 limitations,
                 instruction,
+                Arc::clone(&session),
             )
             .await
         });
