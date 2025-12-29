@@ -12,6 +12,7 @@ use ratatui::{
 };
 
 use crate::tui::app::App;
+use crate::tui::colors::format_agent_status;
 
 /// Render the agent detail view
 pub fn render(frame: &mut Frame, app: &App, agent_name: &str) {
@@ -64,7 +65,7 @@ fn render_header(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
         (agent_name.to_string(), AgentStatus::Idle, None)
     };
 
-    let (status_text, status_style) = format_status(status, current_tool);
+    let (status_text, status_style) = format_agent_status(status, current_tool);
 
     let header_text = vec![Line::from(vec![
         Span::styled(
@@ -204,57 +205,4 @@ fn render_footer(frame: &mut Frame, current_agent: &str, app: &App, area: Rect) 
 
     let footer = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(footer, area);
-}
-
-fn format_status(status: AgentStatus, current_tool: Option<&str>) -> (String, Style) {
-    match status {
-        AgentStatus::Idle => ("Idle".to_string(), Style::default().fg(Color::Gray)),
-        AgentStatus::Thinking => (
-            "Thinking".to_string(),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        AgentStatus::Streaming => (
-            "Streaming".to_string(),
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-        ),
-        AgentStatus::Executing => {
-            let tool_display = current_tool
-                .map(|t| {
-                    if t.len() > 25 {
-                        format!("Tool: {}...", &t[..t.floor_char_boundary(22)])
-                    } else {
-                        format!("Tool: {}", t)
-                    }
-                })
-                .unwrap_or_else(|| "Executing".to_string());
-            (
-                tool_display,
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )
-        }
-        AgentStatus::Processing => (
-            "Processing".to_string(),
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
-        ),
-        AgentStatus::Waiting => ("Waiting".to_string(), Style::default().fg(Color::Yellow)),
-        AgentStatus::Retrying => (
-            "Retrying".to_string(),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-        AgentStatus::Completed => ("Completed".to_string(), Style::default().fg(Color::Green)),
-        AgentStatus::Failed => (
-            "Failed".to_string(),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-        ),
-    }
 }

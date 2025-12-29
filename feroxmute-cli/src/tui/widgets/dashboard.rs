@@ -12,6 +12,7 @@ use ratatui::{
 };
 
 use crate::tui::app::App;
+use crate::tui::colors::format_agent_status_with_len;
 
 /// Render the dashboard view
 pub fn render(frame: &mut Frame, app: &App) {
@@ -182,58 +183,12 @@ fn agent_row_with_activity(
     current_tool: Option<&str>,
     activity_width: usize,
 ) -> Row<'static> {
-    let (status_text, status_style): (String, Style) = match status {
-        AgentStatus::Idle => ("Idle".to_string(), Style::default().fg(Color::Gray)),
-        AgentStatus::Thinking => (
-            "Thinking".to_string(),
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        AgentStatus::Streaming => (
-            "Streaming".to_string(),
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-        ),
-        AgentStatus::Executing => {
-            let tool_display = current_tool
-                .map(|t| {
-                    // Status column is 22 chars; "Tool: " is 6 chars, leaving 16 for tool name
-                    if t.chars().count() > 16 {
-                        let truncated: String = t.chars().take(13).collect();
-                        format!("Tool: {}...", truncated)
-                    } else {
-                        format!("Tool: {}", t)
-                    }
-                })
-                .unwrap_or_else(|| "Executing".to_string());
-            (
-                tool_display,
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )
-        }
-        AgentStatus::Processing => (
-            "Processing".to_string(),
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
-        ),
-        AgentStatus::Waiting => ("Waiting".to_string(), Style::default().fg(Color::Yellow)),
-        AgentStatus::Retrying => (
-            "Retrying".to_string(),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::SLOW_BLINK),
-        ),
-        AgentStatus::Completed => ("Done".to_string(), Style::default().fg(Color::Green)),
-        AgentStatus::Failed => (
-            "Failed".to_string(),
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-        ),
-    };
+    // Status column is 22 chars; "Tool: " is 6 chars, leaving 16 for tool name
+    let (mut status_text, status_style) = format_agent_status_with_len(status, current_tool, 16);
+    // Use compact "Done" instead of "Completed" for dashboard
+    if status == AgentStatus::Completed {
+        status_text = "Done".to_string();
+    }
 
     // Truncate activity to fit available width (use char count for proper UTF-8 handling)
     let max_activity = activity_width.max(10); // minimum 10 chars
