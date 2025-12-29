@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 
-use feroxmute_core::config::{ProviderName, Scope};
+use feroxmute_core::config::ProviderName;
 
 use super::screens;
 
@@ -24,7 +24,7 @@ pub enum WizardScreen {
     AzureEndpoint,
     OllamaBaseUrl,
     OllamaApiKey,
-    Scope,
+    Capabilities,
     Constraints,
     AdvancedPrompt,
     Advanced,
@@ -38,10 +38,13 @@ pub struct WizardData {
     pub api_key: String,
     pub model: Option<String>,
     pub base_url: Option<String>,
-    pub scope: Scope,
+    // Capability flags (additive)
+    pub discover: bool,
+    pub portscan: bool,
+    pub network: bool,
+    // Constraint flags
     pub passive: bool,
     pub no_exploit: bool,
-    pub no_portscan: bool,
     pub rate_limit: Option<u32>,
     pub export_html: bool,
     pub export_pdf: bool,
@@ -97,7 +100,7 @@ impl WizardState {
             WizardScreen::AzureEndpoint => screens::render_azure_endpoint(frame, self),
             WizardScreen::OllamaBaseUrl => screens::render_ollama_base_url(frame, self),
             WizardScreen::OllamaApiKey => screens::render_ollama_api_key(frame, self),
-            WizardScreen::Scope => screens::render_scope(frame, self),
+            WizardScreen::Capabilities => screens::render_capabilities(frame, self),
             WizardScreen::Constraints => screens::render_constraints(frame, self),
             WizardScreen::AdvancedPrompt => screens::render_advanced_prompt(frame, self),
             WizardScreen::Advanced => screens::render_advanced(frame, self),
@@ -339,7 +342,7 @@ impl WizardState {
                 }
                 _ => {}
             },
-            WizardScreen::Scope => match key.code {
+            WizardScreen::Capabilities => match key.code {
                 KeyCode::Char('q') => return WizardAction::Quit,
                 KeyCode::Up | KeyCode::Char('k') => {
                     self.selected_index = self.selected_index.saturating_sub(1);
@@ -347,12 +350,13 @@ impl WizardState {
                 KeyCode::Down | KeyCode::Char('j') => {
                     self.selected_index = (self.selected_index + 1).min(2);
                 }
+                KeyCode::Char(' ') => match self.selected_index {
+                    0 => self.data.discover = !self.data.discover,
+                    1 => self.data.portscan = !self.data.portscan,
+                    2 => self.data.network = !self.data.network,
+                    _ => {}
+                },
                 KeyCode::Enter => {
-                    self.data.scope = match self.selected_index {
-                        0 => Scope::Web,
-                        1 => Scope::Network,
-                        _ => Scope::Full,
-                    };
                     self.selected_index = 0;
                     return self.next_screen();
                 }
@@ -365,12 +369,11 @@ impl WizardState {
                     self.selected_index = self.selected_index.saturating_sub(1);
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    self.selected_index = (self.selected_index + 1).min(2);
+                    self.selected_index = (self.selected_index + 1).min(1);
                 }
                 KeyCode::Char(' ') => match self.selected_index {
                     0 => self.data.passive = !self.data.passive,
                     1 => self.data.no_exploit = !self.data.no_exploit,
-                    2 => self.data.no_portscan = !self.data.no_portscan,
                     _ => {}
                 },
                 KeyCode::Enter => {
@@ -447,13 +450,13 @@ impl WizardState {
                 if self.data.provider == ProviderName::Azure {
                     WizardScreen::AzureEndpoint
                 } else {
-                    WizardScreen::Scope
+                    WizardScreen::Capabilities
                 }
             }
-            WizardScreen::AzureEndpoint => WizardScreen::Scope,
+            WizardScreen::AzureEndpoint => WizardScreen::Capabilities,
             WizardScreen::OllamaBaseUrl => WizardScreen::OllamaApiKey,
-            WizardScreen::OllamaApiKey => WizardScreen::Scope,
-            WizardScreen::Scope => WizardScreen::Constraints,
+            WizardScreen::OllamaApiKey => WizardScreen::Capabilities,
+            WizardScreen::Capabilities => WizardScreen::Constraints,
             WizardScreen::Constraints => WizardScreen::AdvancedPrompt,
             WizardScreen::AdvancedPrompt => {
                 if self.show_advanced {
@@ -478,7 +481,7 @@ impl WizardState {
             WizardScreen::AzureEndpoint => WizardScreen::ApiKey,
             WizardScreen::OllamaBaseUrl => WizardScreen::Provider,
             WizardScreen::OllamaApiKey => WizardScreen::OllamaBaseUrl,
-            WizardScreen::Scope => {
+            WizardScreen::Capabilities => {
                 if self.data.provider == ProviderName::Azure {
                     WizardScreen::AzureEndpoint
                 } else if self.data.provider == ProviderName::Ollama {
@@ -487,7 +490,7 @@ impl WizardState {
                     WizardScreen::ApiKey
                 }
             }
-            WizardScreen::Constraints => WizardScreen::Scope,
+            WizardScreen::Constraints => WizardScreen::Capabilities,
             WizardScreen::AdvancedPrompt => WizardScreen::Constraints,
             WizardScreen::Advanced => WizardScreen::AdvancedPrompt,
             WizardScreen::Review => {
@@ -545,12 +548,6 @@ impl WizardState {
             ProviderName::Ollama => "ollama",
         };
 
-        let scope_name = match self.data.scope {
-            Scope::Web => "web",
-            Scope::Network => "network",
-            Scope::Full => "full",
-        };
-
         #[allow(clippy::unnecessary_lazy_evaluations)]
         let model = self
             .data
@@ -586,13 +583,14 @@ impl WizardState {
         }
         toml.push('\n');
 
-        toml.push_str("[target]\n");
-        toml.push_str(&format!("scope = \"{}\"\n\n", scope_name));
+        toml.push_str("[capabilities]\n");
+        toml.push_str(&format!("discover = {}\n", self.data.discover));
+        toml.push_str(&format!("portscan = {}\n", self.data.portscan));
+        toml.push_str(&format!("network = {}\n\n", self.data.network));
 
         toml.push_str("[constraints]\n");
         toml.push_str(&format!("passive = {}\n", self.data.passive));
         toml.push_str(&format!("no_exploit = {}\n", self.data.no_exploit));
-        toml.push_str(&format!("no_portscan = {}\n", self.data.no_portscan));
         if let Some(rate_limit) = self.data.rate_limit {
             toml.push_str(&format!("rate_limit = {}\n", rate_limit));
         } else {

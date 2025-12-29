@@ -404,27 +404,27 @@ pub fn render_ollama_api_key(frame: &mut Frame, state: &WizardState) {
     render_footer(frame, footer_area, true);
 }
 
-/// Render the scope selection screen
-pub fn render_scope(frame: &mut Frame, state: &WizardState) {
+/// Render the capabilities selection screen
+pub fn render_capabilities(frame: &mut Frame, state: &WizardState) {
     let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled("Step 3: ", Style::default().fg(Color::DarkGray)),
         Span::styled(
-            "Default Testing Scope",
+            "Capabilities",
             Style::default().add_modifier(Modifier::BOLD),
         ),
     ]));
     frame.render_widget(title, title_area);
 
-    let scopes = [
-        "Web (HTTP/HTTPS only)",
-        "Network (ports, services)",
-        "Full (web + network)",
+    let items = [
+        ("Discovery (subdomain enumeration)", state.data.discover),
+        ("Port Scan (naabu, nmap)", state.data.portscan),
+        ("Network (beyond HTTP)", state.data.network),
     ];
-    let list = SelectList::new(&scopes, state.selected_index)
+    let checkbox = CheckboxGroup::new(&items, state.selected_index)
         .focused(true)
-        .label("Scope");
+        .label("Enable capabilities (Space to toggle)");
 
     let list_area = Rect {
         x: content_area.x + 2,
@@ -432,7 +432,7 @@ pub fn render_scope(frame: &mut Frame, state: &WizardState) {
         width: content_area.width.saturating_sub(4),
         height: 5,
     };
-    list.render(frame, list_area);
+    checkbox.render(frame, list_area);
 
     render_footer(frame, footer_area, true);
 }
@@ -453,7 +453,6 @@ pub fn render_constraints(frame: &mut Frame, state: &WizardState) {
     let items = [
         ("Passive only (no active probing)", state.data.passive),
         ("No exploitation (recon/scan only)", state.data.no_exploit),
-        ("No port scanning", state.data.no_portscan),
     ];
     let checkbox = CheckboxGroup::new(&items, state.selected_index)
         .focused(true)
@@ -463,7 +462,7 @@ pub fn render_constraints(frame: &mut Frame, state: &WizardState) {
         x: content_area.x + 2,
         y: content_area.y + 1,
         width: content_area.width.saturating_sub(4),
-        height: 5,
+        height: 4,
     };
     checkbox.render(frame, list_area);
 
@@ -558,12 +557,6 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
         feroxmute_core::config::ProviderName::Ollama => "Ollama",
     };
 
-    let scope_name = match state.data.scope {
-        feroxmute_core::config::Scope::Web => "Web",
-        feroxmute_core::config::Scope::Network => "Network",
-        feroxmute_core::config::Scope::Full => "Full",
-    };
-
     let api_key_display = if state.data.api_key.len() > 8 {
         format!(
             "{}...{}",
@@ -574,30 +567,42 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
         "****".to_string()
     };
 
+    let mut capabilities = Vec::new();
+    if state.data.discover {
+        capabilities.push("discover");
+    }
+    if state.data.portscan {
+        capabilities.push("portscan");
+    }
+    if state.data.network {
+        capabilities.push("network");
+    }
+    let capabilities_str = if capabilities.is_empty() {
+        "none".to_string()
+    } else {
+        capabilities.join(", ")
+    };
+
     let lines = vec![
         Line::from(vec![
-            Span::styled("  Provider:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Provider:     ", Style::default().fg(Color::DarkGray)),
             Span::raw(provider_name),
         ]),
         Line::from(vec![
-            Span::styled("  API Key:     ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  API Key:      ", Style::default().fg(Color::DarkGray)),
             Span::raw(api_key_display),
         ]),
         Line::from(vec![
-            Span::styled("  Scope:       ", Style::default().fg(Color::DarkGray)),
-            Span::raw(scope_name),
+            Span::styled("  Capabilities: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(capabilities_str),
         ]),
         Line::from(vec![
-            Span::styled("  Passive:     ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Passive:      ", Style::default().fg(Color::DarkGray)),
             Span::raw(if state.data.passive { "Yes" } else { "No" }),
         ]),
         Line::from(vec![
-            Span::styled("  No Exploit:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  No Exploit:   ", Style::default().fg(Color::DarkGray)),
             Span::raw(if state.data.no_exploit { "Yes" } else { "No" }),
-        ]),
-        Line::from(vec![
-            Span::styled("  No Portscan: ", Style::default().fg(Color::DarkGray)),
-            Span::raw(if state.data.no_portscan { "Yes" } else { "No" }),
         ]),
         Line::from(""),
         Line::from(Span::styled(
