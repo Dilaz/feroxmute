@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS scratch_pad (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Session state for resume support
+CREATE TABLE IF NOT EXISTS session_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    status TEXT NOT NULL DEFAULT 'running',
+    phase TEXT,
+    last_activity_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_agents TEXT NOT NULL DEFAULT '[]'
+);
+
 -- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_ports_host ON ports(host_id);
 CREATE INDEX IF NOT EXISTS idx_technologies_host ON technologies(host_id);

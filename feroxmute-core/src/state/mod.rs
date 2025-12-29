@@ -9,4 +9,4 @@ pub mod session;
 pub use metrics::{Metrics, MetricsTracker, TokenCounter, TokenCounts};
 pub use migrations::run_migrations;
 pub use models::{Host, Port, Severity, VulnCounts, VulnStatus, Vulnerability};
-pub use session::Session;
+pub use session::{FindingsSummary, Session, SessionStatus};
