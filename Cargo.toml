@@ -4,9 +4,9 @@ members = ["feroxmute-core", "feroxmute-cli"]
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
-license = "MIT"
-authors = ["Your Name"]
+edition = "2024"
+license = "BSD 3-clause"
+authors = ["Risto Viitanen"]
 
 [workspace.dependencies]
 # Async runtime
