@@ -7,6 +7,8 @@ version = "0.1.0"
 edition = "2024"
 license = "BSD 3-clause"
 authors = ["Risto Viitanen"]
+description = "LLM-powered penetration testing framework with autonomous agents"
+repository = "https://github.com/dilaz/feroxmute"
 
 [workspace.dependencies]
 # Async runtime

@@ -19,6 +19,33 @@ feroxmute automates security testing using a hierarchy of specialized AI agents.
 - **SAST support** - Link source code to web targets for combined analysis
 - **Engagement controls** - Passive mode, port restrictions, rate limiting, scope limitations
 
+## Vulnerability Playbooks
+
+Agents have access to 17 specialized playbooks that guide testing for specific vulnerability classes. Scanner and exploit agents can request playbooks using the `get_playbook` tool when they identify potential attack vectors.
+
+Each playbook includes:
+- **Indicators** - Signs the vulnerability may be present
+- **Tools & commands** - Specific tool usage for the vulnerability type
+- **Exploitation techniques** - Manual and automated approaches
+- **Evasion methods** - WAF/filter bypass techniques where applicable
+
+### Available Playbooks
+
+**Injection**
+- SQL Injection, NoSQL Injection, Command Injection, SSTI, XXE
+
+**Client-Side**
+- XSS, CSRF
+
+**Server-Side**
+- SSRF, LFI/RFI, Deserialization, Race Conditions
+
+**Authentication & Crypto**
+- JWT Attacks, Crypto Weaknesses
+
+**Protocols & Platforms**
+- GraphQL, WebSockets, Windows Web, Windows AD
+
 ## Quick Start
 
 ### Prerequisites
@@ -30,7 +57,7 @@ feroxmute automates security testing using a hierarchy of specialized AI agents.
 ### Installation
 
 ```bash
-git clone https://github.com/yourusername/feroxmute
+git clone https://github.com/dilaz/feroxmute
 cd feroxmute
 cargo build --release
 ```
