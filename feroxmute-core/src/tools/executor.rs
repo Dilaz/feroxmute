@@ -1,13 +1,13 @@
 //! Tool execution within Docker container
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::Result;
 use crate::docker::{ContainerManager, ExecResult};
 use crate::state::MetricsTracker;
-use crate::Result;
 
 /// A security tool definition (renamed from Tool to avoid conflict with rig::tool::Tool)
 #[derive(Debug, Clone, Serialize, Deserialize)]

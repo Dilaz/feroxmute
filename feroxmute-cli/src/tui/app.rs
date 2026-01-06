@@ -433,10 +433,10 @@ impl App {
             .nth(self.log_scroll)
             .or_else(|| matching_indices.last());
 
-        if let Some(&idx) = visible_idx {
-            if let Some(entry) = self.feed.get_mut(idx) {
-                entry.expanded = !entry.expanded;
-            }
+        if let Some(&idx) = visible_idx
+            && let Some(entry) = self.feed.get_mut(idx)
+        {
+            entry.expanded = !entry.expanded;
         }
     }
 

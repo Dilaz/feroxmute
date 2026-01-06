@@ -1,11 +1,11 @@
 //! Reusable TUI widgets for the wizard
 
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame,
 };
 
 /// Text input widget with cursor and optional masking

@@ -9,10 +9,10 @@ use feroxmute_core::agents::{
 use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::LlmProvider;
-use feroxmute_core::state::models::FindingType;
 use feroxmute_core::state::Severity;
+use feroxmute_core::state::models::FindingType;
 use feroxmute_core::tools::{EventSender, MemoryContext, OrchestratorContext};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use crate::tui::channel::{CodeFindingEvent, MemoryEntry};

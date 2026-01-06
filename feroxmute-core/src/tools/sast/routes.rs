@@ -175,11 +175,7 @@ pub fn discover_routes_in_content(content: &str, file: &str, framework: &str) ->
                         .get(1)
                         .map(|m| {
                             let m = m.as_str();
-                            if m == "Request" {
-                                "ANY"
-                            } else {
-                                m
-                            }
+                            if m == "Request" { "ANY" } else { m }
                         })
                         .unwrap_or("ANY")
                         .to_uppercase();

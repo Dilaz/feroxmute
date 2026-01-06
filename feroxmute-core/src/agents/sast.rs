@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::path::PathBuf;
 
+use crate::Result;
 use crate::agents::prompts::Prompts;
 use crate::agents::traits::{Agent, AgentContext, AgentStatus, AgentTask};
 use crate::providers::traits::ToolDefinition;
@@ -11,7 +12,6 @@ use crate::state::models::{CodeFinding, FindingType, Severity};
 use crate::tools::sast::{
     AstGrepOutput, GitleaksOutput, GrypeOutput, SastToolOutput, SemgrepOutput,
 };
-use crate::Result;
 
 /// SAST agent for static code analysis and dependency scanning
 pub struct SastAgent {
@@ -84,11 +84,11 @@ impl SastAgent {
                 )
                 .await;
 
-            if let Ok(exec) = result {
-                if exec.exit_code == Some(0) && !self.detected_languages.contains(&lang.to_string())
-                {
-                    self.detected_languages.push(lang.to_string());
-                }
+            if let Ok(exec) = result
+                && exec.exit_code == Some(0)
+                && !self.detected_languages.contains(&lang.to_string())
+            {
+                self.detected_languages.push(lang.to_string());
             }
         }
 
@@ -111,10 +111,10 @@ impl SastAgent {
             )
             .await?;
 
-        if let Some(output) = result.output {
-            if let Ok(grype_output) = GrypeOutput::parse(&output) {
-                findings.extend(grype_output.to_code_findings());
-            }
+        if let Some(output) = result.output
+            && let Ok(grype_output) = GrypeOutput::parse(&output)
+        {
+            findings.extend(grype_output.to_code_findings());
         }
 
         Ok(findings)
@@ -143,10 +143,10 @@ impl SastAgent {
             )
             .await?;
 
-        if let Some(output) = result.output {
-            if let Ok(semgrep_output) = SemgrepOutput::parse(&output) {
-                findings.extend(semgrep_output.to_code_findings());
-            }
+        if let Some(output) = result.output
+            && let Ok(semgrep_output) = SemgrepOutput::parse(&output)
+        {
+            findings.extend(semgrep_output.to_code_findings());
         }
 
         // Run ast-grep if available
@@ -161,12 +161,11 @@ impl SastAgent {
             .await;
 
         // ast-grep is optional, don't fail if not available
-        if let Ok(exec) = result {
-            if let Some(output) = exec.output {
-                if let Ok(ast_output) = AstGrepOutput::parse(&output) {
-                    findings.extend(ast_output.to_code_findings());
-                }
-            }
+        if let Ok(exec) = result
+            && let Some(output) = exec.output
+            && let Ok(ast_output) = AstGrepOutput::parse(&output)
+        {
+            findings.extend(ast_output.to_code_findings());
         }
 
         Ok(findings)
@@ -196,14 +195,12 @@ impl SastAgent {
             .await;
 
         // Gitleaks may exit with non-zero if secrets found
-        if let Ok(exec) = result {
-            if let Some(output) = exec.output {
-                if !output.trim().is_empty() {
-                    if let Ok(gitleaks_output) = GitleaksOutput::parse(&output) {
-                        return Ok(gitleaks_output.to_code_findings());
-                    }
-                }
-            }
+        if let Ok(exec) = result
+            && let Some(output) = exec.output
+            && !output.trim().is_empty()
+            && let Ok(gitleaks_output) = GitleaksOutput::parse(&output)
+        {
+            return Ok(gitleaks_output.to_code_findings());
         }
 
         Ok(Vec::new())

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::providers::{CompletionRequest, Message, ToolDefinition};
 use crate::Result;
+use crate::providers::{CompletionRequest, Message, ToolDefinition};
 
 use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts};
 
@@ -221,28 +221,28 @@ impl OrchestratorAgent {
         ];
 
         // Add SAST to spawn options if source target available
-        if self.has_source_target {
-            if let Some(spawn_tool) = tools.iter_mut().find(|t| t.name == "spawn_agent") {
-                spawn_tool.parameters = json!({
-                    "type": "object",
-                    "properties": {
-                        "agent_type": {
-                            "type": "string",
-                            "enum": ["recon", "scanner", "sast", "report"],
-                            "description": "Type of agent to spawn"
-                        },
-                        "name": {
-                            "type": "string",
-                            "description": "Unique name for this agent instance"
-                        },
-                        "instructions": {
-                            "type": "string",
-                            "description": "Task-specific instructions for the agent"
-                        }
+        if self.has_source_target
+            && let Some(spawn_tool) = tools.iter_mut().find(|t| t.name == "spawn_agent")
+        {
+            spawn_tool.parameters = json!({
+                "type": "object",
+                "properties": {
+                    "agent_type": {
+                        "type": "string",
+                        "enum": ["recon", "scanner", "sast", "report"],
+                        "description": "Type of agent to spawn"
                     },
-                    "required": ["agent_type", "name", "instructions"]
-                });
-            }
+                    "name": {
+                        "type": "string",
+                        "description": "Unique name for this agent instance"
+                    },
+                    "instructions": {
+                        "type": "string",
+                        "description": "Task-specific instructions for the agent"
+                    }
+                },
+                "required": ["agent_type", "name", "instructions"]
+            });
         }
 
         tools
@@ -428,10 +428,12 @@ mod tests {
         }));
 
         assert_eq!(agent.findings().len(), 1);
-        assert!(agent
-            .findings()
-            .first()
-            .expect("findings should have at least one entry")
-            .contains("ASSET"));
+        assert!(
+            agent
+                .findings()
+                .first()
+                .expect("findings should have at least one entry")
+                .contains("ASSET")
+        );
     }
 }

@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use crate::Result;
 use crate::providers::{LlmProvider, ToolDefinition};
 use crate::tools::ToolExecutor;
-use crate::Result;
 
 /// Agent execution status
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

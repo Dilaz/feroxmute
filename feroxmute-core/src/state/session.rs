@@ -609,9 +609,11 @@ mod tests {
 
         let entries = session.memory_entries().expect("should get entries");
         assert_eq!(entries.len(), 2);
-        assert!(entries
-            .iter()
-            .any(|(k, v)| k == "target_info" && v == "Apache 2.4"));
+        assert!(
+            entries
+                .iter()
+                .any(|(k, v)| k == "target_info" && v == "Apache 2.4")
+        );
     }
 
     #[test]

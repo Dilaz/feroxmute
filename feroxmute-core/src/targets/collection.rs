@@ -92,12 +92,14 @@ mod tests {
         let inputs = vec!["https://example.com".to_string()];
         let collection = TargetCollection::from_strings(&inputs).expect("should create collection");
         assert_eq!(collection.groups.len(), 1);
-        assert!(collection
-            .groups
-            .first()
-            .expect("should have one group")
-            .source_target
-            .is_none());
+        assert!(
+            collection
+                .groups
+                .first()
+                .expect("should have one group")
+                .source_target
+                .is_none()
+        );
     }
 
     #[test]

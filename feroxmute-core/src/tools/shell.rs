@@ -11,10 +11,10 @@ use thiserror::Error;
 use crate::agents::AgentStatus;
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolRegistry};
+use crate::tools::EventSender;
 use crate::tools::sast::{
     GitleaksOutput, GrypeOutput, RoutesOutput, SastToolOutput, SemgrepOutput,
 };
-use crate::tools::EventSender;
 
 /// Arguments for the shell tool
 #[derive(Debug, Deserialize)]
@@ -302,15 +302,15 @@ impl DockerShellTool {
         let allowed = self.limitations.allowed_categories();
 
         for cmd in commands {
-            if let Some(category) = self.tool_registry.categorize(cmd) {
-                if !allowed.contains(&category) {
-                    let msg = format!(
-                        "Blocked: '{}' requires {:?} which is not allowed in current scope",
-                        cmd, category
-                    );
-                    self.events.send_feed(&self.agent_name, &msg, true);
-                    return Err(msg);
-                }
+            if let Some(category) = self.tool_registry.categorize(cmd)
+                && !allowed.contains(&category)
+            {
+                let msg = format!(
+                    "Blocked: '{}' requires {:?} which is not allowed in current scope",
+                    cmd, category
+                );
+                self.events.send_feed(&self.agent_name, &msg, true);
+                return Err(msg);
             }
             // Unknown commands are allowed (with no warning - too noisy)
         }
@@ -323,92 +323,96 @@ impl DockerShellTool {
         let cmd_lower = command.to_lowercase();
 
         // Try to parse grype output
-        if cmd_lower.starts_with("grype") && cmd_lower.contains("-o json") {
-            if let Ok(grype_output) = GrypeOutput::parse(output) {
-                for finding in grype_output.to_code_findings() {
-                    self.events.send_code_finding(
-                        &self.agent_name,
-                        &finding.file_path,
-                        finding.line_number,
-                        finding.severity,
-                        finding.finding_type,
-                        &finding.title,
-                        &finding.tool,
-                        finding.cve_id.as_deref(),
-                        finding.package_name.as_deref(),
-                    );
-                }
+        if cmd_lower.starts_with("grype")
+            && cmd_lower.contains("-o json")
+            && let Ok(grype_output) = GrypeOutput::parse(output)
+        {
+            for finding in grype_output.to_code_findings() {
+                self.events.send_code_finding(
+                    &self.agent_name,
+                    &finding.file_path,
+                    finding.line_number,
+                    finding.severity,
+                    finding.finding_type,
+                    &finding.title,
+                    &finding.tool,
+                    finding.cve_id.as_deref(),
+                    finding.package_name.as_deref(),
+                );
             }
         }
 
         // Try to parse semgrep output
-        if cmd_lower.starts_with("semgrep") && cmd_lower.contains("--json") {
-            if let Ok(semgrep_output) = SemgrepOutput::parse(output) {
-                for finding in semgrep_output.to_code_findings() {
-                    self.events.send_code_finding(
-                        &self.agent_name,
-                        &finding.file_path,
-                        finding.line_number,
-                        finding.severity,
-                        finding.finding_type,
-                        &finding.title,
-                        &finding.tool,
-                        finding.cwe_id.as_deref(),
-                        None,
-                    );
-                }
+        if cmd_lower.starts_with("semgrep")
+            && cmd_lower.contains("--json")
+            && let Ok(semgrep_output) = SemgrepOutput::parse(output)
+        {
+            for finding in semgrep_output.to_code_findings() {
+                self.events.send_code_finding(
+                    &self.agent_name,
+                    &finding.file_path,
+                    finding.line_number,
+                    finding.severity,
+                    finding.finding_type,
+                    &finding.title,
+                    &finding.tool,
+                    finding.cwe_id.as_deref(),
+                    None,
+                );
             }
         }
 
         // Try to parse gitleaks output
-        if cmd_lower.starts_with("gitleaks") && cmd_lower.contains("json") {
-            if let Ok(gitleaks_output) = GitleaksOutput::parse(output) {
-                for finding in gitleaks_output.to_code_findings() {
-                    self.events.send_code_finding(
-                        &self.agent_name,
-                        &finding.file_path,
-                        finding.line_number,
-                        finding.severity,
-                        finding.finding_type,
-                        &finding.title,
-                        &finding.tool,
-                        None,
-                        None,
-                    );
-                }
+        if cmd_lower.starts_with("gitleaks")
+            && cmd_lower.contains("json")
+            && let Ok(gitleaks_output) = GitleaksOutput::parse(output)
+        {
+            for finding in gitleaks_output.to_code_findings() {
+                self.events.send_code_finding(
+                    &self.agent_name,
+                    &finding.file_path,
+                    finding.line_number,
+                    finding.severity,
+                    finding.finding_type,
+                    &finding.title,
+                    &finding.tool,
+                    None,
+                    None,
+                );
             }
         }
 
         // Try to parse ast-grep output
-        if cmd_lower.starts_with("ast-grep") && cmd_lower.contains("--json") {
-            if let Ok(astgrep_output) = super::sast::AstGrepOutput::parse(output) {
-                for finding in super::sast::SastToolOutput::to_code_findings(&astgrep_output) {
-                    self.events.send_code_finding(
-                        &self.agent_name,
-                        &finding.file_path,
-                        finding.line_number,
-                        finding.severity,
-                        finding.finding_type,
-                        &finding.title,
-                        &finding.tool,
-                        None,
-                        None,
-                    );
-                }
+        if cmd_lower.starts_with("ast-grep")
+            && cmd_lower.contains("--json")
+            && let Ok(astgrep_output) = super::sast::AstGrepOutput::parse(output)
+        {
+            for finding in super::sast::SastToolOutput::to_code_findings(&astgrep_output) {
+                self.events.send_code_finding(
+                    &self.agent_name,
+                    &finding.file_path,
+                    finding.line_number,
+                    finding.severity,
+                    finding.finding_type,
+                    &finding.title,
+                    &finding.tool,
+                    None,
+                    None,
+                );
             }
         }
 
         // Try to parse discover_routes output
-        if cmd_lower.starts_with("discover_routes") || cmd_lower.contains("discover_routes") {
-            if let Ok(routes_output) = serde_json::from_str::<RoutesOutput>(output) {
-                let count = routes_output.routes.len();
-                if count > 0 {
-                    self.events.send_feed(
-                        &self.agent_name,
-                        &format!("  -> discovered {} routes", count),
-                        false,
-                    );
-                }
+        if (cmd_lower.starts_with("discover_routes") || cmd_lower.contains("discover_routes"))
+            && let Ok(routes_output) = serde_json::from_str::<RoutesOutput>(output)
+        {
+            let count = routes_output.routes.len();
+            if count > 0 {
+                self.events.send_feed(
+                    &self.agent_name,
+                    &format!("  -> discovered {} routes", count),
+                    false,
+                );
             }
         }
     }

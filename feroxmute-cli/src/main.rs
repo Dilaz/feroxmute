@@ -3,11 +3,11 @@ mod runner;
 mod tui;
 mod wizard;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use args::Args;
 use clap::Parser;
 use feroxmute_core::config::{EngagementConfig, ProviderConfig, ProviderName};
-use feroxmute_core::docker::{find_docker_dir, ContainerConfig, ContainerManager};
+use feroxmute_core::docker::{ContainerConfig, ContainerManager, find_docker_dir};
 use feroxmute_core::limitations::EngagementLimitations;
 use feroxmute_core::providers::create_provider;
 use feroxmute_core::state::MetricsTracker;
@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn format_relative_time(dt: chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();

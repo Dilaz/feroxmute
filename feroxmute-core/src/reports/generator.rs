@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use printpdf::{BuiltinFont, Mm, PdfDocument};
 use rusqlite::Connection;
 
-use crate::state::{MetricsTracker, Vulnerability};
 use crate::Result;
+use crate::state::{MetricsTracker, Vulnerability};
 
 use super::models::{Finding, Report, ReportMetadata, ReportMetrics};
 

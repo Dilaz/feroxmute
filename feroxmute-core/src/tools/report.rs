@@ -11,8 +11,8 @@ use thiserror::Error;
 use tokio::sync::Mutex;
 
 use crate::reports::{
-    export_html, export_json, export_markdown, export_pdf, Finding, Report, ReportMetadata,
-    ReportMetrics, ReportSummary, RiskRating, SeverityCounts, StatusCounts,
+    Finding, Report, ReportMetadata, ReportMetrics, ReportSummary, RiskRating, SeverityCounts,
+    StatusCounts, export_html, export_json, export_markdown, export_pdf,
 };
 use crate::state::MetricsTracker;
 use crate::tools::EventSender;
@@ -141,7 +141,7 @@ impl Tool for GenerateReportTool {
                         rest[idx + 1..].trim().to_string(),
                     )
                 } else {
-                    (rest.clone(), String::new())
+                    (rest, String::new())
                 };
 
                 Finding {

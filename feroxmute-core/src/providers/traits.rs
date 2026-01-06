@@ -5,11 +5,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use crate::Result;
 use crate::docker::ContainerManager;
 use crate::limitations::EngagementLimitations;
 use crate::state::MetricsTracker;
 use crate::tools::{OrchestratorContext, ReportContext};
-use crate::Result;
 
 /// A message in a conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -79,12 +79,11 @@ impl SastToolOutput for SemgrepOutput {
                     finding = finding.with_snippet(lines);
                 }
 
-                if let Some(ref metadata) = r.extra.metadata {
-                    if let Some(ref cwes) = metadata.cwe {
-                        if let Some(cwe) = cwes.first() {
-                            finding = finding.with_cwe(cwe);
-                        }
-                    }
+                if let Some(ref metadata) = r.extra.metadata
+                    && let Some(ref cwes) = metadata.cwe
+                    && let Some(cwe) = cwes.first()
+                {
+                    finding = finding.with_cwe(cwe);
                 }
 
                 finding

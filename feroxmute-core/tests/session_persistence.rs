@@ -63,9 +63,11 @@ fn test_session_persists_across_restart() {
     assert!(agents.contains(&"recon-1".to_string()));
 
     let memory = resumed.memory_entries().expect("should get memory");
-    assert!(memory
-        .iter()
-        .any(|(k, v)| k == "test_key" && v == "test_value"));
+    assert!(
+        memory
+            .iter()
+            .any(|(k, v)| k == "test_key" && v == "test_value")
+    );
 
     // Check resume context is generated
     assert!(resumed.is_resuming().expect("should check"));

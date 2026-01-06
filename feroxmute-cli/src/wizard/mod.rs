@@ -9,9 +9,9 @@ use std::path::PathBuf;
 
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 /// Run the configuration wizard
 /// Returns the path to the created config file
@@ -48,16 +48,16 @@ fn run_loop(
     loop {
         terminal.draw(|frame| state.render(frame))?;
 
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                match state.handle_key(key) {
-                    state::WizardAction::Continue => {}
-                    state::WizardAction::Quit => {
-                        anyhow::bail!("Wizard cancelled by user");
-                    }
-                    state::WizardAction::Complete(path) => {
-                        return Ok(path);
-                    }
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+        {
+            match state.handle_key(key) {
+                state::WizardAction::Continue => {}
+                state::WizardAction::Quit => {
+                    anyhow::bail!("Wizard cancelled by user");
+                }
+                state::WizardAction::Complete(path) => {
+                    return Ok(path);
                 }
             }
         }

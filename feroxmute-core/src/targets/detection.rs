@@ -109,12 +109,11 @@ impl RelationshipDetector {
 
         for pattern in config_patterns {
             let path = source_path.join(pattern);
-            if path.exists() {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if content.to_lowercase().contains(domain) {
-                        return true;
-                    }
-                }
+            if path.exists()
+                && let Ok(content) = fs::read_to_string(&path)
+                && content.to_lowercase().contains(domain)
+            {
+                return true;
             }
         }
         false
@@ -125,12 +124,11 @@ impl RelationshipDetector {
 
         for file in env_files {
             let path = source_path.join(file);
-            if path.exists() {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if content.to_lowercase().contains(domain) {
-                        return true;
-                    }
-                }
+            if path.exists()
+                && let Ok(content) = fs::read_to_string(&path)
+                && content.to_lowercase().contains(domain)
+            {
+                return true;
             }
         }
         false
@@ -138,14 +136,12 @@ impl RelationshipDetector {
 
     fn check_package_json(source_path: &Path, domain: &str) -> bool {
         let path = source_path.join("package.json");
-        if path.exists() {
-            if let Ok(content) = fs::read_to_string(&path) {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(homepage) = json.get("homepage").and_then(|h| h.as_str()) {
-                        return homepage.to_lowercase().contains(domain);
-                    }
-                }
-            }
+        if path.exists()
+            && let Ok(content) = fs::read_to_string(&path)
+            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
+            && let Some(homepage) = json.get("homepage").and_then(|h| h.as_str())
+        {
+            return homepage.to_lowercase().contains(domain);
         }
         false
     }
@@ -155,12 +151,11 @@ impl RelationshipDetector {
 
         for file in compose_files {
             let path = source_path.join(file);
-            if path.exists() {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if content.to_lowercase().contains(domain) {
-                        return true;
-                    }
-                }
+            if path.exists()
+                && let Ok(content) = fs::read_to_string(&path)
+                && content.to_lowercase().contains(domain)
+            {
+                return true;
             }
         }
         false

@@ -3,7 +3,7 @@
 #![allow(clippy::unwrap_used)]
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Row};
+use rusqlite::{Connection, Row, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

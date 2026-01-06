@@ -4,11 +4,11 @@
 
 use feroxmute_core::agents::AgentStatus;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, List, ListItem, Paragraph, Row, Table},
-    Frame,
 };
 
 use crate::tui::app::App;

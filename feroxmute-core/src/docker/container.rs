@@ -1,12 +1,12 @@
 //! Docker container management for Kali tools
 
+use bollard::Docker;
 use bollard::container::{
     Config, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
     StopContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, StartExecResults};
 use bollard::image::BuildImageOptions;
-use bollard::Docker;
 use futures::StreamExt;
 use hyper::body::Bytes;
 use std::path::Path;

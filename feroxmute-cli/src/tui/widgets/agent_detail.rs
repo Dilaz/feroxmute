@@ -4,11 +4,11 @@
 
 use feroxmute_core::agents::AgentStatus;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 use crate::tui::app::App;
@@ -107,15 +107,15 @@ fn render_output(frame: &mut Frame, app: &App, agent_name: &str, area: Rect) {
         ]));
 
         // If expanded and has output, show it
-        if entry.expanded {
-            if let Some(ref output) = entry.tool_output {
-                for line in output.lines() {
-                    lines.push(Line::from(vec![
-                        Span::styled("         ", Style::default()),
-                        Span::styled("│ ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(line, style),
-                    ]));
-                }
+        if entry.expanded
+            && let Some(ref output) = entry.tool_output
+        {
+            for line in output.lines() {
+                lines.push(Line::from(vec![
+                    Span::styled("         ", Style::default()),
+                    Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(line, style),
+                ]));
             }
         }
     }

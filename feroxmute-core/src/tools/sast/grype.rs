@@ -105,10 +105,10 @@ impl SastToolOutput for GrypeOutput {
                     finding = finding.with_description(desc);
                 }
 
-                if let Some(ref fix) = m.vulnerability.fix_info {
-                    if let Some(version) = fix.versions.first() {
-                        finding = finding.with_fixed_version(version);
-                    }
+                if let Some(ref fix) = m.vulnerability.fix_info
+                    && let Some(version) = fix.versions.first()
+                {
+                    finding = finding.with_fixed_version(version);
                 }
 
                 finding

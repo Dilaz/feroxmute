@@ -21,12 +21,12 @@ pub fn find_docker_dir() -> Result<PathBuf> {
     }
 
     // Then check ../../docker/Dockerfile relative to executable (for development builds)
-    if let Ok(exe) = env::current_exe() {
-        if let Some(exe_parent) = exe.parent() {
-            let dev_docker = exe_parent.join("../../docker");
-            if dev_docker.join("Dockerfile").exists() {
-                return Ok(dev_docker.canonicalize().unwrap_or(dev_docker));
-            }
+    if let Ok(exe) = env::current_exe()
+        && let Some(exe_parent) = exe.parent()
+    {
+        let dev_docker = exe_parent.join("../../docker");
+        if dev_docker.join("Dockerfile").exists() {
+            return Ok(dev_docker.canonicalize().unwrap_or(dev_docker));
         }
     }
 

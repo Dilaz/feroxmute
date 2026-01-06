@@ -2,8 +2,8 @@
 //!
 //! These tools allow the orchestrator LLM to spawn and manage specialist agents.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;

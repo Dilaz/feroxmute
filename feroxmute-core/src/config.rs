@@ -192,19 +192,23 @@ impl EngagementConfig {
     /// Expand environment variables in token fields
     pub fn expand_env_vars(&mut self) {
         if let Some(ref token) = self.auth.token
-            && token.starts_with("${") && token.ends_with("}") {
-                let var_name = &token[2..token.len() - 1];
-                if let Ok(value) = std::env::var(var_name) {
-                    self.auth.token = Some(value);
-                }
+            && token.starts_with("${")
+            && token.ends_with("}")
+        {
+            let var_name = &token[2..token.len() - 1];
+            if let Ok(value) = std::env::var(var_name) {
+                self.auth.token = Some(value);
             }
+        }
         if let Some(ref key) = self.provider.api_key
-            && key.starts_with("${") && key.ends_with("}") {
-                let var_name = &key[2..key.len() - 1];
-                if let Ok(value) = std::env::var(var_name) {
-                    self.provider.api_key = Some(value);
-                }
+            && key.starts_with("${")
+            && key.ends_with("}")
+        {
+            let var_name = &key[2..key.len() - 1];
+            if let Ok(value) = std::env::var(var_name) {
+                self.provider.api_key = Some(value);
             }
+        }
     }
 }
 

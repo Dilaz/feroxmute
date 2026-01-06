@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde_json::json;
 
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
-use crate::reports::{export_json, export_markdown, generate_markdown, generate_report, Report};
+use crate::reports::{Report, export_json, export_markdown, generate_markdown, generate_report};
 use crate::state::MetricsTracker;
 use crate::{Error, Result};
 

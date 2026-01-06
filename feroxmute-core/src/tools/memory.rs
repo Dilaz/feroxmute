@@ -390,7 +390,7 @@ mod tests {
     use super::*;
     use crate::agents::{AgentStatus, EngagementPhase};
     use crate::state::models::FindingType;
-    use crate::state::{run_migrations, Severity};
+    use crate::state::{Severity, run_migrations};
     use crate::tools::orchestrator::AgentSummary;
 
     /// No-op event sender for tests
