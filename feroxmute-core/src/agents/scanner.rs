@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
 use crate::state::models::{Severity, Vulnerability};
+use crate::tools::playbook;
 use crate::{Error, Result};
 
 use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts};
@@ -180,6 +181,20 @@ impl ScannerAgent {
                     "required": ["title", "severity", "description", "endpoint"]
                 }),
             },
+            ToolDefinition {
+                name: "get_playbook".to_string(),
+                description: "Retrieve detailed vulnerability testing playbook for a specific category. Returns techniques, tools, payloads, and bypass methods.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "description": "Vulnerability category: sql-injection, xss, csrf, command-injection, jwt-attacks, xxe, lfi-rfi, ssti, ssrf, deserialization, race-conditions, nosql-injection, graphql, websockets, windows-web, windows-ad, crypto"
+                        }
+                    },
+                    "required": ["category"]
+                }),
+            },
         ]
     }
 }
@@ -296,6 +311,26 @@ impl Agent for ScannerAgent {
                             "Vulnerability recorded: {}",
                             title
                         )));
+                    } else if tool_call.name == "get_playbook" {
+                        let category = args.get("category").and_then(|v| v.as_str()).unwrap_or("");
+
+                        let playbook_content = match playbook::get_playbook(category) {
+                            Some(content) => content.to_string(),
+                            None => format!(
+                                "Unknown playbook category '{}'. Available: {}",
+                                category,
+                                playbook::PLAYBOOK_CATEGORIES.join(", ")
+                            ),
+                        };
+
+                        messages.push(Message::assistant(format!(
+                            "Playbook for '{}':\n{}",
+                            category, playbook_content
+                        )));
+                        result.push_str(&format!(
+                            "\n## Playbook: {}\n{}\n",
+                            category, playbook_content
+                        ));
                     } else {
                         // Execute the scanning tool
                         let cmd_args = self.build_command_args(&tool_call.name, &args);
@@ -515,6 +550,7 @@ mod tests {
         assert!(tools.iter().any(|t| t.name == "ffuf"));
         assert!(tools.iter().any(|t| t.name == "sqlmap"));
         assert!(tools.iter().any(|t| t.name == "report_vulnerability"));
+        assert!(tools.iter().any(|t| t.name == "get_playbook"));
     }
 
     #[test]
