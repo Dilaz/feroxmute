@@ -17,6 +17,11 @@ RUN apt-get update && apt-get install -y \
     whois \
     dnsutils \
     nmap \
+    metasploit-framework \
+    responder \
+    hashcat \
+    john \
+    commix \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ProjectDiscovery tools via pdtm
@@ -33,6 +38,14 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN uv pip install --system --break-system-packages playwright \
     && playwright install chromium --with-deps
 
+# Additional security testing tools for playbook support
+RUN uv pip install --system --break-system-packages \
+    impacket \
+    crackmapexec \
+    jwt-tool \
+    tplmap \
+    nosqlmap
+
 # SAST tools
 # Install ast-grep via cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -48,6 +61,8 @@ RUN uv tool install semgrep && \
 RUN go install github.com/zricethezav/gitleaks/v8@latest && \
     go install golang.org/x/vuln/cmd/govulncheck@latest
 
+RUN go install github.com/hahwul/dalfox/v2@latest
+
 # Install Grype for dependency scanning
 RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
@@ -61,6 +76,11 @@ RUN mkdir -p /feroxmute/workdir/{orchestrator,recon,scanner,exploit,scripts} \
     /feroxmute/shared
 
 WORKDIR /feroxmute
+
+# Java deserialization tool
+RUN mkdir -p /opt/ysoserial && \
+    wget -O /opt/ysoserial/ysoserial.jar \
+    https://github.com/frohoff/ysoserial/releases/latest/download/ysoserial-all.jar
 
 # Default command keeps container running
 CMD ["tail", "-f", "/dev/null"]
