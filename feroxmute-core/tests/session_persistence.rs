@@ -19,50 +19,40 @@ fn test_config() -> EngagementConfig {
 }
 
 #[test]
-fn test_session_persists_across_restart() {
-    let temp = TempDir::new().expect("should create temp dir");
+fn test_session_persists_across_restart() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDir::new()?;
     let config = test_config();
 
     // Create session and add some data
-    let session = Session::new(config, temp.path()).expect("should create session");
+    let session = Session::new(config, temp.path())?;
     let session_path = session.path.clone();
     let session_id = session.id.clone();
 
     // Add memory entry
-    session
-        .conn()
-        .execute(
-            "INSERT INTO scratch_pad (key, value) VALUES ('test_key', 'test_value')",
-            [],
-        )
-        .expect("should insert");
+    session.conn().execute(
+        "INSERT INTO scratch_pad (key, value) VALUES ('test_key', 'test_value')",
+        [],
+    )?;
 
     // Mark agent completed
-    session
-        .mark_agent_completed("recon-1")
-        .expect("should mark");
+    session.mark_agent_completed("recon-1")?;
 
     // Set interrupted
-    session
-        .set_status(SessionStatus::Interrupted)
-        .expect("should set status");
+    session.set_status(SessionStatus::Interrupted)?;
 
     // Drop session (simulating app exit)
     drop(session);
 
     // Resume session
-    let resumed = Session::resume(&session_path).expect("should resume");
+    let resumed = Session::resume(&session_path)?;
 
     assert_eq!(resumed.id, session_id);
-    assert_eq!(
-        resumed.status().expect("should get status"),
-        SessionStatus::Interrupted
-    );
+    assert_eq!(resumed.status()?, SessionStatus::Interrupted);
 
-    let agents = resumed.completed_agents().expect("should get agents");
+    let agents = resumed.completed_agents()?;
     assert!(agents.contains(&"recon-1".to_string()));
 
-    let memory = resumed.memory_entries().expect("should get memory");
+    let memory = resumed.memory_entries()?;
     assert!(
         memory
             .iter()
@@ -70,52 +60,43 @@ fn test_session_persists_across_restart() {
     );
 
     // Check resume context is generated
-    assert!(resumed.is_resuming().expect("should check"));
-    let context = resumed.resume_context().expect("should get context");
+    assert!(resumed.is_resuming()?);
+    let context = resumed.resume_context()?;
     assert!(context.contains("recon-1"));
     assert!(context.contains("test_key"));
+
+    Ok(())
 }
 
 #[test]
-fn test_session_status_lifecycle() {
-    let temp = TempDir::new().expect("should create temp dir");
+fn test_session_status_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDir::new()?;
     let config = test_config();
 
-    let session = Session::new(config, temp.path()).expect("should create session");
+    let session = Session::new(config, temp.path())?;
 
     // New sessions start as Running
-    assert_eq!(
-        session.status().expect("should get status"),
-        SessionStatus::Running
-    );
+    assert_eq!(session.status()?, SessionStatus::Running);
 
     // Can transition through states
-    session
-        .set_status(SessionStatus::Interrupted)
-        .expect("should set");
-    assert_eq!(
-        session.status().expect("should get status"),
-        SessionStatus::Interrupted
-    );
+    session.set_status(SessionStatus::Interrupted)?;
+    assert_eq!(session.status()?, SessionStatus::Interrupted);
 
-    session
-        .set_status(SessionStatus::Completed)
-        .expect("should set");
-    assert_eq!(
-        session.status().expect("should get status"),
-        SessionStatus::Completed
-    );
+    session.set_status(SessionStatus::Completed)?;
+    assert_eq!(session.status()?, SessionStatus::Completed);
+
+    Ok(())
 }
 
 #[test]
-fn test_session_id_uniqueness() {
-    let temp = TempDir::new().expect("should create temp dir");
+fn test_session_id_uniqueness() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDir::new()?;
     let config = test_config();
 
     // Create multiple sessions for same target
-    let s1 = Session::new(config.clone(), temp.path()).expect("should create");
-    let s2 = Session::new(config.clone(), temp.path()).expect("should create");
-    let s3 = Session::new(config, temp.path()).expect("should create");
+    let s1 = Session::new(config.clone(), temp.path())?;
+    let s2 = Session::new(config.clone(), temp.path())?;
+    let s3 = Session::new(config, temp.path())?;
 
     // All IDs should be unique
     assert_ne!(s1.id, s2.id);
@@ -126,50 +107,45 @@ fn test_session_id_uniqueness() {
     assert!(s1.id.contains("test-example-com"));
     assert!(s2.id.ends_with("-2"));
     assert!(s3.id.ends_with("-3"));
+
+    Ok(())
 }
 
 #[test]
-fn test_findings_persist_and_summarize() {
-    let temp = TempDir::new().expect("should create temp dir");
+fn test_findings_persist_and_summarize() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = TempDir::new()?;
     let config = test_config();
 
-    let session = Session::new(config, temp.path()).expect("should create session");
+    let session = Session::new(config, temp.path())?;
 
     // Add findings of various severities
-    session
-        .conn()
-        .execute(
-            "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
+    session.conn().execute(
+        "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
              VALUES ('v1', 'sqli', 'critical', 'SQL Injection', 'scanner', datetime('now'))",
-            [],
-        )
-        .expect("should insert");
-    session
-        .conn()
-        .execute(
-            "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
+        [],
+    )?;
+    session.conn().execute(
+        "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
              VALUES ('v2', 'xss', 'high', 'XSS', 'scanner', datetime('now'))",
-            [],
-        )
-        .expect("should insert");
-    session
-        .conn()
-        .execute(
-            "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
+        [],
+    )?;
+    session.conn().execute(
+        "INSERT INTO vulnerabilities (id, vuln_type, severity, title, discovered_by, discovered_at)
              VALUES ('v3', 'info-disclosure', 'medium', 'Info Disclosure', 'scanner', datetime('now'))",
-            [],
-        )
-        .expect("should insert");
+        [],
+    )?;
 
-    let summary = session.findings_summary().expect("should summarize");
+    let summary = session.findings_summary()?;
     assert_eq!(summary.critical, 1);
     assert_eq!(summary.high, 1);
     assert_eq!(summary.medium, 1);
     assert_eq!(summary.total(), 3);
 
     // Verify resume context includes findings
-    let context = session.resume_context().expect("should get context");
+    let context = session.resume_context()?;
     assert!(context.contains("1 Critical"));
     assert!(context.contains("1 High"));
     assert!(context.contains("1 Medium"));
+
+    Ok(())
 }

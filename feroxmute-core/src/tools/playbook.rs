@@ -87,8 +87,7 @@ mod tests {
     #[test]
     fn test_get_playbook_exists() {
         let playbook = get_playbook("sql-injection");
-        assert!(playbook.is_some());
-        assert!(playbook.unwrap().contains("SQL"));
+        assert!(playbook.is_some_and(|p| p.contains("SQL")));
     }
 
     #[test]
