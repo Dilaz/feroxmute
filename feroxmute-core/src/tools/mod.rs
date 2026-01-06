@@ -3,6 +3,7 @@
 pub mod executor;
 pub mod memory;
 pub mod orchestrator;
+pub mod playbook;
 pub mod report;
 pub mod sast;
 pub mod script;
@@ -16,6 +17,7 @@ pub use orchestrator::{
     AgentSummary, CompleteEngagementTool, EventSender, ListAgentsTool, OrchestratorContext,
     OrchestratorToolError, RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
+pub use playbook::{PLAYBOOK_CATEGORIES, get_playbook, list_categories};
 pub use report::{
     AddRecommendationTool, ExportHtmlTool, ExportJsonTool, ExportMarkdownTool, ExportPdfTool,
     GenerateReportTool, ReportContext,

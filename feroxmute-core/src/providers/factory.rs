@@ -20,7 +20,8 @@ pub fn create_provider(
         ProviderName::Anthropic => {
             // Use config api_key if set, otherwise fall back to env var
             if let Some(ref api_key) = config.api_key {
-                std::env::set_var("ANTHROPIC_API_KEY", api_key);
+                // SAFETY: This is called during initialization before spawning threads
+                unsafe { std::env::set_var("ANTHROPIC_API_KEY", api_key) };
             }
             let provider = AnthropicProvider::new(&config.model, metrics)?;
             Ok(Arc::new(provider))
@@ -35,7 +36,8 @@ pub fn create_provider(
             let provider = if let Some(ref base_url) = config.base_url {
                 OpenAiProvider::with_base_url(api_key, base_url, &config.model, metrics)?
             } else {
-                std::env::set_var("OPENAI_API_KEY", &api_key);
+                // SAFETY: This is called during initialization before spawning threads
+                unsafe { std::env::set_var("OPENAI_API_KEY", &api_key) };
                 OpenAiProvider::new(&config.model, metrics)?
             };
             Ok(Arc::new(provider))
@@ -157,7 +159,8 @@ mod tests {
     fn test_create_anthropic_requires_api_key() {
         // Ensure API key is not set
         let original = std::env::var("ANTHROPIC_API_KEY").ok();
-        std::env::remove_var("ANTHROPIC_API_KEY");
+        // SAFETY: Tests run single-threaded with --test-threads=1 or serially
+        unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
 
         let config = ProviderConfig {
             name: ProviderName::Anthropic,
@@ -170,14 +173,16 @@ mod tests {
 
         // Restore
         if let Some(key) = original {
-            std::env::set_var("ANTHROPIC_API_KEY", key);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("ANTHROPIC_API_KEY", key) };
         }
     }
 
     #[test]
     fn test_create_openai_requires_api_key() {
         let original = std::env::var("OPENAI_API_KEY").ok();
-        std::env::remove_var("OPENAI_API_KEY");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("OPENAI_API_KEY") };
 
         let config = ProviderConfig {
             name: ProviderName::OpenAi,
@@ -189,14 +194,16 @@ mod tests {
         assert!(result.is_err());
 
         if let Some(key) = original {
-            std::env::set_var("OPENAI_API_KEY", key);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("OPENAI_API_KEY", key) };
         }
     }
 
     #[test]
     fn test_cohere_requires_api_key() {
         let original = std::env::var("COHERE_API_KEY").ok();
-        std::env::remove_var("COHERE_API_KEY");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("COHERE_API_KEY") };
 
         let config = ProviderConfig {
             name: ProviderName::Cohere,
@@ -208,7 +215,8 @@ mod tests {
         assert!(result.is_err());
 
         if let Some(key) = original {
-            std::env::set_var("COHERE_API_KEY", key);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("COHERE_API_KEY", key) };
         }
     }
 
@@ -216,7 +224,8 @@ mod tests {
     fn test_azure_requires_endpoint() {
         let original_key = std::env::var("AZURE_OPENAI_API_KEY").ok();
         let original_endpoint = std::env::var("AZURE_OPENAI_ENDPOINT").ok();
-        std::env::remove_var("AZURE_OPENAI_ENDPOINT");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("AZURE_OPENAI_ENDPOINT") };
 
         let config = ProviderConfig {
             name: ProviderName::Azure,
@@ -231,17 +240,20 @@ mod tests {
         }
 
         if let Some(key) = original_key {
-            std::env::set_var("AZURE_OPENAI_API_KEY", key);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("AZURE_OPENAI_API_KEY", key) };
         }
         if let Some(endpoint) = original_endpoint {
-            std::env::set_var("AZURE_OPENAI_ENDPOINT", endpoint);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("AZURE_OPENAI_ENDPOINT", endpoint) };
         }
     }
 
     #[test]
     fn test_anthropic_uses_config_api_key() {
         let original = std::env::var("ANTHROPIC_API_KEY").ok();
-        std::env::remove_var("ANTHROPIC_API_KEY");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
 
         let config = ProviderConfig {
             name: ProviderName::Anthropic,
@@ -253,14 +265,16 @@ mod tests {
         assert!(result.is_ok());
 
         if let Some(key) = original {
-            std::env::set_var("ANTHROPIC_API_KEY", key);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("ANTHROPIC_API_KEY", key) };
         }
     }
 
     #[test]
     fn test_openai_uses_config_api_key() {
         let original = std::env::var("OPENAI_API_KEY").ok();
-        std::env::remove_var("OPENAI_API_KEY");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("OPENAI_API_KEY") };
 
         let config = ProviderConfig {
             name: ProviderName::OpenAi,
@@ -272,7 +286,8 @@ mod tests {
         assert!(result.is_ok());
 
         if let Some(key) = original {
-            std::env::set_var("OPENAI_API_KEY", key);
+            // SAFETY: Tests run single-threaded
+            unsafe { std::env::set_var("OPENAI_API_KEY", key) };
         }
     }
 
@@ -280,8 +295,11 @@ mod tests {
     fn test_litellm_uses_config_api_key() {
         let original_litellm = std::env::var("LITELLM_API_KEY").ok();
         let original_openai = std::env::var("OPENAI_API_KEY").ok();
-        std::env::remove_var("LITELLM_API_KEY");
-        std::env::remove_var("OPENAI_API_KEY");
+        // SAFETY: Tests run single-threaded
+        unsafe {
+            std::env::remove_var("LITELLM_API_KEY");
+            std::env::remove_var("OPENAI_API_KEY");
+        }
 
         let config = ProviderConfig {
             name: ProviderName::LiteLlm,
@@ -292,11 +310,14 @@ mod tests {
         let result = create_provider(&config, MetricsTracker::new());
         assert!(result.is_ok());
 
-        if let Some(key) = original_litellm {
-            std::env::set_var("LITELLM_API_KEY", key);
-        }
-        if let Some(key) = original_openai {
-            std::env::set_var("OPENAI_API_KEY", key);
+        // SAFETY: Tests run single-threaded
+        unsafe {
+            if let Some(key) = original_litellm {
+                std::env::set_var("LITELLM_API_KEY", key);
+            }
+            if let Some(key) = original_openai {
+                std::env::set_var("OPENAI_API_KEY", key);
+            }
         }
     }
 

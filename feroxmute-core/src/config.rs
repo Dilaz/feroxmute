@@ -191,22 +191,20 @@ impl EngagementConfig {
 
     /// Expand environment variables in token fields
     pub fn expand_env_vars(&mut self) {
-        if let Some(ref token) = self.auth.token {
-            if token.starts_with("${") && token.ends_with("}") {
+        if let Some(ref token) = self.auth.token
+            && token.starts_with("${") && token.ends_with("}") {
                 let var_name = &token[2..token.len() - 1];
                 if let Ok(value) = std::env::var(var_name) {
                     self.auth.token = Some(value);
                 }
             }
-        }
-        if let Some(ref key) = self.provider.api_key {
-            if key.starts_with("${") && key.ends_with("}") {
+        if let Some(ref key) = self.provider.api_key
+            && key.starts_with("${") && key.ends_with("}") {
                 let var_name = &key[2..key.len() - 1];
                 if let Ok(value) = std::env::var(var_name) {
                     self.provider.api_key = Some(value);
                 }
             }
-        }
     }
 }
 
@@ -283,7 +281,8 @@ export_html = true
 
     #[test]
     fn test_env_var_expansion() {
-        std::env::set_var("TEST_TOKEN", "expanded_value");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::set_var("TEST_TOKEN", "expanded_value") };
         let toml = r#"
 [target]
 host = "example.com"
@@ -295,7 +294,8 @@ token = "${TEST_TOKEN}"
         let mut config = EngagementConfig::parse(toml).expect("config with env var should parse");
         config.expand_env_vars();
         assert_eq!(config.auth.token, Some("expanded_value".to_string()));
-        std::env::remove_var("TEST_TOKEN");
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("TEST_TOKEN") };
     }
 
     #[test]

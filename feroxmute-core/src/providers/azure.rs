@@ -339,17 +339,23 @@ mod tests {
     fn test_provider_requires_api_key() {
         let original_key = std::env::var("AZURE_OPENAI_API_KEY").ok();
         let original_endpoint = std::env::var("AZURE_OPENAI_ENDPOINT").ok();
-        std::env::remove_var("AZURE_OPENAI_API_KEY");
-        std::env::remove_var("AZURE_OPENAI_ENDPOINT");
+        // SAFETY: Tests run single-threaded
+        unsafe {
+            std::env::remove_var("AZURE_OPENAI_API_KEY");
+            std::env::remove_var("AZURE_OPENAI_ENDPOINT");
+        }
 
         let result = AzureProvider::new("gpt-4o", MetricsTracker::new());
         assert!(result.is_err());
 
-        if let Some(key) = original_key {
-            std::env::set_var("AZURE_OPENAI_API_KEY", key);
-        }
-        if let Some(endpoint) = original_endpoint {
-            std::env::set_var("AZURE_OPENAI_ENDPOINT", endpoint);
+        // SAFETY: Tests run single-threaded
+        unsafe {
+            if let Some(key) = original_key {
+                std::env::set_var("AZURE_OPENAI_API_KEY", key);
+            }
+            if let Some(endpoint) = original_endpoint {
+                std::env::set_var("AZURE_OPENAI_ENDPOINT", endpoint);
+            }
         }
     }
 }
