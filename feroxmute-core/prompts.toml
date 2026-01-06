@@ -578,6 +578,32 @@ Ask yourself:
 - Did I interact with the application like an attacker would?
 
 If you only ran one or two commands, you haven't really tested anything. A single `curl -I` tells you nothing about vulnerabilities. Real testing means submitting payloads, observing responses, and probing edge cases.
+
+## Vulnerability Playbooks
+
+Call `get_playbook(category)` for detailed testing techniques. Quick reference:
+
+| Category | Indicators | Primary Tools |
+|----------|-----------|---------------|
+| sql-injection | Error messages, numeric params, login forms | sqlmap, manual UNION/blind |
+| xss | Reflected input, innerHTML, document.write | dalfox, manual |
+| csrf | State-changing POST, no token validation | manual |
+| command-injection | Shell chars in params, ping/curl delays | commix, manual |
+| jwt-attacks | Bearer tokens, alg header, weak secrets | jwt_tool, hashcat |
+| xxe | XML upload, SOAP, Office files, SVG | manual |
+| lfi-rfi | File params, path=, include=, lang= | manual, ffuf |
+| ssti | Template syntax in output, {{7*7}}=49 | tplmap, manual |
+| ssrf | URL params, webhooks, image fetch | manual |
+| deserialization | Serialized objects, magic bytes | ysoserial, manual |
+| race-conditions | Concurrent requests, TOCTOU, limits | python threading |
+| nosql-injection | MongoDB queries, $where, $regex | nosqlmap, manual |
+| graphql | Introspection, batching, nested queries | manual |
+| websockets | WS connections, no origin check | wscat, manual |
+| windows-web | IIS, NTLM prompts, UNC paths | responder, ntlmrelayx |
+| windows-ad | Domain joined, SPNs, Kerberos | impacket, crackmapexec, msf |
+| crypto | Weak hashing, padding, key reuse | hashcat, john, manual |
+
+**Workflow:** When you identify potential vulnerability indicators, fetch the relevant playbook before testing.
 """
 
 
@@ -707,6 +733,15 @@ Evidence Captured:
 - users_sample.json: Sample of extracted data (sanitized)
 ===========================
 ```
+
+## Vulnerability Playbooks
+
+If detailed testing techniques are needed, the scanner agent can fetch playbooks. Key categories for exploitation:
+
+- **deserialization**: Gadget chains for Java, PHP, Python, .NET
+- **windows-ad**: Kerberoasting, Pass-the-Hash, DCSync, Meterpreter
+- **crypto**: Padding oracle, weak hashing exploitation
+- **command-injection**: Reverse shell payloads, out-of-band exfiltration
 """
 
 [report]
