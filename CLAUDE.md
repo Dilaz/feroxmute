@@ -125,3 +125,45 @@ Logs: `~/.feroxmute/logs/feroxmute.log`
 Agent prompts are defined in `feroxmute-core/prompts.toml`. The engagement config supports TOML files with environment variable expansion (e.g., `${FEROXMUTE_AUTH_TOKEN}`).
 
 Default LLM provider: Anthropic with claude-sonnet-4-20250514
+
+## Development Guidelines
+
+### Package Manager
+
+**Always use `bun`, never `npm`.** For any JavaScript/TypeScript tooling or dependencies, use bun commands:
+- `bun install` instead of `npm install`
+- `bun run` instead of `npm run`
+- `bun add` instead of `npm install <package>`
+
+**Use `biome` for JavaScript/TypeScript code quality:**
+```bash
+bunx biome check .              # Check for issues
+bunx biome check --write .      # Auto-fix issues
+```
+
+### Dependency Management
+
+**Use `cargo add` to add Rust dependencies.** Never edit `Cargo.toml` directly for adding dependencies:
+```bash
+cargo add serde --features derive    # Add with features
+cargo add tokio -p feroxmute-core    # Add to specific crate
+```
+
+### Pre-Commit Requirements
+
+Before every commit, you MUST:
+1. Run `cargo fmt` to format all Rust code
+2. Run `cargo clippy` and fix ALL warnings (not just errors)
+3. Ensure the build passes with `cargo build`
+
+```bash
+# Pre-commit checklist
+cargo fmt && cargo clippy --fix --allow-dirty && cargo build
+```
+
+### Code Quality
+
+- **Keep files focused and small.** If a file exceeds ~300-400 lines, consider refactoring into smaller modules.
+- **Refactor proactively.** Don't let technical debt accumulate—clean up as you go.
+- **Optimize for developer experience.** Code should be easy to read, navigate, and modify.
+- **Use clear module boundaries.** Each module should have a single responsibility.
