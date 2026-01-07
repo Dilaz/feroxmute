@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     ffuf \
     chromium \
     python3 \
+    python3-dev \
     whois \
     dnsutils \
     nmap \
@@ -30,6 +31,10 @@ ENV PATH="${GOPATH}/bin:/root/.pdtm/go/bin:${PATH}"
 RUN go install -v github.com/projectdiscovery/pdtm/cmd/pdtm@latest \
     && pdtm -install-all
 
+# Install Rust (needed for Python packages with native extensions)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Install uv for Python package management
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
@@ -41,15 +46,26 @@ RUN uv pip install --system --break-system-packages playwright \
 # Additional security testing tools for playbook support
 RUN uv pip install --system --break-system-packages \
     impacket \
-    crackmapexec \
-    jwt-tool \
-    tplmap \
-    nosqlmap
+    git+https://github.com/Pennyw0rth/NetExec.git
+
+# Install jwt_tool from GitHub (not a pip package)
+RUN git clone --depth 1 https://github.com/ticarpi/jwt_tool.git /opt/jwt_tool && \
+    chmod +x /opt/jwt_tool/jwt_tool.py && \
+    ln -s /opt/jwt_tool/jwt_tool.py /usr/local/bin/jwt_tool
+
+# Install tplmap and nosqlmap from GitHub (not on PyPI)
+RUN git clone --depth 1 https://github.com/epinna/tplmap.git /opt/tplmap && \
+    cd /opt/tplmap && grep -v wsgiref requirements.txt > requirements_fixed.txt && \
+    uv pip install --system --break-system-packages -r requirements_fixed.txt && \
+    ln -s /opt/tplmap/tplmap.py /usr/local/bin/tplmap
+
+RUN git clone --depth 1 https://github.com/codingo/NoSQLMap.git /opt/nosqlmap && \
+    cd /opt/nosqlmap && uv pip install --system --break-system-packages pymongo httplib2 && \
+    chmod +x /opt/nosqlmap/nosqlmap.py && \
+    ln -s /opt/nosqlmap/nosqlmap.py /usr/local/bin/nosqlmap
 
 # SAST tools
-# Install ast-grep via cargo
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Install ast-grep via cargo (Rust already installed above)
 RUN cargo install ast-grep --locked
 
 # Install Python SAST tools via uv
