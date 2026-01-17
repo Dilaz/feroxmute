@@ -6,6 +6,8 @@
 
 mod acp_client;
 mod config;
+mod provider;
 
 pub use acp_client::{AcpClient, AcpSession};
 pub use config::{CliAgentConfig, CliAgentType};
+pub use provider::CliAgentProvider;

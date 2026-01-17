@@ -33,4 +33,4 @@ pub use azure::AzureProvider;
 pub use ollama::OllamaProvider;
 
 // Re-export CLI agent types
-pub use cli_agent::{CliAgentConfig, CliAgentType};
+pub use cli_agent::{CliAgentConfig, CliAgentProvider, CliAgentType};
