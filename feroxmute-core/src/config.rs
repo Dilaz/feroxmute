@@ -31,6 +31,12 @@ pub enum ProviderName {
     Azure,
     Mira,
     Ollama,
+    // CLI agent providers
+    #[serde(rename = "claude-code")]
+    ClaudeCode,
+    Codex,
+    #[serde(rename = "gemini-cli")]
+    GeminiCli,
 }
 
 /// Target configuration (optional in config file - use CLI --target instead)

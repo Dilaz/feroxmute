@@ -29,9 +29,21 @@ use super::{AcpClient, CliAgentConfig};
 ///
 /// This provider uses ACP (Agent Client Protocol) to communicate with CLI agents
 /// and MCP (Model Context Protocol) to expose feroxmute tools to the agent.
+///
+/// # LocalSet Requirement
+///
+/// The ACP library uses `spawn_local` internally, which requires running in a
+/// `tokio::task::LocalSet` context. The `LlmProvider` trait requires `Send` futures,
+/// making direct ACP calls from trait methods impossible. The `acp_client` field
+/// is provided for use in LocalSet contexts via `acp_client()` getter.
 pub struct CliAgentProvider {
     /// Configuration for the CLI agent
     config: CliAgentConfig,
+    /// ACP client for communicating with the CLI agent
+    ///
+    /// NOTE: Can only be used in a LocalSet context due to `spawn_local` requirement.
+    /// Access via `acp_client()` and run operations in LocalSet::run_until.
+    acp_client: AcpClient,
     /// MCP server for providing tools to the CLI agent
     mcp_server: Arc<McpServer>,
     /// Metrics tracker for token usage and costs
@@ -57,7 +69,7 @@ impl CliAgentProvider {
         working_dir: PathBuf,
         metrics: MetricsTracker,
     ) -> Result<Self> {
-        // Create a temporary ACP client just to check binary availability
+        // Create ACP client and check binary availability
         let acp_client = AcpClient::new(config.clone());
         acp_client.check_binary()?;
 
@@ -69,6 +81,7 @@ impl CliAgentProvider {
 
         Ok(Self {
             config,
+            acp_client,
             mcp_server,
             metrics,
             working_dir,
@@ -152,6 +165,32 @@ impl CliAgentProvider {
     /// Get the MCP server
     pub fn mcp_server(&self) -> &Arc<McpServer> {
         &self.mcp_server
+    }
+
+    /// Get the ACP client for use in LocalSet contexts
+    ///
+    /// # Usage
+    ///
+    /// The ACP client requires a `LocalSet` context due to the use of `spawn_local`.
+    /// Use this getter to access the client, then run operations within a LocalSet:
+    ///
+    /// ```ignore
+    /// let local = tokio::task::LocalSet::new();
+    /// local.run_until(async {
+    ///     let client = provider.acp_client();
+    ///     client.connect(&working_dir, &mcp_config).await?;
+    ///     let session_id = client.new_session("agent", &working_dir).await?;
+    ///     let response = client.prompt(&session_id, "Hello").await?;
+    ///     Ok(())
+    /// }).await
+    /// ```
+    pub fn acp_client(&self) -> &AcpClient {
+        &self.acp_client
+    }
+
+    /// Get the CLI agent configuration
+    pub fn config(&self) -> &CliAgentConfig {
+        &self.config
     }
 }
 

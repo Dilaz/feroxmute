@@ -1,20 +1,28 @@
 //! Provider factory for creating LLM provider instances
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::{ProviderConfig, ProviderName};
 use crate::state::MetricsTracker;
 use crate::{Error, Result};
 
+use super::cli_agent::{CliAgentConfig, CliAgentProvider, CliAgentType};
 use super::{
     AnthropicProvider, AzureProvider, CohereProvider, DeepSeekProvider, GeminiProvider,
     LlmProvider, MiraProvider, OllamaProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
 };
 
 /// Create a provider from configuration
+///
+/// # Arguments
+/// * `config` - Provider configuration (name, model, api_key, etc.)
+/// * `metrics` - Metrics tracker for token usage and costs
+/// * `working_dir` - Working directory for CLI agent providers (optional, required for CLI agents)
 pub fn create_provider(
     config: &ProviderConfig,
     metrics: MetricsTracker,
+    working_dir: Option<PathBuf>,
 ) -> Result<Arc<dyn LlmProvider>> {
     match config.name {
         ProviderName::Anthropic => {
@@ -147,6 +155,31 @@ pub fn create_provider(
             };
             Ok(Arc::new(provider))
         }
+        // CLI agent providers
+        ProviderName::ClaudeCode => {
+            let working_dir = working_dir.ok_or_else(|| {
+                Error::Provider("CLI agent providers require a working directory".to_string())
+            })?;
+            let cli_config = CliAgentConfig::new(CliAgentType::ClaudeCode);
+            let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::Codex => {
+            let working_dir = working_dir.ok_or_else(|| {
+                Error::Provider("CLI agent providers require a working directory".to_string())
+            })?;
+            let cli_config = CliAgentConfig::new(CliAgentType::Codex);
+            let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
+            Ok(Arc::new(provider))
+        }
+        ProviderName::GeminiCli => {
+            let working_dir = working_dir.ok_or_else(|| {
+                Error::Provider("CLI agent providers require a working directory".to_string())
+            })?;
+            let cli_config = CliAgentConfig::new(CliAgentType::GeminiCli);
+            let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
+            Ok(Arc::new(provider))
+        }
     }
 }
 
@@ -168,7 +201,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
 
         // Restore
@@ -190,7 +223,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
 
         if let Some(key) = original {
@@ -211,7 +244,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
 
         if let Some(key) = original {
@@ -233,7 +266,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
         if let Err(err) = result {
             assert!(err.to_string().contains("base_url"));
@@ -261,7 +294,7 @@ mod tests {
             api_key: Some("test-key-from-config".to_string()),
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
 
         if let Some(key) = original {
@@ -282,7 +315,7 @@ mod tests {
             api_key: Some("test-key-from-config".to_string()),
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
 
         if let Some(key) = original {
@@ -307,7 +340,7 @@ mod tests {
             api_key: Some("test-key-from-config".to_string()),
             base_url: Some("http://localhost:4000".to_string()),
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
 
         // SAFETY: Tests run single-threaded
@@ -330,7 +363,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
     }
 
@@ -342,7 +375,7 @@ mod tests {
             api_key: None,
             base_url: Some("http://custom:11434".to_string()),
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
     }
 }

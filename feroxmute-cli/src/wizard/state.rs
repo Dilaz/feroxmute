@@ -562,6 +562,10 @@ impl WizardState {
             ProviderName::Mira => "mira",
             ProviderName::LiteLlm => "litellm",
             ProviderName::Ollama => "ollama",
+            // CLI agent providers
+            ProviderName::ClaudeCode => "claude-code",
+            ProviderName::Codex => "codex",
+            ProviderName::GeminiCli => "gemini-cli",
         };
 
         #[allow(clippy::unnecessary_lazy_evaluations)]
@@ -581,6 +585,10 @@ impl WizardState {
                 ProviderName::Mira => "mira-chat",
                 ProviderName::LiteLlm => "openai/gpt-4o",
                 ProviderName::Ollama => "llama3.2",
+                // CLI agent providers (default models)
+                ProviderName::ClaudeCode => "claude-opus-4.5",
+                ProviderName::Codex => "gpt-5.2",
+                ProviderName::GeminiCli => "gemini-3-pro",
             });
 
         let mut toml = String::new();
