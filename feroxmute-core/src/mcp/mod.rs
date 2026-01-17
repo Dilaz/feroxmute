@@ -4,6 +4,7 @@
 
 mod protocol;
 mod server;
+pub mod tools;
 mod transport;
 
 pub use protocol::*;
