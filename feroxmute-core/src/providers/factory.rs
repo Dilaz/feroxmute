@@ -13,6 +13,23 @@ use super::{
     LlmProvider, MiraProvider, OllamaProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
 };
 
+/// Helper to create CLI agent providers (reduces duplication)
+fn create_cli_agent(
+    agent_type: CliAgentType,
+    working_dir: Option<PathBuf>,
+    metrics: MetricsTracker,
+) -> Result<Arc<dyn LlmProvider>> {
+    let working_dir = working_dir.ok_or_else(|| {
+        Error::Provider(format!(
+            "CLI agent provider '{:?}' requires a working directory",
+            agent_type
+        ))
+    })?;
+    let cli_config = CliAgentConfig::new(agent_type);
+    let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
+    Ok(Arc::new(provider))
+}
+
 /// Create a provider from configuration
 ///
 /// # Arguments
@@ -157,29 +174,10 @@ pub fn create_provider(
         }
         // CLI agent providers
         ProviderName::ClaudeCode => {
-            let working_dir = working_dir.ok_or_else(|| {
-                Error::Provider("CLI agent providers require a working directory".to_string())
-            })?;
-            let cli_config = CliAgentConfig::new(CliAgentType::ClaudeCode);
-            let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
-            Ok(Arc::new(provider))
+            create_cli_agent(CliAgentType::ClaudeCode, working_dir, metrics)
         }
-        ProviderName::Codex => {
-            let working_dir = working_dir.ok_or_else(|| {
-                Error::Provider("CLI agent providers require a working directory".to_string())
-            })?;
-            let cli_config = CliAgentConfig::new(CliAgentType::Codex);
-            let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
-            Ok(Arc::new(provider))
-        }
-        ProviderName::GeminiCli => {
-            let working_dir = working_dir.ok_or_else(|| {
-                Error::Provider("CLI agent providers require a working directory".to_string())
-            })?;
-            let cli_config = CliAgentConfig::new(CliAgentType::GeminiCli);
-            let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
-            Ok(Arc::new(provider))
-        }
+        ProviderName::Codex => create_cli_agent(CliAgentType::Codex, working_dir, metrics),
+        ProviderName::GeminiCli => create_cli_agent(CliAgentType::GeminiCli, working_dir, metrics),
     }
 }
 
@@ -377,5 +375,41 @@ mod tests {
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cli_agent_requires_working_dir() {
+        // Claude Code should fail without working_dir
+        let config = ProviderConfig {
+            name: ProviderName::ClaudeCode,
+            model: "claude-opus-4.5".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new(), None);
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert!(err.to_string().contains("working directory"));
+        }
+
+        // Codex should also fail without working_dir
+        let config = ProviderConfig {
+            name: ProviderName::Codex,
+            model: "gpt-5.2".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new(), None);
+        assert!(result.is_err());
+
+        // GeminiCli should also fail without working_dir
+        let config = ProviderConfig {
+            name: ProviderName::GeminiCli,
+            model: "gemini-3-pro".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new(), None);
+        assert!(result.is_err());
     }
 }

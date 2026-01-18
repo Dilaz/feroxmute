@@ -67,13 +67,18 @@ pub struct Args {
     #[arg(long)]
     pub rate_limit: Option<u32>,
 
-    /// LLM provider (anthropic, openai, litellm)
+    /// LLM provider (anthropic, openai, gemini, cohere, xai, deepseek, azure,
+    /// perplexity, mira, ollama, litellm, claude-code, codex, gemini-cli)
     #[arg(long)]
     pub provider: Option<String>,
 
     /// Model to use
     #[arg(long)]
     pub model: Option<String>,
+
+    /// Path to CLI agent binary (for claude-code, codex, gemini-cli providers)
+    #[arg(long, value_name = "PATH")]
+    pub cli_path: Option<PathBuf>,
 
     /// Output directory for session
     #[arg(short, long)]

@@ -1,0 +1,83 @@
+//! Integration tests for CLI agent providers
+
+use feroxmute_core::providers::{CliAgentConfig, CliAgentType};
+use std::path::PathBuf;
+
+#[test]
+fn test_cli_agent_config_defaults() {
+    let config = CliAgentConfig::new(CliAgentType::ClaudeCode);
+    assert_eq!(config.model, "claude-opus-4.5");
+    assert_eq!(config.binary_path, PathBuf::from("claude"));
+
+    let config = CliAgentConfig::new(CliAgentType::Codex);
+    assert_eq!(config.model, "gpt-5.2");
+    assert_eq!(config.binary_path, PathBuf::from("codex"));
+
+    let config = CliAgentConfig::new(CliAgentType::GeminiCli);
+    assert_eq!(config.model, "gemini-3-pro");
+    assert_eq!(config.binary_path, PathBuf::from("gemini"));
+}
+
+#[test]
+fn test_cli_agent_provider_name() {
+    assert_eq!(CliAgentType::ClaudeCode.provider_name(), "claude-code");
+    assert_eq!(CliAgentType::Codex.provider_name(), "codex");
+    assert_eq!(CliAgentType::GeminiCli.provider_name(), "gemini-cli");
+}
+
+#[test]
+fn test_cli_agent_binary_names() {
+    assert_eq!(CliAgentType::ClaudeCode.default_binary(), "claude");
+    assert_eq!(CliAgentType::Codex.default_binary(), "codex");
+    assert_eq!(CliAgentType::GeminiCli.default_binary(), "gemini");
+}
+
+#[test]
+fn test_cli_agent_default_models() {
+    assert_eq!(CliAgentType::ClaudeCode.default_model(), "claude-opus-4.5");
+    assert_eq!(CliAgentType::Codex.default_model(), "gpt-5.2");
+    assert_eq!(CliAgentType::GeminiCli.default_model(), "gemini-3-pro");
+}
+
+#[test]
+fn test_cli_agent_config_custom_binary_path() {
+    let config =
+        CliAgentConfig::new(CliAgentType::ClaudeCode).with_binary_path("/usr/local/bin/claude");
+
+    assert_eq!(config.binary_path, PathBuf::from("/usr/local/bin/claude"));
+    assert_eq!(config.model, "claude-opus-4.5");
+    assert_eq!(config.agent_type, CliAgentType::ClaudeCode);
+}
+
+#[test]
+fn test_cli_agent_config_custom_model() {
+    let config = CliAgentConfig::new(CliAgentType::ClaudeCode).with_model("claude-sonnet-4");
+
+    assert_eq!(config.model, "claude-sonnet-4");
+    assert_eq!(config.binary_path, PathBuf::from("claude"));
+}
+
+#[test]
+fn test_cli_agent_config_builder_chaining() {
+    let config = CliAgentConfig::new(CliAgentType::Codex)
+        .with_binary_path("/opt/codex/bin/codex")
+        .with_model("gpt-5.0");
+
+    assert_eq!(config.binary_path, PathBuf::from("/opt/codex/bin/codex"));
+    assert_eq!(config.model, "gpt-5.0");
+    assert_eq!(config.agent_type, CliAgentType::Codex);
+}
+
+#[test]
+fn test_cli_agent_auth_hints() {
+    assert_eq!(CliAgentType::ClaudeCode.auth_hint(), "claude login");
+    assert_eq!(CliAgentType::Codex.auth_hint(), "codex auth");
+    assert_eq!(CliAgentType::GeminiCli.auth_hint(), "gemini auth");
+}
+
+#[test]
+fn test_cli_agent_type_equality() {
+    assert_eq!(CliAgentType::ClaudeCode, CliAgentType::ClaudeCode);
+    assert_ne!(CliAgentType::ClaudeCode, CliAgentType::Codex);
+    assert_ne!(CliAgentType::Codex, CliAgentType::GeminiCli);
+}
