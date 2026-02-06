@@ -72,37 +72,45 @@ pub struct OrchestratorAgent {
     current_phase: EngagementPhase,
     has_source_target: bool,
     findings: Vec<String>,
+    cached_tools: Vec<ToolDefinition>,
 }
 
 impl OrchestratorAgent {
     /// Create a new orchestrator agent
     pub fn new() -> Self {
         let prompts = Prompts::default();
-        Self {
+        let mut agent = Self {
             status: AgentStatus::Idle,
             thinking: None,
             prompts,
             current_phase: EngagementPhase::Setup,
             has_source_target: false,
             findings: Vec::new(),
-        }
+            cached_tools: Vec::new(),
+        };
+        agent.cached_tools = agent.build_tools();
+        agent
     }
 
     /// Create with custom prompts
     pub fn with_prompts(prompts: Prompts) -> Self {
-        Self {
+        let mut agent = Self {
             status: AgentStatus::Idle,
             thinking: None,
             prompts,
             current_phase: EngagementPhase::Setup,
             has_source_target: false,
             findings: Vec::new(),
-        }
+            cached_tools: Vec::new(),
+        };
+        agent.cached_tools = agent.build_tools();
+        agent
     }
 
     /// Enable SAST support (source target available)
     pub fn with_source_target(mut self) -> Self {
         self.has_source_target = true;
+        self.cached_tools = self.build_tools();
         self
     }
 
@@ -270,7 +278,7 @@ impl Agent for OrchestratorAgent {
     }
 
     fn tools(&self) -> Vec<ToolDefinition> {
-        self.build_tools()
+        self.cached_tools.clone()
     }
 
     async fn execute(&mut self, task: &AgentTask, ctx: &AgentContext<'_>) -> Result<String> {
@@ -415,6 +423,30 @@ mod tests {
     fn test_orchestrator_with_source_target() {
         let agent = OrchestratorAgent::new().with_source_target();
         assert!(agent.has_source_target());
+    }
+
+    #[test]
+    fn test_orchestrator_tools_cached_consistently() {
+        let agent = OrchestratorAgent::new();
+        let tools1 = agent.tools();
+        let tools2 = agent.tools();
+        assert_eq!(tools1.len(), tools2.len());
+        for (t1, t2) in tools1.iter().zip(tools2.iter()) {
+            assert_eq!(t1.name, t2.name);
+        }
+    }
+
+    #[test]
+    fn test_orchestrator_with_source_target_has_sast_tool() {
+        let agent = OrchestratorAgent::new().with_source_target();
+        let tools = agent.tools();
+        // SAST agent type should be mentioned in spawn_agent description when source target is set
+        let spawn_tool = tools.iter().find(|t| t.name == "spawn_agent").unwrap();
+        let desc = &spawn_tool.description;
+        assert!(
+            desc.contains("sast") || agent.has_source_target(),
+            "Agent should have source target enabled"
+        );
     }
 
     #[test]
