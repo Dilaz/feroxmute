@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use crate::providers::{CompletionRequest, Message, ToolDefinition};
+use crate::state::ReconFinding;
 use crate::{Error, Result};
 
 use super::{Agent, AgentContext, AgentStatus, AgentTask, Prompts};
@@ -186,6 +187,25 @@ impl ReconAgent {
                     "required": ["domain"]
                 }),
             },
+            ToolDefinition {
+                name: "record_recon_finding".to_string(),
+                description: "Record a reconnaissance finding (subdomain, IP, port, service, technology, endpoint, certificate, email, etc). Call this for every discovery.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "finding_type": {
+                            "type": "string",
+                            "enum": ["subdomain", "ip", "port", "service", "technology", "endpoint", "certificate", "email", "dns_record", "other"],
+                            "description": "Type of reconnaissance finding"
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": "The discovered value (e.g., 'api.example.com', '443/tcp', 'nginx/1.25')"
+                        }
+                    },
+                    "required": ["finding_type", "value"]
+                }),
+            },
         ]
     }
 }
@@ -258,6 +278,33 @@ impl Agent for ReconAgent {
                     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
                         .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
 
+                    // Handle record_recon_finding specially (no shell execution)
+                    if tool_call.name == "record_recon_finding" {
+                        let finding_type = args
+                            .get("finding_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("other");
+                        let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                        let finding = ReconFinding::new(finding_type, value, "recon-agent")
+                            .with_target(ctx.target);
+                        if let Err(e) = finding.insert(ctx.conn) {
+                            tracing::warn!("Failed to persist recon finding: {}", e);
+                        }
+                        let tool_result = format!("Recorded {} finding: {}", finding_type, value);
+                        messages.push(Message::assistant(format!(
+                            "Tool {} executed. Result:\n{}",
+                            tool_call.name, tool_result
+                        )));
+                        messages.push(Message::user(
+                            "Continue with the reconnaissance or report findings.",
+                        ));
+                        result.push_str(&format!(
+                            "\n## {} Output\n{}\n",
+                            tool_call.name, tool_result
+                        ));
+                        continue;
+                    }
+
                     // Build command arguments based on tool
                     let cmd_args = self.build_command_args(&tool_call.name, &args);
 
@@ -274,6 +321,16 @@ impl Agent for ReconAgent {
 
                     // Add tool result to messages
                     let tool_result = execution.output.unwrap_or_else(|| "No output".to_string());
+
+                    // Persist raw tool output as recon finding
+                    let finding =
+                        ReconFinding::new("tool_output", &tool_call.name, &tool_call.name)
+                            .with_raw_output(&tool_result)
+                            .with_target(ctx.target);
+                    if let Err(e) = finding.insert(ctx.conn) {
+                        tracing::warn!("Failed to persist recon tool output: {}", e);
+                    }
+
                     messages.push(Message::assistant(format!(
                         "Tool {} executed. Result:\n{}",
                         tool_call.name, tool_result
@@ -476,6 +533,16 @@ mod tests {
         assert!(cmd.contains(&"example.com".to_string()));
         assert!(cmd.contains(&"-silent".to_string()));
         assert!(cmd.contains(&"-json".to_string()));
+    }
+
+    #[test]
+    fn test_recon_has_record_finding_tool() {
+        let agent = ReconAgent::new();
+        let tools = agent.tools();
+        assert!(
+            tools.iter().any(|t| t.name == "record_recon_finding"),
+            "Recon agent should have record_recon_finding tool"
+        );
     }
 
     #[test]
