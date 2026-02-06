@@ -110,6 +110,8 @@ pub struct AgentContext<'a> {
     pub conn: &'a Connection,
     /// Target host being tested
     pub target: &'a str,
+    /// Session identifier (unique per engagement)
+    pub session_id: &'a str,
 }
 
 impl<'a> AgentContext<'a> {
@@ -119,12 +121,14 @@ impl<'a> AgentContext<'a> {
         executor: &'a ToolExecutor,
         conn: &'a Connection,
         target: &'a str,
+        session_id: &'a str,
     ) -> Self {
         Self {
             provider,
             executor,
             conn,
             target,
+            session_id,
         }
     }
 }
