@@ -54,7 +54,7 @@ impl<'a> TextInput<'a> {
         let display_value = if self.value.is_empty() {
             Span::styled(self.placeholder, Style::default().fg(Color::DarkGray))
         } else if self.masked {
-            Span::raw("•".repeat(self.value.len()))
+            Span::raw("•".repeat(self.value.chars().count()))
         } else {
             Span::raw(self.value)
         };
@@ -75,7 +75,10 @@ impl<'a> TextInput<'a> {
 
         // Show cursor when focused
         if self.focused && !self.value.is_empty() {
-            let cursor_x = area.x + 1 + self.cursor_pos.min(self.value.len()) as u16;
+            let char_count = self.value.chars().count();
+            // When masked, each char is displayed as one "•" character
+            // When unmasked, cursor_pos maps to display chars directly (ASCII assumption for TUI)
+            let cursor_x = area.x + 1 + self.cursor_pos.min(char_count) as u16;
             let cursor_y = area.y + 1;
             frame.set_cursor_position((cursor_x, cursor_y));
         } else if self.focused && self.value.is_empty() {

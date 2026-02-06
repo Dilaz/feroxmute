@@ -557,12 +557,11 @@ pub fn render_review(frame: &mut Frame, state: &WizardState) {
         feroxmute_core::config::ProviderName::Ollama => "Ollama",
     };
 
-    let api_key_display = if state.data.api_key.len() > 8 {
-        format!(
-            "{}...{}",
-            &state.data.api_key[..4],
-            &state.data.api_key[state.data.api_key.len() - 4..]
-        )
+    let api_key_chars: Vec<char> = state.data.api_key.chars().collect();
+    let api_key_display = if api_key_chars.len() > 8 {
+        let first4: String = api_key_chars[..4].iter().collect();
+        let last4: String = api_key_chars[api_key_chars.len() - 4..].iter().collect();
+        format!("{}...{}", first4, last4)
     } else {
         "****".to_string()
     };
