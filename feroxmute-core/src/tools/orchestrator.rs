@@ -4,6 +4,10 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
+/// Default agent execution timeout (30 minutes)
+const AGENT_TIMEOUT_SECS: u64 = 1800;
 
 use rig::completion::ToolDefinition;
 use rig::tool::Tool;
@@ -375,12 +379,18 @@ impl Tool for SpawnAgentTool {
                     session_db_path,
                 });
 
-                let output = match provider
-                    .complete_with_report(&full_prompt, &target, report_context)
-                    .await
+                let output = match tokio::time::timeout(
+                    Duration::from_secs(AGENT_TIMEOUT_SECS),
+                    provider.complete_with_report(&full_prompt, &target, report_context),
+                )
+                .await
                 {
-                    Ok(out) => out,
-                    Err(e) => format!("Error: {}", e),
+                    Ok(Ok(out)) => out,
+                    Ok(Err(e)) => format!("Error: {}", e),
+                    Err(_) => format!(
+                        "Error: Agent timed out after {} seconds",
+                        AGENT_TIMEOUT_SECS
+                    ),
                 };
 
                 let success = !output.starts_with("Error:");
@@ -400,8 +410,9 @@ impl Tool for SpawnAgentTool {
             tokio::spawn(async move {
                 let start = std::time::Instant::now();
 
-                let output = match provider
-                    .complete_with_shell(
+                let output = match tokio::time::timeout(
+                    Duration::from_secs(AGENT_TIMEOUT_SECS),
+                    provider.complete_with_shell(
                         &full_prompt,
                         &target,
                         container,
@@ -409,11 +420,16 @@ impl Tool for SpawnAgentTool {
                         &agent_name,
                         limitations,
                         memory,
-                    )
-                    .await
+                    ),
+                )
+                .await
                 {
-                    Ok(out) => out,
-                    Err(e) => format!("Error: {}", e),
+                    Ok(Ok(out)) => out,
+                    Ok(Err(e)) => format!("Error: {}", e),
+                    Err(_) => format!(
+                        "Error: Agent timed out after {} seconds",
+                        AGENT_TIMEOUT_SECS
+                    ),
                 };
 
                 let success = !output.starts_with("Error:");
