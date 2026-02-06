@@ -1,7 +1,5 @@
 //! Data models for feroxmute state
 
-#![allow(clippy::unwrap_used)]
-
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, Row, params};
 use serde::{Deserialize, Serialize};
@@ -151,10 +149,11 @@ impl Host {
             "SELECT id, address, hostname, discovered_at FROM hosts ORDER BY discovered_at",
         )?;
 
-        let hosts = stmt
-            .query_map([], |row| Ok(Self::from_row(row).unwrap()))?
-            .filter_map(|r| r.ok())
-            .collect();
+        let mut rows = stmt.query([])?;
+        let mut hosts = Vec::new();
+        while let Some(row) = rows.next()? {
+            hosts.push(Self::from_row(row)?);
+        }
 
         Ok(hosts)
     }
@@ -231,25 +230,24 @@ impl Port {
              FROM ports WHERE host_id = ?1 ORDER BY port",
         )?;
 
-        let ports = stmt
-            .query_map([host_id], |row| {
-                let discovered_at_str: String = row.get(6)?;
-                let discovered_at = DateTime::parse_from_rfc3339(&discovered_at_str)
-                    .unwrap()
-                    .with_timezone(&Utc);
+        let mut rows = stmt.query([host_id])?;
+        let mut ports = Vec::new();
+        while let Some(row) = rows.next()? {
+            let discovered_at_str: String = row.get(6)?;
+            let discovered_at = DateTime::parse_from_rfc3339(&discovered_at_str)
+                .map_err(|e| crate::Error::Config(e.to_string()))?
+                .with_timezone(&Utc);
 
-                Ok(Self {
-                    id: row.get(0)?,
-                    host_id: row.get(1)?,
-                    port: row.get(2)?,
-                    protocol: row.get(3)?,
-                    service: row.get(4)?,
-                    state: row.get(5)?,
-                    discovered_at,
-                })
-            })?
-            .filter_map(|r| r.ok())
-            .collect();
+            ports.push(Self {
+                id: row.get(0)?,
+                host_id: row.get(1)?,
+                port: row.get(2)?,
+                protocol: row.get(3)?,
+                service: row.get(4)?,
+                state: row.get(5)?,
+                discovered_at,
+            });
+        }
 
         Ok(ports)
     }
@@ -291,7 +289,7 @@ impl Vulnerability {
                     .to_string()
                     .split('-')
                     .next()
-                    .unwrap()
+                    .unwrap_or_default()
                     .to_uppercase()
             ),
             host_id: None,
@@ -410,10 +408,11 @@ impl Vulnerability {
                 END"
         )?;
 
-        let vulns = stmt
-            .query_map([], |row| Ok(Self::from_row(row)))?
-            .filter_map(|r| r.ok())
-            .collect();
+        let mut rows = stmt.query([])?;
+        let mut vulns = Vec::new();
+        while let Some(row) = rows.next()? {
+            vulns.push(Self::from_row(row)?);
+        }
 
         Ok(vulns)
     }
@@ -442,36 +441,39 @@ impl Vulnerability {
         Ok(counts)
     }
 
-    fn from_row(row: &Row) -> Self {
-        let severity_str: String = row.get(3).unwrap();
-        let status_str: String = row.get(7).unwrap();
-        let discovered_at_str: String = row.get(14).unwrap();
-        let verified_at_str: Option<String> = row.get(15).unwrap();
+    fn from_row(row: &Row) -> Result<Self> {
+        let severity_str: String = row.get(3)?;
+        let status_str: String = row.get(7)?;
+        let discovered_at_str: String = row.get(14)?;
+        let verified_at_str: Option<String> = row.get(15)?;
 
-        Self {
-            id: row.get(0).unwrap(),
-            host_id: row.get(1).unwrap(),
-            vuln_type: row.get(2).unwrap(),
-            severity: severity_str.parse().unwrap(),
-            title: row.get(4).unwrap(),
-            description: row.get(5).unwrap(),
-            evidence: row.get(6).unwrap(),
-            status: status_str.parse().unwrap(),
-            cwe: row.get(8).unwrap(),
-            cvss: row.get(9).unwrap(),
-            asset: row.get(10).unwrap(),
-            remediation: row.get(11).unwrap(),
-            discovered_by: row.get(12).unwrap(),
-            verified_by: row.get(13).unwrap(),
+        Ok(Self {
+            id: row.get(0)?,
+            host_id: row.get(1)?,
+            vuln_type: row.get(2)?,
+            severity: severity_str
+                .parse()
+                .map_err(|e: String| crate::Error::Config(e))?,
+            title: row.get(4)?,
+            description: row.get(5)?,
+            evidence: row.get(6)?,
+            status: status_str
+                .parse()
+                .map_err(|e: String| crate::Error::Config(e))?,
+            cwe: row.get(8)?,
+            cvss: row.get(9)?,
+            asset: row.get(10)?,
+            remediation: row.get(11)?,
+            discovered_by: row.get(12)?,
+            verified_by: row.get(13)?,
             discovered_at: DateTime::parse_from_rfc3339(&discovered_at_str)
-                .unwrap()
+                .map_err(|e| crate::Error::Config(e.to_string()))?
                 .with_timezone(&Utc),
-            verified_at: verified_at_str.map(|s| {
-                DateTime::parse_from_rfc3339(&s)
-                    .unwrap()
-                    .with_timezone(&Utc)
-            }),
-        }
+            verified_at: verified_at_str
+                .map(|s| DateTime::parse_from_rfc3339(&s).map(|dt| dt.with_timezone(&Utc)))
+                .transpose()
+                .map_err(|e| crate::Error::Config(e.to_string()))?,
+        })
     }
 }
 
@@ -541,7 +543,14 @@ impl CodeFinding {
         tool: impl Into<String>,
     ) -> Self {
         Self {
-            id: format!("CODE-{}", &Uuid::new_v4().to_string()[..8]),
+            id: format!(
+                "CODE-{}",
+                Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap_or_default()
+            ),
             file_path: file_path.into(),
             line_number: None,
             severity,
@@ -975,7 +984,14 @@ pub struct CodeEndpoint {
 impl CodeEndpoint {
     pub fn new(route: impl Into<String>, handler_file: impl Into<String>) -> Self {
         Self {
-            id: format!("EP-{}", &Uuid::new_v4().to_string()[..8]),
+            id: format!(
+                "EP-{}",
+                Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap_or_default()
+            ),
             route: route.into(),
             method: None,
             handler_file: handler_file.into(),
