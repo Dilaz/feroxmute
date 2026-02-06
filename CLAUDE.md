@@ -149,6 +149,13 @@ cargo add serde --features derive    # Add with features
 cargo add tokio -p feroxmute-core    # Add to specific crate
 ```
 
+### Build & Test Requirements
+
+- Always run `cargo build` and `cargo test` after making changes to Rust code
+- After dependency updates (`cargo update` or manual Cargo.toml edits), verify the project compiles before committing
+- Be cautious with major version upgrades (e.g., framework or core library bumps) — they often require significant config rewrites
+- When updating crate dependencies, check for breaking API changes before bulk-updating
+
 ### Pre-Commit Requirements
 
 Before every commit, you MUST:
@@ -161,9 +168,24 @@ Before every commit, you MUST:
 cargo fmt && cargo clippy --fix --allow-dirty && cargo build
 ```
 
+### Git Workflow
+
+- Always use git worktrees for refactoring or multi-step changes: `git worktree add ../<worktree-name> -b <branch-name>`
+- Never work directly on main for large changes
+- Commit in logical, well-organized chunks rather than one monolithic commit
+
 ### Code Quality
 
 - **Keep files focused and small.** If a file exceeds ~300-400 lines, consider refactoring into smaller modules.
 - **Refactor proactively.** Don't let technical debt accumulate—clean up as you go.
 - **Optimize for developer experience.** Code should be easy to read, navigate, and modify.
 - **Use clear module boundaries.** Each module should have a single responsibility.
+- After completing implementation tasks, review code for: case sensitivity issues, incomplete AST traversal, stale test output, and incorrect API assumptions.
+- When using subagents, verify they don't revert previously completed work.
+- Run clippy with strict settings: `cargo clippy -- -D warnings`
+
+### Debugging Approach
+
+- When diagnosing issues, form a hypothesis and verify it before pivoting — avoid chasing red herrings.
+- For infrastructure issues, check for conflicting services (DNS conflicts, port conflicts) first.
+- Don't apply changes via kubectl directly if ArgoCD manages the resource.
