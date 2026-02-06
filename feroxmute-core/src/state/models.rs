@@ -680,6 +680,117 @@ impl CodeFinding {
     }
 }
 
+/// A finding from reconnaissance
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReconFinding {
+    pub id: String,
+    pub finding_type: String,
+    pub value: String,
+    pub tool: String,
+    pub raw_output: Option<String>,
+    pub target: Option<String>,
+    pub discovered_at: DateTime<Utc>,
+}
+
+impl ReconFinding {
+    pub fn new(
+        finding_type: impl Into<String>,
+        value: impl Into<String>,
+        tool: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: format!(
+                "RECON-{}",
+                Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap_or_default()
+                    .to_uppercase()
+            ),
+            finding_type: finding_type.into(),
+            value: value.into(),
+            tool: tool.into(),
+            raw_output: None,
+            target: None,
+            discovered_at: Utc::now(),
+        }
+    }
+
+    pub fn with_raw_output(mut self, output: impl Into<String>) -> Self {
+        self.raw_output = Some(output.into());
+        self
+    }
+
+    pub fn with_target(mut self, target: impl Into<String>) -> Self {
+        self.target = Some(target.into());
+        self
+    }
+
+    pub fn insert(&self, conn: &Connection) -> Result<()> {
+        conn.execute(
+            "INSERT INTO recon_findings (id, finding_type, value, tool, raw_output, target, discovered_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                self.id,
+                self.finding_type,
+                self.value,
+                self.tool,
+                self.raw_output,
+                self.target,
+                self.discovered_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn all(conn: &Connection) -> Result<Vec<Self>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, finding_type, value, tool, raw_output, target, discovered_at
+             FROM recon_findings ORDER BY discovered_at",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut findings = Vec::new();
+        while let Some(row) = rows.next()? {
+            findings.push(Self {
+                id: row.get(0)?,
+                finding_type: row.get(1)?,
+                value: row.get(2)?,
+                tool: row.get(3)?,
+                raw_output: row.get(4)?,
+                target: row.get(5)?,
+                discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            });
+        }
+        Ok(findings)
+    }
+
+    pub fn by_type(conn: &Connection, finding_type: &str) -> Result<Vec<Self>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, finding_type, value, tool, raw_output, target, discovered_at
+             FROM recon_findings WHERE finding_type = ?1 ORDER BY discovered_at",
+        )?;
+        let mut rows = stmt.query([finding_type])?;
+        let mut findings = Vec::new();
+        while let Some(row) = rows.next()? {
+            findings.push(Self {
+                id: row.get(0)?,
+                finding_type: row.get(1)?,
+                value: row.get(2)?,
+                tool: row.get(3)?,
+                raw_output: row.get(4)?,
+                target: row.get(5)?,
+                discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now()),
+            });
+        }
+        Ok(findings)
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
@@ -965,6 +1076,58 @@ mod tests {
         assert_eq!(found.parameters, params);
         assert_eq!(found.auth_required, Some(false));
         assert_eq!(found.handler_line, Some(120));
+    }
+
+    #[test]
+    fn test_recon_finding_crud() {
+        let conn = setup_db();
+
+        let finding = ReconFinding::new("subdomain", "api.example.com", "subfinder");
+        finding.insert(&conn).expect("insert recon finding");
+
+        let findings = ReconFinding::all(&conn).expect("query all");
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].finding_type, "subdomain");
+        assert_eq!(findings[0].value, "api.example.com");
+        assert_eq!(findings[0].tool, "subfinder");
+    }
+
+    #[test]
+    fn test_recon_finding_by_type() {
+        let conn = setup_db();
+
+        ReconFinding::new("subdomain", "api.example.com", "subfinder")
+            .insert(&conn)
+            .expect("insert 1");
+        ReconFinding::new("subdomain", "admin.example.com", "subfinder")
+            .insert(&conn)
+            .expect("insert 2");
+        ReconFinding::new("port", "443/tcp", "naabu")
+            .insert(&conn)
+            .expect("insert 3");
+
+        let subdomains = ReconFinding::by_type(&conn, "subdomain").expect("query");
+        assert_eq!(subdomains.len(), 2);
+
+        let ports = ReconFinding::by_type(&conn, "port").expect("query");
+        assert_eq!(ports.len(), 1);
+    }
+
+    #[test]
+    fn test_recon_finding_with_raw_output() {
+        let conn = setup_db();
+
+        let finding = ReconFinding::new("subdomain", "api.example.com", "subfinder")
+            .with_raw_output("subfinder output here")
+            .with_target("example.com");
+        finding.insert(&conn).expect("insert");
+
+        let findings = ReconFinding::all(&conn).expect("query");
+        assert_eq!(
+            findings[0].raw_output,
+            Some("subfinder output here".to_string())
+        );
+        assert_eq!(findings[0].target, Some("example.com".to_string()));
     }
 }
 
