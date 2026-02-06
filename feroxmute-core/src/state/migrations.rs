@@ -6,6 +6,11 @@ use crate::Result;
 
 /// Run all migrations on the database
 pub fn run_migrations(conn: &Connection) -> Result<()> {
+    // Enable WAL mode for better concurrent access
+    conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+    // Set busy timeout to handle concurrent writes gracefully
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+
     conn.execute_batch(super::schema::SCHEMA)?;
 
     // Initialize metrics if not exists
