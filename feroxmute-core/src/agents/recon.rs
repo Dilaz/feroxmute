@@ -206,6 +206,20 @@ impl ReconAgent {
                     "required": ["finding_type", "value"]
                 }),
             },
+            ToolDefinition {
+                name: "complete_task".to_string(),
+                description: "Call this when reconnaissance is complete and you have gathered all findings. Provide a brief summary of what was discovered.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "Brief summary of reconnaissance findings"
+                        }
+                    },
+                    "required": ["summary"]
+                }),
+            },
         ]
     }
 }
@@ -278,6 +292,17 @@ impl Agent for ReconAgent {
                     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
                         .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
 
+                    // Handle complete_task — agent signals it's done
+                    if tool_call.name == "complete_task" {
+                        let summary = args
+                            .get("summary")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Reconnaissance complete");
+                        result.push_str(&format!("\n## Summary\n{}\n", summary));
+                        self.status = AgentStatus::Completed;
+                        return Ok(result);
+                    }
+
                     // Handle record_recon_finding specially (no shell execution)
                     if tool_call.name == "record_recon_finding" {
                         let finding_type = args
@@ -349,16 +374,9 @@ impl Agent for ReconAgent {
                 self.thinking = Some("Analyzing results...".to_string());
                 result.push_str(&format!("\n## Analysis\n{}\n", content));
 
-                // Check if the LLM indicates completion
-                if content.to_lowercase().contains("reconnaissance complete")
-                    || content.to_lowercase().contains("findings summary")
-                {
-                    break;
-                }
-
                 messages.push(Message::assistant(&content));
                 messages.push(Message::user(
-                    "Continue with additional reconnaissance or provide a summary.",
+                    "Continue with additional reconnaissance or call complete_task when done.",
                 ));
             } else {
                 break;
@@ -533,6 +551,16 @@ mod tests {
         assert!(cmd.contains(&"example.com".to_string()));
         assert!(cmd.contains(&"-silent".to_string()));
         assert!(cmd.contains(&"-json".to_string()));
+    }
+
+    #[test]
+    fn test_recon_has_complete_task_tool() {
+        let agent = ReconAgent::new();
+        let tools = agent.tools();
+        assert!(
+            tools.iter().any(|t| t.name == "complete_task"),
+            "Recon agent should have complete_task tool"
+        );
     }
 
     #[test]

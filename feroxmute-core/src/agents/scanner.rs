@@ -182,6 +182,20 @@ impl ScannerAgent {
                 }),
             },
             ToolDefinition {
+                name: "complete_task".to_string(),
+                description: "Call this when scanning is complete. Provide a summary of vulnerabilities found.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "Brief summary of scanning results and vulnerabilities found"
+                        }
+                    },
+                    "required": ["summary"]
+                }),
+            },
+            ToolDefinition {
                 name: "get_playbook".to_string(),
                 description: "Retrieve detailed vulnerability testing playbook for a specific category. Returns techniques, tools, payloads, and bypass methods.".to_string(),
                 parameters: json!({
@@ -267,6 +281,28 @@ impl Agent for ScannerAgent {
                     // Parse arguments
                     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
                         .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
+
+                    // Handle complete_task — agent signals it's done
+                    if tool_call.name == "complete_task" {
+                        let summary = args
+                            .get("summary")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Scan complete");
+                        result.push_str(&format!("\n## Summary\n{}\n", summary));
+                        self.status = AgentStatus::Completed;
+                        // Add vulnerability summary before returning
+                        if !vulnerabilities_found.is_empty() {
+                            result.push_str("\n## Vulnerability Summary\n");
+                            result.push_str(&format!(
+                                "Total vulnerabilities found: {}\n",
+                                vulnerabilities_found.len()
+                            ));
+                            for (i, vuln) in vulnerabilities_found.iter().enumerate() {
+                                result.push_str(&format!("\n{}. {}\n", i + 1, vuln));
+                            }
+                        }
+                        return Ok(result);
+                    }
 
                     // Handle report_vulnerability specially
                     if tool_call.name == "report_vulnerability" {
@@ -365,16 +401,9 @@ impl Agent for ScannerAgent {
                 self.thinking = Some("Analyzing scan results...".to_string());
                 result.push_str(&format!("\n## Analysis\n{}\n", content));
 
-                // Check if the LLM indicates completion
-                if content.to_lowercase().contains("scan complete")
-                    || content.to_lowercase().contains("vulnerability summary")
-                {
-                    break;
-                }
-
                 messages.push(Message::assistant(&content));
                 messages.push(Message::user(
-                    "Continue scanning or provide a summary of findings.",
+                    "Continue scanning or call complete_task when done.",
                 ));
             } else {
                 break;
@@ -551,6 +580,16 @@ mod tests {
         assert!(tools.iter().any(|t| t.name == "sqlmap"));
         assert!(tools.iter().any(|t| t.name == "report_vulnerability"));
         assert!(tools.iter().any(|t| t.name == "get_playbook"));
+    }
+
+    #[test]
+    fn test_scanner_has_complete_task_tool() {
+        let agent = ScannerAgent::new();
+        let tools = agent.tools();
+        assert!(
+            tools.iter().any(|t| t.name == "complete_task"),
+            "Scanner agent should have complete_task tool"
+        );
     }
 
     #[test]
