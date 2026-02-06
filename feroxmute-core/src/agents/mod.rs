@@ -12,7 +12,7 @@ pub mod traits;
 pub use orchestrator::{EngagementPhase, OrchestratorAgent};
 pub use prompts::Prompts;
 pub use recon::ReconAgent;
-pub use registry::{AgentRegistry, AgentResult, SpawnedAgent};
+pub use registry::{AgentRegistry, AgentResult, AgentResultWaiter, SpawnedAgent};
 pub use report::ReportAgent;
 pub use sast::SastAgent;
 pub use scanner::ScannerAgent;
