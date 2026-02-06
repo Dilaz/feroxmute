@@ -10,6 +10,8 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     // Set busy timeout to handle concurrent writes gracefully
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    // Enable foreign key constraint enforcement
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
     conn.execute_batch(super::schema::SCHEMA)?;
 
@@ -47,6 +49,17 @@ mod tests {
         assert!(tables.contains(&"vulnerabilities".to_string()));
         assert!(tables.contains(&"agent_tasks".to_string()));
         assert!(tables.contains(&"scratch_pad".to_string()));
+    }
+
+    #[test]
+    fn test_foreign_keys_enabled() {
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("migrations should succeed");
+
+        let fk_enabled: bool = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .expect("should query pragma");
+        assert!(fk_enabled, "foreign_keys should be enabled after migrations");
     }
 
     #[test]
