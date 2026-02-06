@@ -23,10 +23,14 @@ impl CliAgentType {
     }
 
     /// Get the default binary name
+    ///
+    /// Note: Codex does not speak ACP natively — the `codex-acp` adapter
+    /// binary (maintained by Zed Industries) translates between ACP and
+    /// Codex's internal protocol.
     pub fn default_binary(&self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude-code-acp",
-            Self::Codex => "codex",
+            Self::Codex => "codex-acp",
             Self::GeminiCli => "gemini",
         }
     }
@@ -44,7 +48,7 @@ impl CliAgentType {
     pub fn auth_hint(&self) -> &'static str {
         match self {
             Self::ClaudeCode => "claude login",
-            Self::Codex => "codex auth",
+            Self::Codex => "set OPENAI_API_KEY or CODEX_API_KEY env var",
             Self::GeminiCli => "gemini auth",
         }
     }
@@ -96,7 +100,10 @@ mod tests {
     fn test_default_models() {
         assert_eq!(CliAgentType::ClaudeCode.default_model(), "claude-opus-4.5");
         assert_eq!(CliAgentType::Codex.default_model(), "gpt-5.2");
-        assert_eq!(CliAgentType::GeminiCli.default_model(), "gemini-3-flash-preview");
+        assert_eq!(
+            CliAgentType::GeminiCli.default_model(),
+            "gemini-3-flash-preview"
+        );
     }
 
     #[test]

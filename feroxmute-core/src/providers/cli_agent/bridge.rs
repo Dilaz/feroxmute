@@ -10,17 +10,17 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use acp::Agent; // Required for initialize, prompt, new_session, cancel
 use agent_client_protocol as acp;
-use serde_json::{json, Value};
+use futures::io::AsyncWriteExt;
+use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
-use futures::io::AsyncWriteExt;
 
 use super::config::{CliAgentConfig, CliAgentType};
 use crate::Result;
@@ -456,10 +456,7 @@ async fn command_loop(
                 }
                 Some(Connection::Gemini(conn)) => {
                     let _ = conn
-                        .call(
-                            "session/cancel",
-                            json!({ "sessionId": session_id.0 }),
-                        )
+                        .call("session/cancel", json!({ "sessionId": session_id.0 }))
                         .await;
                 }
                 None => {}
@@ -502,9 +499,7 @@ async fn handle_gemini_request(
                 .and_then(|opts| {
                     // Prefer permanent allow by `kind`, then temporary allow, then first
                     opts.iter()
-                        .find(|o| {
-                            o.get("kind").and_then(|v| v.as_str()) == Some("allow_always")
-                        })
+                        .find(|o| o.get("kind").and_then(|v| v.as_str()) == Some("allow_always"))
                         .or_else(|| {
                             opts.iter().find(|o| {
                                 o.get("kind").and_then(|v| v.as_str()) == Some("allow_once")
@@ -549,24 +544,77 @@ async fn handle_gemini_request(
 }
 
 /// Handle a notification (no `id`) from Gemini CLI.
+///
+/// Supports two JSON shapes for the `update` field:
+///
+/// 1. **ACP spec tagged enum** (standard): discriminator in `sessionUpdate` field
+///    ```json
+///    {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "..."}}
+///    ```
+///
+/// 2. **Nested object**: variant name is a key wrapping the payload
+///    ```json
+///    {"agentMessageChunk": {"content": {"text": "..."}}}
+///    ```
 fn handle_gemini_notification(
     method: &str,
     val: &Value,
     collector: &Rc<RefCell<ResponseCollector>>,
     event_tx: &mpsc::UnboundedSender<AcpEvent>,
 ) {
-    if method == "session/notification" {
-        if let Some(params) = val.get("params") {
-            let session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if let Some(update) = params.get("update") {
-                if let Some(msg) = update.get("agentMessageChunk")
-                    && let Some(content) = msg.get("content")
-                    && let Some(text) = content.get("text")
-                    && let Some(text_str) = text.as_str()
-                {
+    if method != "session/update" && method != "session/notification" {
+        tracing::trace!("Gemini notification: {method}");
+        return;
+    }
+
+    let Some(params) = val.get("params") else {
+        return;
+    };
+    let session_id = params
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let Some(update) = params.get("update") else {
+        return;
+    };
+
+    // Detect which format: check for `sessionUpdate` tag (ACP spec) or nested keys
+    let update_type = update
+        .get("sessionUpdate")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    match update_type {
+        // ACP spec tagged format: content fields are inline in `update`
+        "agent_message_chunk" => {
+            if let Some(text_str) = extract_content_text(update) {
+                collector
+                    .borrow_mut()
+                    .add_content(session_id, text_str.to_string());
+                let _ = event_tx.send(AcpEvent::AgentMessage {
+                    session_id: session_id.to_string(),
+                    text: text_str.to_string(),
+                });
+            }
+        }
+        "agent_thought_chunk" => {
+            if let Some(text_str) = extract_content_text(update) {
+                let _ = event_tx.send(AcpEvent::AgentThought {
+                    session_id: session_id.to_string(),
+                    text: text_str.to_string(),
+                });
+            }
+        }
+        "tool_call" => {
+            emit_tool_call_started(update, session_id, event_tx);
+        }
+        "tool_call_update" => {
+            emit_tool_call_completed(update, session_id, event_tx);
+        }
+        _ => {
+            // Try nested object format (fallback)
+            if let Some(msg) = update.get("agentMessageChunk") {
+                if let Some(text_str) = extract_content_text(msg) {
                     collector
                         .borrow_mut()
                         .add_content(session_id, text_str.to_string());
@@ -574,46 +622,80 @@ fn handle_gemini_notification(
                         session_id: session_id.to_string(),
                         text: text_str.to_string(),
                     });
-                } else if let Some(thought) = update.get("agentThoughtChunk")
-                    && let Some(content) = thought.get("content")
-                    && let Some(text) = content.get("text")
-                    && let Some(text_str) = text.as_str()
-                {
+                }
+            } else if let Some(thought) = update.get("agentThoughtChunk") {
+                if let Some(text_str) = extract_content_text(thought) {
                     let _ = event_tx.send(AcpEvent::AgentThought {
                         session_id: session_id.to_string(),
                         text: text_str.to_string(),
                     });
-                } else if let Some(tool_call) = update.get("toolCall") {
-                    let _ = event_tx.send(AcpEvent::ToolCallStarted {
-                        session_id: session_id.to_string(),
-                        title: tool_call
-                            .get("title")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                        tool_call_id: tool_call
-                            .get("toolCallId")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    });
-                } else if let Some(tool_update) = update.get("toolCallUpdate")
-                    && let Some(fields) = tool_update.get("fields")
-                    && fields.get("status").and_then(|v| v.as_str()) == Some("completed")
-                {
-                    let _ = event_tx.send(AcpEvent::ToolCallCompleted {
-                        session_id: session_id.to_string(),
-                        tool_call_id: tool_update
-                            .get("toolCallId")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string(),
-                    });
                 }
+            } else if update.get("toolCall").is_some() {
+                emit_tool_call_started(
+                    update.get("toolCall").unwrap_or(update),
+                    session_id,
+                    event_tx,
+                );
+            } else if update.get("toolCallUpdate").is_some() {
+                emit_tool_call_completed(
+                    update.get("toolCallUpdate").unwrap_or(update),
+                    session_id,
+                    event_tx,
+                );
+            } else {
+                tracing::trace!("Unrecognized Gemini update: {update}");
             }
         }
-    } else {
-        tracing::trace!("Gemini notification: {method}");
+    }
+}
+
+/// Extract text from a content chunk (handles both `content.text` and `content.type=text` shapes).
+fn extract_content_text(obj: &Value) -> Option<&str> {
+    obj.get("content")
+        .and_then(|c| c.get("text"))
+        .and_then(|t| t.as_str())
+}
+
+fn emit_tool_call_started(
+    obj: &Value,
+    session_id: &str,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+) {
+    let _ = event_tx.send(AcpEvent::ToolCallStarted {
+        session_id: session_id.to_string(),
+        title: obj
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        tool_call_id: obj
+            .get("toolCallId")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+    });
+}
+
+fn emit_tool_call_completed(
+    obj: &Value,
+    session_id: &str,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+) {
+    // For tagged format, status is inline; for nested format, it's in `fields`
+    let status = obj
+        .get("status")
+        .or_else(|| obj.get("fields").and_then(|f| f.get("status")))
+        .and_then(|v| v.as_str());
+
+    if status == Some("completed") {
+        let _ = event_tx.send(AcpEvent::ToolCallCompleted {
+            session_id: session_id.to_string(),
+            tool_call_id: obj
+                .get("toolCallId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        });
     }
 }
 
@@ -702,8 +784,7 @@ async fn do_connect(
 
                 // Distinguish responses (result/error) from requests/notifications (method).
                 // A JSON-RPC response has `result` or `error`; a request has `method`.
-                let is_response =
-                    val.get("result").is_some() || val.get("error").is_some();
+                let is_response = val.get("result").is_some() || val.get("error").is_some();
                 let has_method = val.get("method").is_some();
 
                 if is_response && !has_method {
@@ -717,8 +798,7 @@ async fn do_connect(
                                 error
                             ))));
                         } else {
-                            let _ = tx
-                                .send(Ok(val.get("result").cloned().unwrap_or(Value::Null)));
+                            let _ = tx.send(Ok(val.get("result").cloned().unwrap_or(Value::Null)));
                         }
                     } else {
                         tracing::warn!("Gemini response for unknown id: {}", val);
@@ -732,12 +812,7 @@ async fn do_connect(
                         handle_gemini_request(method, &val, &stdin_clone).await;
                     } else {
                         // Notification — no response needed
-                        handle_gemini_notification(
-                            method,
-                            &val,
-                            &collector_clone,
-                            &event_tx_clone,
-                        );
+                        handle_gemini_notification(method, &val, &collector_clone, &event_tx_clone);
                     }
                 } else {
                     tracing::warn!("Gemini stdout unrecognized message: {}", val);
@@ -774,10 +849,14 @@ async fn do_connect(
             collector: Rc::clone(collector),
         };
 
-        let (conn, io_task) =
-            acp::ClientSideConnection::new(delegate, stdin.compat_write(), stdout.compat(), |fut| {
+        let (conn, io_task) = acp::ClientSideConnection::new(
+            delegate,
+            stdin.compat_write(),
+            stdout.compat(),
+            |fut| {
                 tokio::task::spawn_local(fut);
-            });
+            },
+        );
 
         // Spawn IO task on the LocalSet
         tokio::task::spawn_local(async move {
@@ -819,16 +898,27 @@ struct AcpClientDelegate {
 impl acp::Client for AcpClientDelegate {
     async fn request_permission(
         &self,
-        _args: acp::RequestPermissionRequest,
+        args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
         // Auto-approve all tool calls — feroxmute handles its own permissions
-        // via the MCP tool layer. The optionId "allow_always" matches the
-        // claude-code-acp adapter's expected option so it adds an allow-rule
-        // for future calls to the same tool.
+        // via the MCP tool layer. Pick the best option from the agent's list:
+        // prefer AllowAlways > AllowOnce > first available.
+        let option_id = args
+            .options
+            .iter()
+            .find(|o| o.kind == acp::PermissionOptionKind::AllowAlways)
+            .or_else(|| {
+                args.options
+                    .iter()
+                    .find(|o| o.kind == acp::PermissionOptionKind::AllowOnce)
+            })
+            .or_else(|| args.options.first())
+            .map(|o| o.option_id.0.to_string())
+            .unwrap_or_else(|| "allow_always".to_string());
+
+        tracing::debug!("ACP request_permission auto-approved with '{option_id}'");
         Ok(acp::RequestPermissionResponse::new(
-            acp::RequestPermissionOutcome::Selected(acp::SelectedPermissionOutcome::new(
-                "allow_always",
-            )),
+            acp::RequestPermissionOutcome::Selected(acp::SelectedPermissionOutcome::new(option_id)),
         ))
     }
 

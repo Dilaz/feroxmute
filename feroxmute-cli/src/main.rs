@@ -254,7 +254,7 @@ async fn main() -> Result<()> {
                 ProviderName::Ollama => "OLLAMA_API_BASE_URL (optional, defaults to localhost:11434)",
                 // CLI agent providers don't use API keys - they use the CLI tool's auth
                 ProviderName::ClaudeCode => "Run 'claude login' to authenticate",
-                ProviderName::Codex => "Run 'codex auth' to authenticate",
+                ProviderName::Codex => "Set OPENAI_API_KEY or CODEX_API_KEY env var",
                 ProviderName::GeminiCli => "Run 'gemini auth' to authenticate",
             }
         )

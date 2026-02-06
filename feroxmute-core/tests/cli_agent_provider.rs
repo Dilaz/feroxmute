@@ -11,7 +11,7 @@ fn test_cli_agent_config_defaults() {
 
     let config = CliAgentConfig::new(CliAgentType::Codex);
     assert_eq!(config.model, "gpt-5.2");
-    assert_eq!(config.binary_path, PathBuf::from("codex"));
+    assert_eq!(config.binary_path, PathBuf::from("codex-acp"));
 
     let config = CliAgentConfig::new(CliAgentType::GeminiCli);
     assert_eq!(config.model, "gemini-3-flash-preview");
@@ -28,7 +28,7 @@ fn test_cli_agent_provider_name() {
 #[test]
 fn test_cli_agent_binary_names() {
     assert_eq!(CliAgentType::ClaudeCode.default_binary(), "claude-code-acp");
-    assert_eq!(CliAgentType::Codex.default_binary(), "codex");
+    assert_eq!(CliAgentType::Codex.default_binary(), "codex-acp");
     assert_eq!(CliAgentType::GeminiCli.default_binary(), "gemini");
 }
 
@@ -36,7 +36,10 @@ fn test_cli_agent_binary_names() {
 fn test_cli_agent_default_models() {
     assert_eq!(CliAgentType::ClaudeCode.default_model(), "claude-opus-4.5");
     assert_eq!(CliAgentType::Codex.default_model(), "gpt-5.2");
-    assert_eq!(CliAgentType::GeminiCli.default_model(), "gemini-3-flash-preview");
+    assert_eq!(
+        CliAgentType::GeminiCli.default_model(),
+        "gemini-3-flash-preview"
+    );
 }
 
 #[test]
@@ -71,7 +74,10 @@ fn test_cli_agent_config_builder_chaining() {
 #[test]
 fn test_cli_agent_auth_hints() {
     assert_eq!(CliAgentType::ClaudeCode.auth_hint(), "claude login");
-    assert_eq!(CliAgentType::Codex.auth_hint(), "codex auth");
+    assert_eq!(
+        CliAgentType::Codex.auth_hint(),
+        "set OPENAI_API_KEY or CODEX_API_KEY env var"
+    );
     assert_eq!(CliAgentType::GeminiCli.auth_hint(), "gemini auth");
 }
 
