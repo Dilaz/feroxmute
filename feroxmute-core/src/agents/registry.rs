@@ -226,6 +226,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_wait_for_any_no_deadlock_separate_locks() {
+        use std::sync::Arc;
+
+        let (registry, waiter) = AgentRegistry::new();
+        let registry = Arc::new(tokio::sync::Mutex::new(registry));
+        let waiter = Arc::new(tokio::sync::Mutex::new(waiter));
+
+        // Check registry first, then release, then check waiter
+        let running = {
+            let r = registry.lock().await;
+            r.running_count()
+        };
+        let has_pending = {
+            let w = waiter.lock().await;
+            w.has_pending()
+        };
+
+        assert_eq!(running, 0);
+        assert!(!has_pending);
+    }
+
+    #[tokio::test]
     async fn test_is_agent_running() {
         let (mut registry, _waiter) = AgentRegistry::new();
 

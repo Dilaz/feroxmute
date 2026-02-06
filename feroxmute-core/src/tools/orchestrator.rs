@@ -677,13 +677,18 @@ impl Tool for WaitForAnyTool {
             .events
             .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
 
-        // Brief lock: check if anything is running
-        let should_wait = {
+        // Acquire locks separately to prevent deadlock (never hold both simultaneously)
+        let has_running = {
             let registry = self.context.registry.lock().await;
-            let waiter = self.context.waiter.lock().await;
-            registry.running_count() > 0 || waiter.has_pending()
+            registry.running_count() > 0
         };
-        // Both locks released here
+        let has_pending = if !has_running {
+            let waiter = self.context.waiter.lock().await;
+            waiter.has_pending()
+        } else {
+            false
+        };
+        let should_wait = has_running || has_pending;
 
         let result = if should_wait {
             // Wait on the waiter (no registry lock held)
