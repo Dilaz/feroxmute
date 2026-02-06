@@ -70,7 +70,7 @@ pub struct Constraints {
 }
 
 /// Authentication configuration
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct AuthConfig {
     #[serde(default, rename = "type")]
     pub auth_type: AuthType,
@@ -82,8 +82,19 @@ pub struct AuthConfig {
     pub password: Option<String>,
 }
 
+impl std::fmt::Debug for AuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthConfig")
+            .field("auth_type", &self.auth_type)
+            .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("username", &self.username)
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .finish()
+    }
+}
+
 /// LLM provider configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     #[serde(default)]
     pub name: ProviderName,
@@ -92,6 +103,17 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     #[serde(default)]
     pub base_url: Option<String>,
+}
+
+impl std::fmt::Debug for ProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderConfig")
+            .field("name", &self.name)
+            .field("model", &self.model)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("base_url", &self.base_url)
+            .finish()
+    }
 }
 
 impl Default for ProviderConfig {
@@ -167,8 +189,9 @@ impl EngagementConfig {
     /// 2. ~/.feroxmute/config.toml (global defaults)
     /// 3. Built-in defaults
     pub fn load_default() -> Self {
-        // Try local config first
+        // Try local config first (warn: could be attacker-placed in CWD)
         if let Ok(config) = Self::from_file("feroxmute.toml") {
+            tracing::warn!("Loading configuration from local feroxmute.toml in current directory");
             return config;
         }
 
