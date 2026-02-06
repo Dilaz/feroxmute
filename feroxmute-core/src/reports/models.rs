@@ -26,7 +26,8 @@ impl RiskRating {
         } else if medium > 0 {
             Self::Medium
         } else {
-            Self::Low
+            // No critical, high, or medium findings
+            Self::Minimal
         }
     }
 }
@@ -259,7 +260,7 @@ mod tests {
         assert_eq!(RiskRating::from_counts(1, 0, 0), RiskRating::Critical);
         assert_eq!(RiskRating::from_counts(0, 1, 0), RiskRating::High);
         assert_eq!(RiskRating::from_counts(0, 0, 1), RiskRating::Medium);
-        assert_eq!(RiskRating::from_counts(0, 0, 0), RiskRating::Low);
+        assert_eq!(RiskRating::from_counts(0, 0, 0), RiskRating::Minimal);
     }
 
     #[test]

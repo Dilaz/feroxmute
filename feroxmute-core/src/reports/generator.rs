@@ -369,8 +369,16 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
         current_layer.use_text("EXECUTIVE SUMMARY", 11.0, x, y, &font_bold);
         y -= line_height;
 
-        let summary = if report.summary.executive_summary.len() > 200 {
-            format!("{}...", &report.summary.executive_summary[..200])
+        let summary = if report.summary.executive_summary.chars().count() > 200 {
+            format!(
+                "{}...",
+                report
+                    .summary
+                    .executive_summary
+                    .chars()
+                    .take(200)
+                    .collect::<String>()
+            )
         } else {
             report.summary.executive_summary.clone()
         };
@@ -474,7 +482,9 @@ fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
     let mut current_line = String::new();
 
     for word in text.split_whitespace() {
-        if current_line.len() + word.len() + 1 > max_chars && !current_line.is_empty() {
+        if current_line.chars().count() + word.chars().count() + 1 > max_chars
+            && !current_line.is_empty()
+        {
             lines.push(current_line);
             current_line = String::new();
         }
@@ -493,8 +503,11 @@ fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
 
 /// Truncate string to max length
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() > max {
-        format!("{}...", &s[..max.saturating_sub(3)])
+    if s.chars().count() > max {
+        format!(
+            "{}...",
+            s.chars().take(max.saturating_sub(3)).collect::<String>()
+        )
     } else {
         s.to_string()
     }

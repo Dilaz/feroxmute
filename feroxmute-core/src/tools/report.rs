@@ -303,7 +303,12 @@ impl Tool for ExportJsonTool {
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
-        let path = self.context.reports_dir.join(&args.filename);
+        let safe_name = std::path::Path::new(&args.filename)
+            .file_name()
+            .ok_or_else(|| {
+                ReportToolError::Export("Invalid filename: must not contain path separators".into())
+            })?;
+        let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
         self.context
@@ -391,7 +396,12 @@ impl Tool for ExportMarkdownTool {
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
-        let path = self.context.reports_dir.join(&args.filename);
+        let safe_name = std::path::Path::new(&args.filename)
+            .file_name()
+            .ok_or_else(|| {
+                ReportToolError::Export("Invalid filename: must not contain path separators".into())
+            })?;
+        let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
         self.context.events.send_feed(
@@ -481,7 +491,12 @@ impl Tool for ExportHtmlTool {
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
-        let path = self.context.reports_dir.join(&args.filename);
+        let safe_name = std::path::Path::new(&args.filename)
+            .file_name()
+            .ok_or_else(|| {
+                ReportToolError::Export("Invalid filename: must not contain path separators".into())
+            })?;
+        let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
         self.context
@@ -569,7 +584,12 @@ impl Tool for ExportPdfTool {
         let report_lock = self.context.report.lock().await;
         let report = report_lock.as_ref().ok_or(ReportToolError::NoReport)?;
 
-        let path = self.context.reports_dir.join(&args.filename);
+        let safe_name = std::path::Path::new(&args.filename)
+            .file_name()
+            .ok_or_else(|| {
+                ReportToolError::Export("Invalid filename: must not contain path separators".into())
+            })?;
+        let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
         self.context
