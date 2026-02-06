@@ -43,11 +43,19 @@ pub fn is_retriable_error(error_message: &str) -> bool {
 
     // HTTP status codes and messages that indicate transient issues
     let transient_patterns = [
-        // HTTP 5xx server errors
-        "500",
-        "502",
-        "503",
-        "504",
+        // HTTP 5xx server errors (use specific patterns to avoid false positives)
+        "status: 500",
+        "status: 502",
+        "status: 503",
+        "status: 504",
+        "status code 500",
+        "status code 502",
+        "status code 503",
+        "status code 504",
+        "http 500",
+        "http 502",
+        "http 503",
+        "http 504",
         "internal server error",
         "bad gateway",
         "service unavailable",

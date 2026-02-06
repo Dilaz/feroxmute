@@ -108,7 +108,7 @@ impl LlmProvider for AzureProvider {
         let estimated_input = prompt.len() as u64 / 4;
         let estimated_output = response.len() as u64 / 4;
         let pricing = PricingConfig::load();
-        let cost = pricing.calculate_cost("openai", &self.model, estimated_input, estimated_output);
+        let cost = pricing.calculate_cost("azure", &self.model, estimated_input, estimated_output);
         self.metrics
             .record_tokens(estimated_input, 0, estimated_output, cost);
 
