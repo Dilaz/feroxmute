@@ -106,6 +106,21 @@ impl ReportAgent {
                 }),
             },
             ToolDefinition {
+                name: "complete_task".to_string(),
+                description: "Call this when the report has been generated and exported."
+                    .to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "summary": {
+                            "type": "string",
+                            "description": "Brief summary of what was reported"
+                        }
+                    },
+                    "required": ["summary"]
+                }),
+            },
+            ToolDefinition {
                 name: "add_recommendation".to_string(),
                 description: "Add a recommendation to the report".to_string(),
                 parameters: json!({
@@ -187,6 +202,17 @@ impl Agent for ReportAgent {
                     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
                         .map_err(|e| Error::Provider(format!("Invalid tool arguments: {}", e)))?;
 
+                    // Handle complete_task — agent signals it's done
+                    if tool_call.name == "complete_task" {
+                        let summary = args
+                            .get("summary")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Report complete");
+                        result.push_str(&format!("\n## Summary\n{}\n", summary));
+                        self.status = AgentStatus::Completed;
+                        return Ok(result);
+                    }
+
                     let tool_result = match tool_call.name.as_str() {
                         "generate_report" => self.handle_generate_report(&args, ctx).await?,
                         "export_json" => self.handle_export_json(&args)?,
@@ -205,15 +231,10 @@ impl Agent for ReportAgent {
                 self.thinking = Some("Finalizing report...".to_string());
                 result.push_str(&format!("\n## Report Analysis\n{}\n", content));
 
-                // Check if done
-                if content.to_lowercase().contains("report complete")
-                    || content.to_lowercase().contains("report generated")
-                {
-                    break;
-                }
-
                 messages.push(Message::assistant(&content));
-                messages.push(Message::user("Continue or finalize the report."));
+                messages.push(Message::user(
+                    "Continue or call complete_task when the report is done.",
+                ));
             } else {
                 break;
             }
@@ -356,5 +377,15 @@ mod tests {
         assert!(tools.iter().any(|t| t.name == "export_json"));
         assert!(tools.iter().any(|t| t.name == "export_markdown"));
         assert!(tools.iter().any(|t| t.name == "add_recommendation"));
+    }
+
+    #[test]
+    fn test_report_has_complete_task_tool() {
+        let agent = ReportAgent::default();
+        let tools = agent.tools();
+        assert!(
+            tools.iter().any(|t| t.name == "complete_task"),
+            "Report agent should have complete_task tool"
+        );
     }
 }
