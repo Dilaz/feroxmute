@@ -25,7 +25,7 @@ impl CliAgentType {
     /// Get the default binary name
     pub fn default_binary(&self) -> &'static str {
         match self {
-            Self::ClaudeCode => "claude",
+            Self::ClaudeCode => "claude-code-acp",
             Self::Codex => "codex",
             Self::GeminiCli => "gemini",
         }
@@ -36,7 +36,7 @@ impl CliAgentType {
         match self {
             Self::ClaudeCode => "claude-opus-4.5",
             Self::Codex => "gpt-5.2",
-            Self::GeminiCli => "gemini-3-pro",
+            Self::GeminiCli => "gemini-3-flash-preview",
         }
     }
 
@@ -96,7 +96,7 @@ mod tests {
     fn test_default_models() {
         assert_eq!(CliAgentType::ClaudeCode.default_model(), "claude-opus-4.5");
         assert_eq!(CliAgentType::Codex.default_model(), "gpt-5.2");
-        assert_eq!(CliAgentType::GeminiCli.default_model(), "gemini-3-pro");
+        assert_eq!(CliAgentType::GeminiCli.default_model(), "gemini-3-flash-preview");
     }
 
     #[test]

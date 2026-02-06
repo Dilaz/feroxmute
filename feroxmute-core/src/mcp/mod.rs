@@ -2,6 +2,7 @@
 //!
 //! Provides tools to CLI agents via the MCP protocol.
 
+pub mod http;
 mod protocol;
 mod server;
 pub mod tools;

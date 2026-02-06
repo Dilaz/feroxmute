@@ -1,95 +1,97 @@
 //! CLI Agent Provider implementation
 //!
-//! Wraps CLI-based coding agents (Claude Code, Codex, Gemini CLI) as LLM providers.
-//!
-//! NOTE: The ACP (Agent Client Protocol) library uses `spawn_local` which requires
-//! a single-threaded runtime. The current implementation provides the structure
-//! but actual ACP integration requires running in a LocalSet context.
+//! Wraps CLI-based coding agents (Claude Code, Codex, Gemini CLI) as LLM providers
+//! using the ACP bridge for thread-safe communication and an HTTP MCP server for
+//! tool access.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use chrono::Utc;
+use tokio::sync::{Mutex, OnceCell};
 
 use crate::Result;
 use crate::docker::ContainerManager;
 use crate::limitations::EngagementLimitations;
 use crate::mcp::McpServer;
+use crate::mcp::http::HttpMcpServer;
 use crate::mcp::tools::{
-    FindingContext, McpDockerShellTool, McpMemoryAddTool, McpMemoryGetTool, McpMemoryListTool,
-    McpRecordFindingTool,
+    FindingContext, McpAddRecommendationTool, McpCompleteEngagementTool, McpDockerShellTool,
+    McpExportHtmlTool, McpExportJsonTool, McpExportMarkdownTool, McpExportPdfTool,
+    McpGenerateReportTool, McpListAgentsTool, McpMemoryAddTool, McpMemoryGetTool,
+    McpMemoryListTool, McpRecordFindingTool, McpRunScriptTool, McpSpawnAgentTool,
+    McpWaitForAgentTool, McpWaitForAnyTool,
 };
 use crate::providers::traits::{CompletionRequest, CompletionResponse, LlmProvider};
 use crate::state::MetricsTracker;
 use crate::tools::{EventSender, MemoryContext, OrchestratorContext, ReportContext};
 
-use super::{AcpClient, CliAgentConfig};
+use super::bridge::AcpBridge;
+use super::config::CliAgentConfig;
 
-/// CLI Agent Provider that wraps CLI-based coding agents
+/// CLI Agent Provider that wraps CLI-based coding agents.
 ///
-/// This provider uses ACP (Agent Client Protocol) to communicate with CLI agents
-/// and MCP (Model Context Protocol) to expose feroxmute tools to the agent.
-///
-/// # LocalSet Requirement
-///
-/// The ACP library uses `spawn_local` internally, which requires running in a
-/// `tokio::task::LocalSet` context. The `LlmProvider` trait requires `Send` futures,
-/// making direct ACP calls from trait methods impossible. The `acp_client` field
-/// is provided for use in LocalSet contexts via `acp_client()` getter.
+/// Uses the [`AcpBridge`] for thread-safe ACP communication and an
+/// [`HttpMcpServer`] on localhost to expose feroxmute tools via MCP.
 pub struct CliAgentProvider {
-    /// Configuration for the CLI agent
     config: CliAgentConfig,
-    /// ACP client for communicating with the CLI agent
-    ///
-    /// NOTE: Can only be used in a LocalSet context due to `spawn_local` requirement.
-    /// Access via `acp_client()` and run operations in LocalSet::run_until.
-    acp_client: AcpClient,
-    /// MCP server for providing tools to the CLI agent
+    bridge: Arc<AcpBridge>,
     mcp_server: Arc<McpServer>,
-    /// Metrics tracker for token usage and costs
+    http_server: OnceCell<HttpMcpServer>,
     metrics: MetricsTracker,
-    /// Working directory for agent operations
     working_dir: PathBuf,
-    /// Path to MCP config file for CLI agent
-    mcp_config_path: PathBuf,
+    /// Tracks whether we have already connected the bridge.
+    connected: Mutex<bool>,
 }
 
 impl CliAgentProvider {
-    /// Create a new CLI agent provider
+    /// Create a new CLI agent provider.
     ///
-    /// # Arguments
-    /// * `config` - CLI agent configuration
-    /// * `working_dir` - Working directory for the CLI agent
-    /// * `metrics` - Metrics tracker for usage statistics
+    /// Spawns the ACP bridge thread immediately but does **not** connect to the
+    /// CLI agent until the first `complete_*` call.
     ///
     /// # Errors
-    /// Returns error if the CLI binary is not found
-    pub fn new(
-        config: CliAgentConfig,
-        working_dir: PathBuf,
-        metrics: MetricsTracker,
-    ) -> Result<Self> {
-        // Create ACP client and check binary availability
-        let acp_client = AcpClient::new(config.clone());
-        acp_client.check_binary()?;
-
-        // Create MCP server for providing tools
+    ///
+    /// Returns error if the CLI binary is not found on `$PATH`.
+    pub fn new(config: CliAgentConfig, working_dir: PathBuf, metrics: MetricsTracker) -> Self {
+        let bridge = Arc::new(AcpBridge::new(config.clone()));
         let mcp_server = Arc::new(McpServer::new("feroxmute", env!("CARGO_PKG_VERSION")));
 
-        // MCP config path in the working directory
-        let mcp_config_path = working_dir.join(".feroxmute-mcp.json");
-
-        Ok(Self {
+        Self {
             config,
-            acp_client,
+            bridge,
             mcp_server,
+            http_server: OnceCell::new(),
             metrics,
             working_dir,
-            mcp_config_path,
-        })
+            connected: Mutex::new(false),
+        }
     }
 
-    /// Register shell tools for specialist agents (recon, scanner, etc.)
+    /// Ensure the HTTP MCP server is running, returning its base URL.
+    async fn ensure_http_server(&self) -> Result<String> {
+        let http = self
+            .http_server
+            .get_or_try_init(|| async { HttpMcpServer::start(Arc::clone(&self.mcp_server)).await })
+            .await?;
+        Ok(http.url())
+    }
+
+    /// Connect the bridge if not already connected.
+    ///
+    /// MCP servers are passed per-session via `NewSessionRequest.mcp_servers`
+    /// rather than via CLI args, so connection is independent of MCP config.
+    async fn ensure_connected(&self) -> Result<()> {
+        let mut connected = self.connected.lock().await;
+        if !*connected {
+            self.bridge.connect(&self.working_dir).await?;
+            *connected = true;
+        }
+        Ok(())
+    }
+
+    /// Register shell tools (docker_shell, memory, finding, script) on the MCP server.
     async fn register_shell_tools(
         &self,
         container: Arc<ContainerManager>,
@@ -98,7 +100,6 @@ impl CliAgentProvider {
         limitations: Arc<EngagementLimitations>,
         memory: Arc<MemoryContext>,
     ) {
-        // Register docker shell tool
         self.mcp_server
             .register_tool(Arc::new(McpDockerShellTool::new(
                 Arc::clone(&container),
@@ -108,7 +109,6 @@ impl CliAgentProvider {
             )))
             .await;
 
-        // Register memory tools
         self.mcp_server
             .register_tool(Arc::new(McpMemoryAddTool::new(Arc::clone(&memory))))
             .await;
@@ -119,78 +119,63 @@ impl CliAgentProvider {
             .register_tool(Arc::new(McpMemoryListTool::new(Arc::clone(&memory))))
             .await;
 
-        // Register finding tool with a context
         let finding_context = Arc::new(FindingContext {
             conn: Arc::clone(&memory.conn),
-            events,
+            events: Arc::clone(&events),
             agent_name: agent_name.to_string(),
         });
         self.mcp_server
             .register_tool(Arc::new(McpRecordFindingTool::new(finding_context)))
             .await;
+
+        self.mcp_server
+            .register_tool(Arc::new(McpRunScriptTool::new(
+                container,
+                events,
+                agent_name.to_string(),
+            )))
+            .await;
     }
 
-    /// Write MCP config file for the CLI agent to discover the MCP server
-    fn write_mcp_config(&self) -> Result<()> {
-        let config = serde_json::json!({
-            "mcpServers": {
-                "feroxmute": {
-                    "command": "feroxmute-mcp",
-                    "args": ["--stdio"],
-                    "env": {}
-                }
-            }
-        });
-
-        std::fs::write(
-            &self.mcp_config_path,
-            serde_json::to_string_pretty(&config)?,
-        )
-        .map_err(|e| crate::Error::Provider(format!("Failed to write MCP config: {}", e)))?;
-
-        tracing::debug!("Wrote MCP config to {}", self.mcp_config_path.display());
-        Ok(())
+    /// Register orchestrator tools on the MCP server.
+    async fn register_orchestrator_tools(&self, context: Arc<OrchestratorContext>) {
+        self.mcp_server
+            .register_tool(Arc::new(McpSpawnAgentTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpWaitForAgentTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpWaitForAnyTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpListAgentsTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpCompleteEngagementTool::new(context)))
+            .await;
     }
 
-    /// Get the working directory
-    pub fn working_dir(&self) -> &PathBuf {
-        &self.working_dir
-    }
-
-    /// Get the MCP config path
-    pub fn mcp_config_path(&self) -> &PathBuf {
-        &self.mcp_config_path
-    }
-
-    /// Get the MCP server
-    pub fn mcp_server(&self) -> &Arc<McpServer> {
-        &self.mcp_server
-    }
-
-    /// Get the ACP client for use in LocalSet contexts
-    ///
-    /// # Usage
-    ///
-    /// The ACP client requires a `LocalSet` context due to the use of `spawn_local`.
-    /// Use this getter to access the client, then run operations within a LocalSet:
-    ///
-    /// ```ignore
-    /// let local = tokio::task::LocalSet::new();
-    /// local.run_until(async {
-    ///     let client = provider.acp_client();
-    ///     client.connect(&working_dir, &mcp_config).await?;
-    ///     let session_id = client.new_session("agent", &working_dir).await?;
-    ///     let response = client.prompt(&session_id, "Hello").await?;
-    ///     Ok(())
-    /// }).await
-    /// ```
-    pub fn acp_client(&self) -> &AcpClient {
-        &self.acp_client
-    }
-
-    /// Get the CLI agent configuration
-    pub fn config(&self) -> &CliAgentConfig {
-        &self.config
+    /// Register report tools on the MCP server.
+    async fn register_report_tools(&self, context: Arc<ReportContext>) {
+        self.mcp_server
+            .register_tool(Arc::new(McpGenerateReportTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpExportJsonTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpExportMarkdownTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpExportHtmlTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpExportPdfTool::new(Arc::clone(&context))))
+            .await;
+        self.mcp_server
+            .register_tool(Arc::new(McpAddRecommendationTool::new(context)))
+            .await;
     }
 }
 
@@ -201,7 +186,6 @@ impl LlmProvider for CliAgentProvider {
     }
 
     fn supports_tools(&self) -> bool {
-        // Tools are provided via MCP
         true
     }
 
@@ -210,47 +194,47 @@ impl LlmProvider for CliAgentProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse> {
-        // NOTE: Full ACP integration requires running in a LocalSet context.
-        // This is a stub that logs the request and returns an error.
-        // See acp_client.rs for the actual ACP communication implementation.
+        // Connect and create session (no MCP tools needed for basic completion)
+        self.ensure_connected().await?;
 
-        let prompt_preview: String = request
+        let session_id = self
+            .bridge
+            .new_session("completion", &self.working_dir, None)
+            .await?;
+
+        let combined: String = request
             .messages
             .iter()
-            .map(|m| format!("{:?}: {}", m.role, &m.content[..m.content.len().min(100)]))
+            .map(|m| format!("{:?}: {}", m.role, m.content))
             .collect::<Vec<_>>()
-            .join("\n");
+            .join("\n\n");
 
-        tracing::warn!(
-            "CLI agent provider '{}' complete() called but ACP requires LocalSet context. Prompt preview: {}",
-            self.name(),
-            prompt_preview
-        );
+        let response = self.bridge.prompt(&session_id, &combined).await?;
 
-        // Return error indicating ACP needs LocalSet
-        Err(crate::Error::Provider(format!(
-            "CLI agent '{}' requires LocalSet runtime context for ACP communication. \
-             Use spawn_local or LocalSet::run_until to run CLI agent operations.",
-            self.name()
-        )))
+        Ok(CompletionResponse {
+            content: Some(response),
+            tool_calls: vec![],
+            stop_reason: crate::providers::traits::StopReason::EndTurn,
+            usage: crate::providers::traits::TokenUsage::default(),
+        })
     }
 
     async fn complete_with_shell(
         &self,
         system_prompt: &str,
-        _user_prompt: &str,
+        user_prompt: &str,
         container: Arc<ContainerManager>,
         events: Arc<dyn EventSender>,
         agent_name: &str,
         limitations: Arc<EngagementLimitations>,
         memory: Arc<MemoryContext>,
     ) -> Result<String> {
-        // Write MCP config for the CLI agent
-        self.write_mcp_config()?;
+        // 1. Start HTTP MCP server
+        let http_url = self.ensure_http_server().await?;
 
-        // Register shell tools for this agent
+        // 2. Register shell tools
         self.register_shell_tools(
-            Arc::clone(&container),
+            container,
             Arc::clone(&events),
             agent_name,
             limitations,
@@ -258,101 +242,138 @@ impl LlmProvider for CliAgentProvider {
         )
         .await;
 
+        // 3. Connect bridge
+        self.ensure_connected().await?;
+
         events.send_feed(
             agent_name,
             &format!(
-                "CLI agent '{}' initialized with MCP tools at {}",
+                "CLI agent '{}' connected with MCP tools at {}",
                 self.name(),
-                self.mcp_config_path.display()
+                http_url
             ),
             false,
         );
 
-        // NOTE: Full ACP integration requires running in a LocalSet context.
-        // The MCP tools are registered and the config is written, but actual
-        // CLI agent invocation needs to happen in a LocalSet.
+        // 4. Create session with MCP server and prompt
+        // ACP sends a single user message, so combine system instructions with the task.
+        let session_id = self
+            .bridge
+            .new_session(agent_name, &self.working_dir, Some(http_url))
+            .await?;
 
-        tracing::warn!(
-            "CLI agent provider complete_with_shell() called. System prompt: {}...",
-            &system_prompt[..system_prompt.len().min(100)]
-        );
+        let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
+        let response = self.bridge.prompt(&session_id, &combined_prompt).await?;
 
-        Err(crate::Error::Provider(format!(
-            "CLI agent '{}' requires LocalSet runtime context for ACP communication. \
-             MCP config written to {}. Tools registered: docker_shell, memory_*, record_finding",
-            self.name(),
-            self.mcp_config_path.display()
-        )))
+        Ok(response)
     }
 
     async fn complete_with_orchestrator(
         &self,
         system_prompt: &str,
-        _user_prompt: &str,
+        user_prompt: &str,
         context: Arc<OrchestratorContext>,
     ) -> Result<String> {
-        // Write MCP config
-        self.write_mcp_config()?;
+        // 1. Start HTTP MCP server
+        let http_url = self.ensure_http_server().await?;
+
+        // 2. Register all tools: shell + orchestrator + report
+        // For the orchestrator, register shell+memory for the orchestrator's own use,
+        // plus orchestrator tools for managing specialist agents.
+        let memory = Arc::clone(&context.memory);
+        self.register_shell_tools(
+            Arc::clone(&context.container),
+            Arc::clone(&context.events),
+            "orchestrator",
+            Arc::clone(&context.limitations),
+            memory,
+        )
+        .await;
+        self.register_orchestrator_tools(Arc::clone(&context)).await;
+
+        // Also register report tools so the orchestrator can delegate report generation
+        let report_context = Arc::new(ReportContext {
+            events: Arc::clone(&context.events),
+            target: context.target.clone(),
+            session_id: context.session_id.clone(),
+            start_time: Utc::now(),
+            metrics: MetricsTracker::new(),
+            findings: Arc::clone(&context.findings),
+            report: Arc::new(Mutex::new(None)),
+            reports_dir: context.reports_dir.clone(),
+        });
+        self.register_report_tools(report_context).await;
+
+        // 3. Connect bridge
+        self.ensure_connected().await?;
 
         context.events.send_feed(
             "orchestrator",
-            &format!("CLI agent '{}' initialized for orchestration", self.name()),
+            &format!(
+                "CLI agent '{}' connected for orchestration at {}",
+                self.name(),
+                http_url
+            ),
             false,
         );
 
-        tracing::warn!(
-            "CLI agent provider complete_with_orchestrator() called. Target: {}, System: {}...",
-            context.target,
-            &system_prompt[..system_prompt.len().min(100)]
-        );
+        // 4. Create session with MCP server and 30-minute timeout for orchestration
+        // ACP sends a single user message, so combine system instructions with the task.
+        // The user_prompt contains the actual target URL, engagement limitations, and workflow.
+        let session_id = self
+            .bridge
+            .new_session("orchestrator", &self.working_dir, Some(http_url))
+            .await?;
 
-        // For orchestrator mode, we'd need to expose orchestrator tools via MCP
-        // This is a complex integration that requires careful design
+        let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(1800),
+            self.bridge.prompt(&session_id, &combined_prompt),
+        )
+        .await
+        .map_err(|_| {
+            crate::Error::Provider("Orchestrator session timed out after 30 minutes".into())
+        })??;
 
-        Err(crate::Error::Provider(format!(
-            "CLI agent '{}' orchestrator mode requires LocalSet runtime context. \
-             Target: {}",
-            self.name(),
-            context.target
-        )))
+        Ok(response)
     }
 
     async fn complete_with_report(
         &self,
         system_prompt: &str,
-        _user_prompt: &str,
+        user_prompt: &str,
         context: Arc<ReportContext>,
     ) -> Result<String> {
-        // Write MCP config
-        self.write_mcp_config()?;
+        // 1. Start HTTP MCP server
+        let http_url = self.ensure_http_server().await?;
 
-        // Collect findings for the report prompt
-        let findings = context.findings.lock().await;
-        let findings_count = findings.len();
-        drop(findings);
+        // 2. Register report + memory tools
+        self.register_report_tools(Arc::clone(&context)).await;
+
+        // 3. Connect bridge
+        self.ensure_connected().await?;
 
         context.events.send_feed(
             "report",
             &format!(
-                "CLI agent '{}' initialized for report generation ({} findings)",
+                "CLI agent '{}' connected for report generation at {}",
                 self.name(),
-                findings_count
+                http_url
             ),
             false,
         );
 
-        tracing::warn!(
-            "CLI agent provider complete_with_report() called. Findings: {}, System: {}...",
-            findings_count,
-            &system_prompt[..system_prompt.len().min(100)]
-        );
+        // 4. Create session with MCP server and prompt
+        // ACP sends a single user message, so combine system instructions with the task.
+        let session_id = self
+            .bridge
+            .new_session("report", &self.working_dir, Some(http_url))
+            .await?;
 
-        Err(crate::Error::Provider(format!(
-            "CLI agent '{}' report mode requires LocalSet runtime context. \
-             Findings count: {}",
-            self.name(),
-            findings_count
-        )))
+        let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
+        let response = self.bridge.prompt(&session_id, &combined_prompt).await?;
+
+        Ok(response)
     }
 }
 
@@ -363,8 +384,6 @@ mod tests {
 
     #[test]
     fn test_provider_name() {
-        // We can't easily test the full provider without a real binary,
-        // but we can verify that CliAgentConfig provides the right name
         let config = CliAgentConfig::new(CliAgentType::ClaudeCode);
         assert_eq!(config.agent_type.provider_name(), "claude-code");
 
@@ -376,9 +395,11 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_supports_tools() {
-        // Provider should indicate it supports tools (via MCP)
-        // This is a design verification, not a runtime test
-        assert!(true, "CliAgentProvider.supports_tools() should return true");
+    fn test_provider_creation() {
+        let config = CliAgentConfig::new(CliAgentType::ClaudeCode);
+        let provider =
+            CliAgentProvider::new(config, PathBuf::from("/tmp/test"), MetricsTracker::new());
+        assert_eq!(provider.name(), "claude-code");
+        assert!(provider.supports_tools());
     }
 }

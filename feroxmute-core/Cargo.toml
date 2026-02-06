@@ -29,6 +29,8 @@ walkdir = "2"
 printpdf = "0.7"
 agent-client-protocol = { version = "0.9.3", features = ["unstable"] }
 which = "8.0.0"
+hyper-util.workspace = true
+http-body-util.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

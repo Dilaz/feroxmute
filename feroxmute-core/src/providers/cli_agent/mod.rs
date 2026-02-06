@@ -4,10 +4,10 @@
 //! - ACP (Agent Client Protocol) to drive the agent
 //! - MCP (Model Context Protocol) to provide feroxmute tools
 
-mod acp_client;
+mod bridge;
 mod config;
 mod provider;
 
-pub use acp_client::{AcpClient, AcpSession};
+pub use bridge::{AcpBridge, AcpEvent};
 pub use config::{CliAgentConfig, CliAgentType};
 pub use provider::CliAgentProvider;

@@ -215,6 +215,9 @@ async fn main() -> Result<()> {
             "perplexity" => ProviderName::Perplexity,
             "mira" => ProviderName::Mira,
             "ollama" => ProviderName::Ollama,
+            "claude-code" => ProviderName::ClaudeCode,
+            "codex" => ProviderName::Codex,
+            "gemini-cli" => ProviderName::GeminiCli,
             _ => ProviderName::Anthropic,
         })
         .unwrap_or_else(|| config.provider.name.clone());

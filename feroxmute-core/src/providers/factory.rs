@@ -26,7 +26,7 @@ fn create_cli_agent(
         ))
     })?;
     let cli_config = CliAgentConfig::new(agent_type);
-    let provider = CliAgentProvider::new(cli_config, working_dir, metrics)?;
+    let provider = CliAgentProvider::new(cli_config, working_dir, metrics);
     Ok(Arc::new(provider))
 }
 

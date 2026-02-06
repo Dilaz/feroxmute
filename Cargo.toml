@@ -37,7 +37,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # Docker
 bollard = "0.18"
 tar = "0.4"
-hyper = "1"
+hyper = { version = "1", features = ["http1", "server"] }
 
 # TUI
 ratatui = "0.29"
@@ -55,6 +55,8 @@ async-trait = "0.1"
 futures = "0.3"
 dirs = "5"
 backon = "1"
+hyper-util = { version = "0.1", features = ["tokio", "http1"] }
+http-body-util = "0.1"
 
 [workspace.lints.clippy]
 # Error handling & safety
