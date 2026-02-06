@@ -101,20 +101,19 @@ impl AgentRegistry {
         self.agents.get(name).map(|a| a.instructions.clone())
     }
 
-    /// Get count of running agents (any active state)
+    /// Get count of running agents (any non-terminal state)
     pub fn running_count(&self) -> usize {
         self.agents
             .values()
-            .filter(|a| {
-                matches!(
-                    a.status,
-                    AgentStatus::Thinking
-                        | AgentStatus::Streaming
-                        | AgentStatus::Executing
-                        | AgentStatus::Processing
-                )
-            })
+            .filter(|a| !matches!(a.status, AgentStatus::Completed | AgentStatus::Failed))
             .count()
+    }
+
+    /// Update an agent's status
+    pub fn update_status(&mut self, name: &str, status: AgentStatus) {
+        if let Some(agent) = self.agents.get_mut(name) {
+            agent.status = status;
+        }
     }
 
     /// Check if an agent is still running (not completed/failed)
@@ -245,6 +244,49 @@ mod tests {
 
         assert_eq!(running, 0);
         assert!(!has_pending);
+    }
+
+    #[tokio::test]
+    async fn test_running_count_includes_waiting_and_retrying() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+
+        let handle = tokio::spawn(async {});
+        registry.register(
+            "test-agent".to_string(),
+            "recon".to_string(),
+            "test instructions".to_string(),
+            handle,
+        );
+
+        // Default status is Streaming, should count
+        assert_eq!(registry.running_count(), 1);
+
+        // Waiting should still count as running
+        registry.update_status("test-agent", AgentStatus::Waiting);
+        assert_eq!(
+            registry.running_count(),
+            1,
+            "Waiting agents should be counted as running"
+        );
+        assert_eq!(registry.is_agent_running("test-agent"), Some(true));
+
+        // Retrying should still count as running
+        registry.update_status("test-agent", AgentStatus::Retrying);
+        assert_eq!(
+            registry.running_count(),
+            1,
+            "Retrying agents should be counted as running"
+        );
+        assert_eq!(registry.is_agent_running("test-agent"), Some(true));
+
+        // Completed should NOT count
+        registry.update_status("test-agent", AgentStatus::Completed);
+        assert_eq!(
+            registry.running_count(),
+            0,
+            "Completed agents should not be counted as running"
+        );
+        assert_eq!(registry.is_agent_running("test-agent"), Some(false));
     }
 
     #[tokio::test]
