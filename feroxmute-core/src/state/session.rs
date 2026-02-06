@@ -305,19 +305,38 @@ impl Session {
             .map_err(|e| Error::Config(format!("Invalid completed_agents JSON: {}", e)))
     }
 
-    /// Mark an agent as completed
+    /// Mark an agent as completed (atomic read-modify-write)
     pub fn mark_agent_completed(&self, agent_name: &str) -> Result<()> {
-        let mut agents = self.completed_agents()?;
-        if !agents.contains(&agent_name.to_string()) {
-            agents.push(agent_name.to_string());
-            let json_str = serde_json::to_string(&agents)
-                .map_err(|e| Error::Config(format!("Failed to serialize agents: {}", e)))?;
-            self.conn.execute(
-                "UPDATE session_state SET completed_agents = ?1, last_activity_at = datetime('now') WHERE id = 1",
-                [json_str],
+        self.conn.execute_batch("BEGIN EXCLUSIVE")?;
+        let result = (|| {
+            let json_str: String = self.conn.query_row(
+                "SELECT completed_agents FROM session_state WHERE id = 1",
+                [],
+                |row| row.get(0),
             )?;
+            let mut agents: Vec<String> = serde_json::from_str(&json_str)
+                .map_err(|e| Error::Config(format!("Invalid completed_agents JSON: {}", e)))?;
+            if !agents.contains(&agent_name.to_string()) {
+                agents.push(agent_name.to_string());
+                let new_json = serde_json::to_string(&agents)
+                    .map_err(|e| Error::Config(format!("Failed to serialize agents: {}", e)))?;
+                self.conn.execute(
+                    "UPDATE session_state SET completed_agents = ?1, last_activity_at = datetime('now') WHERE id = 1",
+                    [new_json],
+                )?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
         }
-        Ok(())
     }
 
     /// Get summary of findings by severity
@@ -566,6 +585,33 @@ mod tests {
             .expect("should mark");
         let agents = session.completed_agents().expect("should get agents");
         assert_eq!(agents.len(), 2);
+    }
+
+    #[test]
+    fn test_mark_agent_completed_preserves_all_agents() {
+        let temp = TempDir::new().expect("should create temp dir");
+        let config = test_config();
+        let session = Session::new(config, temp.path()).expect("should create session");
+
+        session.mark_agent_completed("recon").expect("mark recon");
+        session
+            .mark_agent_completed("scanner")
+            .expect("mark scanner");
+        session
+            .mark_agent_completed("exploit")
+            .expect("mark exploit");
+
+        let agents = session.completed_agents().expect("list");
+        assert!(agents.contains(&"recon".to_string()), "missing recon");
+        assert!(
+            agents.contains(&"scanner".to_string()),
+            "missing scanner"
+        );
+        assert!(
+            agents.contains(&"exploit".to_string()),
+            "missing exploit"
+        );
+        assert_eq!(agents.len(), 3);
     }
 
     #[test]
