@@ -10,9 +10,16 @@ use bollard::image::BuildImageOptions;
 use futures::StreamExt;
 use hyper::body::Bytes;
 use std::path::Path;
+use tokio::time::Duration;
 use tracing::{debug, info, warn};
 
 use crate::{Error, Result};
+
+/// Maximum output size in bytes (10MB)
+const MAX_OUTPUT_SIZE: usize = 10_485_760;
+
+/// Default exec timeout in seconds (10 minutes)
+const EXEC_TIMEOUT_SECS: u64 = 600;
 
 /// Container configuration
 pub struct ContainerConfig {
@@ -34,11 +41,18 @@ impl Default for ContainerConfig {
 }
 
 impl ContainerConfig {
-    /// Add a source directory mount for SAST analysis
+    /// Add a source directory mount for SAST analysis (read-only)
     pub fn with_source_mount(mut self, host_path: &str) -> Self {
-        // Mount source code at /source in the container
+        let path = Path::new(host_path);
+        if host_path == "/" {
+            warn!("Source mount path is root '/'; this is dangerous");
+        }
+        if !path.is_dir() {
+            warn!("Source mount path is not a directory: {}", host_path);
+        }
+        // Mount source code at /source in the container (read-only for safety)
         self.volumes
-            .push((host_path.to_string(), "/source".to_string()));
+            .push((host_path.to_string(), "/source:ro".to_string()));
         self
     }
 }
@@ -215,6 +229,9 @@ impl ContainerManager {
             binds: Some(binds),
             cap_add: Some(vec!["NET_ADMIN".to_string(), "NET_RAW".to_string()]),
             security_opt: Some(vec!["seccomp:unconfined".to_string()]),
+            memory: Some(4 * 1024 * 1024 * 1024), // 4GB memory limit
+            memory_swap: Some(4 * 1024 * 1024 * 1024), // No swap
+            pids_limit: Some(2048),               // Process limit
             ..Default::default()
         };
 
@@ -275,24 +292,63 @@ impl ContainerManager {
 
         let mut output = String::new();
         let mut stderr = String::new();
+        let mut total_size: usize = 0;
+        let mut truncated = false;
 
         if let StartExecResults::Attached {
             output: mut stream, ..
         } = self.docker.start_exec(&exec.id, None).await?
         {
-            while let Some(msg) = stream.next().await {
-                match msg {
-                    Ok(bollard::container::LogOutput::StdOut { message }) => {
-                        output.push_str(&String::from_utf8_lossy(&message));
+            // Wrap stream reading in a timeout to prevent hanging on unresponsive commands
+            let stream_result =
+                tokio::time::timeout(Duration::from_secs(EXEC_TIMEOUT_SECS), async {
+                    while let Some(msg) = stream.next().await {
+                        match msg {
+                            Ok(bollard::container::LogOutput::StdOut { message }) => {
+                                if !truncated {
+                                    let chunk = String::from_utf8_lossy(&message);
+                                    total_size += chunk.len();
+                                    if total_size > MAX_OUTPUT_SIZE {
+                                        truncated = true;
+                                        output
+                                            .push_str("\n[OUTPUT TRUNCATED - exceeded 10MB limit]");
+                                    } else {
+                                        output.push_str(&chunk);
+                                    }
+                                }
+                            }
+                            Ok(bollard::container::LogOutput::StdErr { message }) => {
+                                if !truncated {
+                                    let chunk = String::from_utf8_lossy(&message);
+                                    total_size += chunk.len();
+                                    if total_size > MAX_OUTPUT_SIZE {
+                                        truncated = true;
+                                        stderr
+                                            .push_str("\n[OUTPUT TRUNCATED - exceeded 10MB limit]");
+                                    } else {
+                                        stderr.push_str(&chunk);
+                                    }
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                warn!("Error reading exec output: {}", e);
+                            }
+                        }
                     }
-                    Ok(bollard::container::LogOutput::StdErr { message }) => {
-                        stderr.push_str(&String::from_utf8_lossy(&message));
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        warn!("Error reading exec output: {}", e);
-                    }
-                }
+                })
+                .await;
+
+            if stream_result.is_err() {
+                warn!(
+                    "Command execution timed out after {} seconds",
+                    EXEC_TIMEOUT_SECS
+                );
+                return Ok(ExecResult {
+                    stdout: output,
+                    stderr: format!("Command timed out after {} seconds", EXEC_TIMEOUT_SECS),
+                    exit_code: -1,
+                });
             }
         }
 

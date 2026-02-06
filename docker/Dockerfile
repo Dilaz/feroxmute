@@ -57,6 +57,9 @@ RUN uv tool install semgrep && \
     uv tool install bandit && \
     uv tool install pip-audit
 
+# Install opengrep (open-source semgrep fork with additional features)
+RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+
 # Install Go-based SAST tools
 RUN go install github.com/zricethezav/gitleaks/v8@latest && \
     go install golang.org/x/vuln/cmd/govulncheck@latest
