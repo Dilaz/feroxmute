@@ -1,5 +1,6 @@
 //! Report generation and export
 
+use std::collections::HashMap;
 use std::io::BufWriter;
 use std::path::Path;
 
@@ -8,7 +9,7 @@ use printpdf::{BuiltinFont, Mm, PdfDocument};
 use rusqlite::Connection;
 
 use crate::Result;
-use crate::state::{MetricsTracker, Vulnerability};
+use crate::state::{Metrics, MetricsTracker, Severity, Vulnerability};
 
 use super::models::{Finding, Report, ReportMetadata, ReportMetrics};
 
@@ -26,13 +27,14 @@ pub fn generate_report(
 
     let mut report = Report::new(metadata);
 
-    // Load metrics
+    // Load metrics: use max of in-memory tracker vs DB-persisted values
     let snapshot = metrics.snapshot();
+    let db_metrics = Metrics::load(conn).unwrap_or_default();
     report.metrics = ReportMetrics {
-        tool_calls: snapshot.tool_calls,
-        input_tokens: snapshot.tokens.input,
-        output_tokens: snapshot.tokens.output,
-        cache_read_tokens: snapshot.tokens.cached,
+        tool_calls: snapshot.tool_calls.max(db_metrics.tool_calls),
+        input_tokens: snapshot.tokens.input.max(db_metrics.tokens.input),
+        output_tokens: snapshot.tokens.output.max(db_metrics.tokens.output),
+        cache_read_tokens: snapshot.tokens.cached.max(db_metrics.tokens.cached),
         hosts_discovered: count_hosts(conn)?,
         ports_discovered: count_ports(conn)?,
     };
@@ -58,9 +60,111 @@ fn count_ports(conn: &Connection) -> Result<u32> {
     Ok(count)
 }
 
-/// Load vulnerabilities from database
+/// Load vulnerabilities from database, deduplicating by (title, severity)
 fn load_vulnerabilities(conn: &Connection) -> Result<Vec<Vulnerability>> {
-    Vulnerability::all(conn)
+    let vulns = Vulnerability::all(conn)?;
+    Ok(deduplicate_vulnerabilities(vulns))
+}
+
+/// Deduplicate vulnerabilities by grouping on (normalized title, severity).
+/// Merges evidence, remediation, and agent attribution from duplicates.
+fn deduplicate_vulnerabilities(vulns: Vec<Vulnerability>) -> Vec<Vulnerability> {
+    let mut groups: HashMap<(String, Severity), Vec<Vulnerability>> = HashMap::new();
+
+    for vuln in vulns {
+        let key = (vuln.title.trim().to_lowercase(), vuln.severity);
+        groups.entry(key).or_default().push(vuln);
+    }
+
+    let mut result: Vec<Vulnerability> = groups
+        .into_values()
+        .map(merge_vulnerability_group)
+        .collect();
+
+    // Re-sort by severity (critical first) to match the original ordering
+    result.sort_by_key(|v| match v.severity {
+        Severity::Critical => 0,
+        Severity::High => 1,
+        Severity::Medium => 2,
+        Severity::Low => 3,
+        Severity::Info => 4,
+    });
+
+    result
+}
+
+/// Merge a group of duplicate vulnerabilities into a single entry.
+/// Takes the longest description/remediation, combines evidence, collects all agents.
+fn merge_vulnerability_group(mut group: Vec<Vulnerability>) -> Vulnerability {
+    debug_assert!(!group.is_empty());
+    // The first element becomes the base; remaining are merged in.
+    // Safety: caller guarantees non-empty group (HashMap grouping).
+    let mut merged = group.remove(0);
+
+    for vuln in group {
+        // Keep the longest description
+        if let Some(ref desc) = vuln.description {
+            match merged.description {
+                Some(ref existing) if desc.len() > existing.len() => {
+                    merged.description = Some(desc.clone());
+                }
+                None => merged.description = Some(desc.clone()),
+                _ => {}
+            }
+        }
+
+        // Keep the longest remediation
+        if let Some(ref rem) = vuln.remediation {
+            match merged.remediation {
+                Some(ref existing) if rem.len() > existing.len() => {
+                    merged.remediation = Some(rem.clone());
+                }
+                None => merged.remediation = Some(rem.clone()),
+                _ => {}
+            }
+        }
+
+        // Combine evidence with separator
+        if let Some(ref new_evidence) = vuln.evidence {
+            merged.evidence = Some(match merged.evidence {
+                Some(ref existing) if existing.contains(new_evidence.as_str()) => existing.clone(),
+                Some(ref existing) => format!("{}\n\n---\n\n{}", existing, new_evidence),
+                None => new_evidence.clone(),
+            });
+        }
+
+        // Collect distinct agents into discovered_by
+        if !merged.discovered_by.contains(&vuln.discovered_by) {
+            merged.discovered_by = format!("{}, {}", merged.discovered_by, vuln.discovered_by);
+        }
+
+        // Use most specific asset (non-empty, longest)
+        if let Some(ref asset) = vuln.asset {
+            match merged.asset {
+                Some(ref existing) if asset.len() > existing.len() => {
+                    merged.asset = Some(asset.clone());
+                }
+                None => merged.asset = Some(asset.clone()),
+                _ => {}
+            }
+        }
+
+        // Keep highest CVSS score
+        if let Some(new_cvss) = vuln.cvss {
+            match merged.cvss {
+                Some(existing) if new_cvss > existing => merged.cvss = Some(new_cvss),
+                None => merged.cvss = Some(new_cvss),
+                _ => {}
+            }
+        }
+
+        // Keep CWE if we don't have one
+        if merged.cwe.is_none() {
+            merged.cwe = vuln.cwe;
+        }
+    }
+
+    merged
 }
 
 /// Export report to JSON file
@@ -655,6 +759,120 @@ pub fn generate_markdown(report: &Report) -> String {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::state::VulnStatus;
+
+    fn make_vuln(title: &str, severity: Severity, discovered_by: &str) -> Vulnerability {
+        Vulnerability {
+            id: format!("VULN-{}", title.len()),
+            host_id: None,
+            vuln_type: "test".to_string(),
+            severity,
+            title: title.to_string(),
+            description: None,
+            evidence: None,
+            status: VulnStatus::Potential,
+            cwe: None,
+            cvss: None,
+            asset: None,
+            remediation: None,
+            discovered_by: discovered_by.to_string(),
+            verified_by: None,
+            discovered_at: Utc::now(),
+            verified_at: None,
+        }
+    }
+
+    #[test]
+    fn test_deduplicate_merges_same_title_severity() {
+        let vulns = vec![
+            make_vuln("SQL Injection", Severity::Critical, "recon-agent"),
+            make_vuln("SQL Injection", Severity::Critical, "scanner-agent"),
+            make_vuln("XSS", Severity::High, "scanner-agent"),
+        ];
+
+        let deduped = deduplicate_vulnerabilities(vulns);
+        assert_eq!(deduped.len(), 2);
+
+        let sqli = deduped.iter().find(|v| v.title == "SQL Injection").unwrap();
+        assert!(sqli.discovered_by.contains("recon-agent"));
+        assert!(sqli.discovered_by.contains("scanner-agent"));
+    }
+
+    #[test]
+    fn test_deduplicate_case_insensitive_title() {
+        let vulns = vec![
+            make_vuln("Hardcoded Credentials", Severity::High, "agent-a"),
+            make_vuln("hardcoded credentials", Severity::High, "agent-b"),
+            make_vuln("HARDCODED CREDENTIALS", Severity::High, "agent-c"),
+        ];
+
+        let deduped = deduplicate_vulnerabilities(vulns);
+        assert_eq!(deduped.len(), 1);
+        assert!(deduped[0].discovered_by.contains("agent-a"));
+        assert!(deduped[0].discovered_by.contains("agent-b"));
+        assert!(deduped[0].discovered_by.contains("agent-c"));
+    }
+
+    #[test]
+    fn test_deduplicate_different_severity_not_merged() {
+        let vulns = vec![
+            make_vuln("Open Port", Severity::Info, "recon"),
+            make_vuln("Open Port", Severity::Medium, "scanner"),
+        ];
+
+        let deduped = deduplicate_vulnerabilities(vulns);
+        assert_eq!(deduped.len(), 2);
+    }
+
+    #[test]
+    fn test_deduplicate_merges_evidence() {
+        let mut v1 = make_vuln("Bug", Severity::High, "a");
+        v1.evidence = Some("Evidence A".to_string());
+        let mut v2 = make_vuln("Bug", Severity::High, "b");
+        v2.evidence = Some("Evidence B".to_string());
+
+        let deduped = deduplicate_vulnerabilities(vec![v1, v2]);
+        assert_eq!(deduped.len(), 1);
+        let evidence = deduped[0].evidence.as_ref().unwrap();
+        assert!(evidence.contains("Evidence A"));
+        assert!(evidence.contains("Evidence B"));
+    }
+
+    #[test]
+    fn test_deduplicate_keeps_longest_description() {
+        let mut v1 = make_vuln("Bug", Severity::High, "a");
+        v1.description = Some("Short".to_string());
+        let mut v2 = make_vuln("Bug", Severity::High, "b");
+        v2.description = Some("A much longer and more detailed description of the bug".to_string());
+
+        let deduped = deduplicate_vulnerabilities(vec![v1, v2]);
+        assert_eq!(deduped.len(), 1);
+        assert!(
+            deduped[0]
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("much longer")
+        );
+    }
+
+    #[test]
+    fn test_deduplicate_no_duplicates_passthrough() {
+        let vulns = vec![
+            make_vuln("Bug A", Severity::Critical, "a"),
+            make_vuln("Bug B", Severity::High, "b"),
+            make_vuln("Bug C", Severity::Medium, "c"),
+        ];
+
+        let deduped = deduplicate_vulnerabilities(vulns);
+        assert_eq!(deduped.len(), 3);
+    }
+
+    #[test]
+    fn test_deduplicate_empty() {
+        let deduped = deduplicate_vulnerabilities(vec![]);
+        assert!(deduped.is_empty());
+    }
 
     #[test]
     fn test_generate_markdown_empty_report() {
