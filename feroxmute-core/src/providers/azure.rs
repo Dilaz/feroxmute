@@ -167,11 +167,11 @@ impl LlmProvider for AzureProvider {
                 .tool(MemoryListTool::new(Arc::clone(&memory)))
                 .build();
 
-            // multi_turn enables tool loop with max 50 iterations
+            // max_turns enables tool loop with max 50 iterations
             let response = agent
                 .prompt(&current_prompt)
                 .extended_details()
-                .multi_turn(50)
+                .max_turns(50)
                 .await
                 .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
 
@@ -241,10 +241,10 @@ impl LlmProvider for AzureProvider {
             .tool(CompleteEngagementTool::new(Arc::clone(&context)))
             .build();
 
-        // multi_turn enables tool loop with max 50 iterations
+        // max_turns enables tool loop with max 50 iterations
         // extended_details() gives us real token usage
         tokio::select! {
-            result = agent.prompt(user_prompt).extended_details().multi_turn(50) => {
+            result = agent.prompt(user_prompt).extended_details().max_turns(50) => {
                 match result {
                     Ok(response) => {
                         // Calculate cost
@@ -300,7 +300,7 @@ impl LlmProvider for AzureProvider {
         let response = agent
             .prompt(user_prompt)
             .extended_details()
-            .multi_turn(20)
+            .max_turns(20)
             .await
             .map_err(|e| Error::Provider(format!("Report completion failed: {}", e)))?;
 

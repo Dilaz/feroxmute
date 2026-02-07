@@ -225,11 +225,11 @@ macro_rules! define_provider {
                         .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&memory)))
                         .build();
 
-                    // Use non-streaming multi_turn with 10-minute timeout
+                    // Use non-streaming max_turns with 10-minute timeout
                     const LLM_TIMEOUT_SECS: u64 = 600; // 10 minutes
                     let result = tokio::time::timeout(
                         std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
-                        agent.prompt(&current_prompt).extended_details().multi_turn(50)
+                        agent.prompt(&current_prompt).extended_details().max_turns(50)
                     ).await;
 
                     let response = match result {
@@ -329,9 +329,9 @@ macro_rules! define_provider {
                     .tool($crate::tools::MemoryRemoveTool::new(std::sync::Arc::clone(&context.memory)))
                     .build();
 
-                // Use non-streaming multi_turn with cancellation support
+                // Use non-streaming max_turns with cancellation support
                 tokio::select! {
-                    result = agent.prompt(user_prompt).extended_details().multi_turn(50) => {
+                    result = agent.prompt(user_prompt).extended_details().max_turns(50) => {
                         match result {
                             Ok(response) => {
                                 // Calculate cost
@@ -402,11 +402,11 @@ macro_rules! define_provider {
                     .tool($crate::tools::AddRecommendationTool::new(std::sync::Arc::clone(&context)))
                     .build();
 
-                // Use non-streaming multi_turn with 10-minute timeout
+                // Use non-streaming max_turns with 10-minute timeout
                 const LLM_TIMEOUT_SECS: u64 = 600; // 10 minutes
                 let result = tokio::time::timeout(
                     std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
-                    agent.prompt(user_prompt).extended_details().multi_turn(20)
+                    agent.prompt(user_prompt).extended_details().max_turns(20)
                 ).await;
 
                 let response = match result {
