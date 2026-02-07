@@ -17,7 +17,7 @@ tokio = { version = "1", features = ["full"] }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "0.9"
 
 # Error handling
 thiserror = "2"
@@ -29,19 +29,19 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # LLM
-rig-core = "0.27"
+rig-core = "0.30"
 
 # Database
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
 
 # Docker
-bollard = "0.18"
+bollard = "0.20"
 tar = "0.4"
 hyper = { version = "1", features = ["http1", "server"] }
 
 # TUI
-ratatui = "0.29"
-crossterm = "0.28"
+ratatui = "0.30"
+crossterm = "0.29"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -53,7 +53,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
 futures = "0.3"
-dirs = "5"
+dirs = "6"
 backon = "1"
 hyper-util = { version = "0.1", features = ["tokio", "http1"] }
 http-body-util = "0.1"

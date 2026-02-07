@@ -22,7 +22,7 @@ clap.workspace = true
 uuid.workspace = true
 chrono = "0.4"
 dirs.workspace = true
-tokio-util = { version = "0.7.17", features = ["rt"] }
+tokio-util = { version = "0.7.18", features = ["rt"] }
 bollard.workspace = true
 rusqlite.workspace = true
 tracing-appender = "0.2.4"
