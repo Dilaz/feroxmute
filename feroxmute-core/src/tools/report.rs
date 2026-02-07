@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 use crate::reports::{
     Finding, Report, ReportMetadata, ReportMetrics, ReportSummary, RiskRating, SeverityCounts,
-    StatusCounts, export_html, export_json, export_markdown, export_pdf,
+    StatusCounts, export_html, export_json, export_markdown, export_pdf, generate_report,
 };
 use crate::state::MetricsTracker;
 use crate::tools::EventSender;
@@ -46,6 +46,8 @@ pub struct ReportContext {
     pub report: Arc<Mutex<Option<Report>>>,
     /// Path to reports directory for saving report files
     pub reports_dir: std::path::PathBuf,
+    /// Path to session database for loading vulnerabilities
+    pub session_db_path: Option<std::path::PathBuf>,
 }
 
 // ============================================================================
@@ -77,6 +79,113 @@ pub struct GenerateReportTool {
 impl GenerateReportTool {
     pub fn new(context: Arc<ReportContext>) -> Self {
         Self { context }
+    }
+
+    /// Fallback: build a report from the in-memory findings Vec
+    async fn build_report_from_memory(&self, end_time: DateTime<Utc>) -> Report {
+        let findings_strings = self.context.findings.lock().await;
+
+        let findings: Vec<Finding> = findings_strings
+            .iter()
+            .map(|s| {
+                // Parse "[category] title: description"
+                let (severity, rest) = if s.starts_with('[') {
+                    if let Some(end) = s.find(']') {
+                        let tag = &s[1..end];
+                        let remainder = if s.len() > end + 2 {
+                            s[end + 2..].to_string()
+                        } else {
+                            String::new()
+                        };
+                        // Map category tags to severity; default to medium
+                        let sev = match tag.to_lowercase().as_str() {
+                            "critical" => "critical",
+                            "high" => "high",
+                            "medium" => "medium",
+                            "low" => "low",
+                            "info" | "informational" => "info",
+                            _ => "medium",
+                        };
+                        (sev.to_string(), remainder)
+                    } else {
+                        ("medium".to_string(), s.clone())
+                    }
+                } else {
+                    ("medium".to_string(), s.clone())
+                };
+
+                let (title, description) = if let Some(idx) = rest.find(':') {
+                    (
+                        rest[..idx].trim().to_string(),
+                        rest[idx + 1..].trim().to_string(),
+                    )
+                } else {
+                    (rest, String::new())
+                };
+
+                Finding {
+                    title,
+                    severity,
+                    affected: self.context.target.clone(),
+                    description,
+                    evidence: None,
+                    reproduction_steps: None,
+                    impact: None,
+                    remediation: None,
+                    references: Vec::new(),
+                }
+            })
+            .collect();
+
+        let finding_count = findings.len();
+
+        let mut severity_counts = SeverityCounts::default();
+        for f in &findings {
+            match f.severity.to_lowercase().as_str() {
+                "critical" => severity_counts.critical += 1,
+                "high" => severity_counts.high += 1,
+                "medium" => severity_counts.medium += 1,
+                "low" => severity_counts.low += 1,
+                _ => severity_counts.info += 1,
+            }
+        }
+
+        let risk_rating = RiskRating::from_counts(
+            severity_counts.critical,
+            severity_counts.high,
+            severity_counts.medium,
+        );
+
+        let metrics = self.context.metrics.snapshot();
+
+        Report {
+            metadata: ReportMetadata::new(
+                &self.context.target,
+                &self.context.session_id,
+                self.context.start_time,
+                end_time,
+            ),
+            summary: ReportSummary {
+                total_vulnerabilities: finding_count as u32,
+                by_severity: severity_counts,
+                by_status: StatusCounts::default(),
+                risk_rating,
+                key_findings: Vec::new(),
+                executive_summary: format!(
+                    "Security assessment of {} completed with {} findings.",
+                    self.context.target, finding_count
+                ),
+            },
+            findings,
+            metrics: ReportMetrics {
+                tool_calls: metrics.tool_calls,
+                input_tokens: metrics.tokens.input,
+                output_tokens: metrics.tokens.output,
+                cache_read_tokens: metrics.tokens.cached,
+                hosts_discovered: 0,
+                ports_discovered: 0,
+            },
+        }
     }
 }
 
@@ -118,99 +227,47 @@ impl Tool for GenerateReportTool {
             .send_feed("report", "Generating report from findings...", false);
 
         let end_time = Utc::now();
-        let findings_strings = self.context.findings.lock().await;
 
-        // Convert string findings to Finding structs
-        let findings: Vec<Finding> = findings_strings
-            .iter()
-            .map(|s| {
-                // Parse the formatted string: "[severity] title: description"
-                let (severity, rest) = if s.starts_with('[') {
-                    if let Some(end) = s.find(']') {
-                        (s[1..end].to_string(), s[end + 2..].to_string())
-                    } else {
-                        ("medium".to_string(), s.clone())
+        // Try loading findings from the database first (authoritative source),
+        // falling back to the in-memory Vec for backwards compatibility
+        let mut report = if let Some(ref db_path) = self.context.session_db_path {
+            match rusqlite::Connection::open(db_path) {
+                Ok(conn) => match generate_report(
+                    &conn,
+                    &self.context.target,
+                    &self.context.session_id,
+                    self.context.start_time,
+                    end_time,
+                    &self.context.metrics,
+                ) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to generate report from database: {e}, falling back to in-memory findings"
+                        );
+                        self.build_report_from_memory(end_time).await
                     }
-                } else {
-                    ("medium".to_string(), s.clone())
-                };
-
-                let (title, description) = if let Some(idx) = rest.find(':') {
-                    (
-                        rest[..idx].trim().to_string(),
-                        rest[idx + 1..].trim().to_string(),
-                    )
-                } else {
-                    (rest, String::new())
-                };
-
-                Finding {
-                    title,
-                    severity,
-                    affected: self.context.target.clone(),
-                    description,
-                    evidence: None,
-                    reproduction_steps: None,
-                    impact: None,
-                    remediation: None,
-                    references: Vec::new(),
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to open session database: {e}, falling back to in-memory findings"
+                    );
+                    self.build_report_from_memory(end_time).await
                 }
-            })
-            .collect();
-
-        let finding_count = findings.len();
-
-        // Count by severity
-        let mut severity_counts = SeverityCounts::default();
-        for f in &findings {
-            match f.severity.to_lowercase().as_str() {
-                "critical" => severity_counts.critical += 1,
-                "high" => severity_counts.high += 1,
-                "medium" => severity_counts.medium += 1,
-                "low" => severity_counts.low += 1,
-                _ => severity_counts.info += 1,
             }
-        }
-
-        let risk_rating = RiskRating::from_counts(
-            severity_counts.critical,
-            severity_counts.high,
-            severity_counts.medium,
-        );
-
-        let metrics = self.context.metrics.snapshot();
-
-        let report = Report {
-            metadata: ReportMetadata::new(
-                &self.context.target,
-                &self.context.session_id,
-                self.context.start_time,
-                end_time,
-            ),
-            summary: ReportSummary {
-                total_vulnerabilities: finding_count as u32,
-                by_severity: severity_counts,
-                by_status: StatusCounts::default(),
-                risk_rating,
-                key_findings: args.key_findings.unwrap_or_default(),
-                executive_summary: args.executive_summary.unwrap_or_else(|| {
-                    format!(
-                        "Security assessment of {} completed with {} findings.",
-                        self.context.target, finding_count
-                    )
-                }),
-            },
-            findings,
-            metrics: ReportMetrics {
-                tool_calls: metrics.tool_calls,
-                input_tokens: metrics.tokens.input,
-                output_tokens: metrics.tokens.output,
-                cache_read_tokens: metrics.tokens.cached,
-                hosts_discovered: 0,
-                ports_discovered: 0,
-            },
+        } else {
+            self.build_report_from_memory(end_time).await
         };
 
+        // Override summary fields with LLM-provided content
+        if let Some(summary) = args.executive_summary {
+            report.summary.executive_summary = summary;
+        }
+        if let Some(key_findings) = args.key_findings {
+            report.summary.key_findings = key_findings;
+        }
+
+        let finding_count = report.findings.len();
         let risk_rating_str = format!("{}", report.summary.risk_rating);
 
         // Store the report for export tools
