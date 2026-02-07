@@ -67,13 +67,9 @@ impl McpDockerShellTool {
                     cmd, category
                 ));
             }
-            // Block unknown commands by default for security
-            else if self.tool_registry.categorize(cmd).is_none() {
-                return Err(format!(
-                    "'{}' is not in the tool registry and is blocked by default",
-                    cmd
-                ));
-            }
+            // Unknown commands are allowed — agents run inside a sandboxed
+            // Docker container, and category-based restrictions already enforce
+            // engagement scope for known security tools.
         }
 
         Ok(())

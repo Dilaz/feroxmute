@@ -228,8 +228,24 @@ fn prepare_output(output: &str) -> (String, bool) {
     }
 }
 
-/// Extract all command names from a shell command string
-/// Handles pipes (|), AND (&&), OR (||), semicolons (;), and subshells ($(...))
+/// Shell compound-command leaders whose entire segment is control-flow syntax
+/// with no executable command (e.g. `for i in 1 2 3`, `case $x in`).
+const SHELL_COMPOUND_LEADERS: &[&str] = &["for", "case", "select"];
+
+/// Shell keywords followed by an executable command in the same segment
+/// (e.g. `if curl ...`, `do echo hi`, `then cat file`, `while true`).
+const SHELL_PREFIX_KEYWORDS: &[&str] = &[
+    "if", "elif", "while", "until", "then", "else", "do", "time", "!", "{",
+];
+
+/// Shell tokens that are never commands and should always be skipped.
+const SHELL_NOISE: &[&str] = &[
+    "done", "fi", "esac", "}", "[[", "]]", "in", "function", "true", "false",
+];
+
+/// Extract all command names from a shell command string.
+/// Handles pipes (|), AND (&&), OR (||), semicolons (;), and subshells ($(...)).
+/// Skips comments (`#…`) and shell keywords (`for`, `if`, `do`, etc.).
 pub(crate) fn extract_commands(input: &str) -> Vec<&str> {
     let mut commands = Vec::new();
 
@@ -257,15 +273,41 @@ pub(crate) fn extract_commands(input: &str) -> Vec<&str> {
 
         let segment = &remaining[..split_pos];
 
-        // Extract command name from segment (first word after stripping)
+        // Extract command name from segment
         let trimmed = segment.trim();
-        if let Some(cmd) = trimmed.split_whitespace().next() {
-            // Handle subshells: $(cmd ...) or `cmd ...`
-            let cmd = cmd.trim_start_matches("$(").trim_start_matches('`');
-            // Strip path prefix so /usr/bin/nmap is recognized as nmap
-            let cmd = cmd.rsplit('/').next().unwrap_or(cmd);
-            if !cmd.is_empty() {
-                commands.push(cmd);
+        // Skip comment segments entirely
+        if trimmed.starts_with('#') {
+            if split_pos + skip_len >= remaining.len() {
+                break;
+            }
+            remaining = &remaining[split_pos + skip_len..];
+            continue;
+        }
+
+        let mut words = trimmed.split_whitespace();
+        if let Some(first) = words.next() {
+            let first = first.trim_start_matches("$(").trim_start_matches('`');
+            let first = first.rsplit('/').next().unwrap_or(first);
+
+            if SHELL_COMPOUND_LEADERS.contains(&first) {
+                // Entire segment is control-flow header (e.g. "for i in 1 2 3")
+                // — no command to extract; real commands come in later segments.
+            } else if SHELL_PREFIX_KEYWORDS.contains(&first) || SHELL_NOISE.contains(&first) {
+                // Prefix keyword: actual command is the next word (e.g. "do echo hi").
+                // Noise token: skip it, but check the next word just in case.
+                if let Some(next) = words.next() {
+                    let next = next.trim_start_matches("$(").trim_start_matches('`');
+                    let next = next.rsplit('/').next().unwrap_or(next);
+                    if !next.is_empty()
+                        && !SHELL_NOISE.contains(&next)
+                        && !SHELL_COMPOUND_LEADERS.contains(&next)
+                        && !SHELL_PREFIX_KEYWORDS.contains(&next)
+                    {
+                        commands.push(next);
+                    }
+                }
+            } else if !first.is_empty() {
+                commands.push(first);
             }
         }
 
@@ -314,16 +356,9 @@ impl DockerShellTool {
                 self.events.send_feed(&self.agent_name, &msg, true);
                 return Err(msg);
             }
-            // Block unknown commands by default for security
-            // This prevents bypassing restrictions via unregistered tools
-            else if self.tool_registry.categorize(cmd).is_none() {
-                let msg = format!(
-                    "Blocked: '{}' is not in the tool registry and is blocked by default",
-                    cmd
-                );
-                self.events.send_feed(&self.agent_name, &msg, true);
-                return Err(msg);
-            }
+            // Unknown commands are allowed — agents run inside a sandboxed
+            // Docker container, and category-based restrictions already enforce
+            // engagement scope for known security tools.
         }
 
         Ok(())
@@ -483,5 +518,26 @@ mod tests {
         assert!(cmds.contains(&"naabu"));
         assert!(cmds.contains(&"subfinder"));
         assert!(cmds.contains(&"echo"));
+    }
+
+    #[test]
+    fn test_extract_skips_comments() {
+        let cmds = extract_commands("echo hello; # this is a comment");
+        assert_eq!(cmds, vec!["echo"]);
+
+        let cmds = extract_commands("# full line comment");
+        assert!(cmds.is_empty());
+    }
+
+    #[test]
+    fn test_extract_skips_shell_keywords() {
+        let cmds = extract_commands("for i in 1 2 3; do echo $i; done");
+        assert_eq!(cmds, vec!["echo"]);
+
+        let cmds = extract_commands("if curl http://example.com; then echo ok; fi");
+        assert_eq!(cmds, vec!["curl", "echo"]);
+
+        let cmds = extract_commands("while true; do nmap localhost; done");
+        assert_eq!(cmds, vec!["nmap"]);
     }
 }

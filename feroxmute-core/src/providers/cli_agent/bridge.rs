@@ -12,6 +12,7 @@ use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use acp::Agent; // Required for initialize, prompt, new_session, cancel
 use agent_client_protocol as acp;
@@ -126,10 +127,34 @@ impl GeminiConnection {
         let (tx, rx) = oneshot::channel();
         self.pending_requests.lock().await.insert(id, tx);
 
+        tracing::debug!("Gemini call #{id}: sending {method}");
         Self::write_message(&self.stdin, &request).await?;
 
-        rx.await
-            .map_err(|_| crate::Error::Provider("Gemini connection task dropped".into()))?
+        // session/prompt can take very long (agent doing work); others should be quick
+        let timeout_dur = if method == "session/prompt" {
+            Duration::from_secs(600) // 10 min
+        } else {
+            Duration::from_secs(60) // 1 min
+        };
+
+        match tokio::time::timeout(timeout_dur, rx).await {
+            Ok(Ok(result)) => {
+                tracing::debug!("Gemini call #{id}: {method} completed");
+                result
+            }
+            Ok(Err(_)) => Err(crate::Error::Provider(
+                "Gemini connection task dropped".into(),
+            )),
+            Err(_) => {
+                // Remove from pending so stdout reader doesn't try to resolve it
+                self.pending_requests.lock().await.remove(&id);
+                Err(crate::Error::Provider(format!(
+                    "Gemini ACP call '{method}' (id={id}) timed out after {}s. \
+                     Check Gemini CLI logs and stderr for errors.",
+                    timeout_dur.as_secs()
+                )))
+            }
+        }
     }
 
     /// Write a JSON-RPC message to the agent's stdin.
@@ -378,6 +403,10 @@ async fn command_loop(
                             }));
                         }
 
+                        tracing::debug!(
+                            "Gemini: calling session/new with {} MCP server(s)",
+                            mcp_servers.len()
+                        );
                         let result = conn
                             .call(
                                 "session/new",
@@ -390,6 +419,7 @@ async fn command_loop(
 
                         match result {
                             Ok(res) => {
+                                tracing::debug!("Gemini session/new returned: {res}");
                                 if let Some(sid) = res.get("sessionId").and_then(|v| v.as_str()) {
                                     Ok(acp::SessionId::new(sid))
                                 } else {
@@ -398,7 +428,10 @@ async fn command_loop(
                                     ))
                                 }
                             }
-                            Err(e) => Err(e),
+                            Err(e) => {
+                                tracing::debug!("Gemini session/new failed: {e}");
+                                Err(e)
+                            }
                         }
                     }
                     None => Err(crate::Error::Provider(
@@ -441,7 +474,10 @@ async fn command_loop(
                         }
                     }
                     Some(Connection::Gemini(conn)) => {
-                        tracing::debug!("Sending Gemini ACP prompt for session '{}'", session_id.0);
+                        tracing::debug!(
+                            "Gemini: calling session/prompt for session '{}'",
+                            session_id.0
+                        );
                         let result = conn
                             .call(
                                 "session/prompt",
@@ -454,11 +490,21 @@ async fn command_loop(
 
                         match result {
                             Ok(_) => {
+                                tracing::debug!(
+                                    "Gemini session/prompt completed for session '{}'",
+                                    session_id.0
+                                );
                                 let text =
                                     collector.borrow_mut().take_content(session_id.0.as_ref());
                                 Ok(text)
                             }
-                            Err(e) => Err(e),
+                            Err(ref e) => {
+                                tracing::debug!(
+                                    "Gemini session/prompt failed for session '{}': {e}",
+                                    session_id.0
+                                );
+                                result.map(|_| String::new())
+                            }
                         }
                     }
                     None => Err(crate::Error::Provider(
@@ -791,7 +837,7 @@ async fn do_connect(
         tokio::task::spawn_local(async move {
             let mut reader = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                tracing::trace!("Gemini stdout: {}", line);
+                tracing::debug!("Gemini stdout: {}", line);
                 let val: Value = match serde_json::from_str(&line) {
                     Ok(v) => v,
                     Err(e) => {
@@ -810,6 +856,7 @@ async fn do_connect(
                     if let Some(id) = val.get("id").and_then(|v| v.as_u64())
                         && let Some(tx) = pending_requests_clone.lock().await.remove(&id)
                     {
+                        tracing::debug!("Gemini response matched pending request #{id}");
                         if let Some(error) = val.get("error") {
                             let _ = tx.send(Err(crate::Error::Provider(format!(
                                 "Gemini ACP error: {}",
@@ -830,13 +877,28 @@ async fn do_connect(
                         handle_gemini_request(method, &val, &stdin_clone).await;
                     } else {
                         // Notification — no response needed
+                        tracing::debug!("Gemini notification: {method}");
                         handle_gemini_notification(method, &val, &collector_clone, &event_tx_clone);
                     }
                 } else {
                     tracing::warn!("Gemini stdout unrecognized message: {}", val);
                 }
             }
-            tracing::warn!("Gemini stdout reader exited");
+            // Resolve all pending requests with an error so call() doesn't hang
+            let mut pending = pending_requests_clone.lock().await;
+            let pending_count = pending.len();
+            if pending_count > 0 {
+                tracing::warn!(
+                    "Gemini stdout reader exited with {pending_count} pending request(s)"
+                );
+            } else {
+                tracing::debug!("Gemini stdout reader exited cleanly");
+            }
+            for (id, tx) in pending.drain() {
+                let _ = tx.send(Err(crate::Error::Provider(format!(
+                    "Gemini CLI process exited while request #{id} was pending"
+                ))));
+            }
         });
 
         let gemini_conn = GeminiConnection {
