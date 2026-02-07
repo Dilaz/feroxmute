@@ -1,11 +1,13 @@
 //! Report generation and export
 
 use std::collections::HashMap;
-use std::io::BufWriter;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use printpdf::{BuiltinFont, Mm, PdfDocument};
+use printpdf::{
+    BuiltinFont, Mm, Op, PdfDocument, PdfPage, PdfSaveOptions, PdfWarnMsg, Pt, TextItem,
+    graphics::Point, ops::PdfFontHandle,
+};
 use rusqlite::Connection;
 
 use crate::Result;
@@ -379,81 +381,95 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Helper: emit ops to write text with a builtin font at a given position and size.
+/// Appends StartTextSection, SetFont, SetTextCursor, ShowText, EndTextSection ops.
+fn text_ops(font: &PdfFontHandle, size: f32, x_mm: f32, y_mm: f32, text: &str) -> Vec<Op> {
+    let x_pt: Pt = Mm(x_mm).into();
+    let y_pt: Pt = Mm(y_mm).into();
+    vec![
+        Op::StartTextSection,
+        Op::SetFont {
+            font: font.clone(),
+            size: Pt(size),
+        },
+        Op::SetTextCursor {
+            pos: Point { x: x_pt, y: y_pt },
+        },
+        Op::ShowText {
+            items: vec![TextItem::Text(text.to_string())],
+        },
+        Op::EndTextSection,
+    ]
+}
+
 /// Generate PDF report content
 fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
-    let (doc, page1, layer1) = PdfDocument::new(
-        "Security Assessment Report",
-        Mm(210.0),
-        Mm(297.0),
-        "Layer 1",
-    );
+    let font = PdfFontHandle::Builtin(BuiltinFont::Helvetica);
+    let font_bold = PdfFontHandle::Builtin(BuiltinFont::HelveticaBold);
 
-    let font = doc
-        .add_builtin_font(BuiltinFont::Helvetica)
-        .map_err(|e| crate::Error::Report(format!("Failed to load font: {}", e)))?;
-    let font_bold = doc
-        .add_builtin_font(BuiltinFont::HelveticaBold)
-        .map_err(|e| crate::Error::Report(format!("Failed to load bold font: {}", e)))?;
+    let x = 20.0_f32; // mm
+    let mut y = 277.0_f32; // mm
+    let line_height = 5.0_f32;
+    let section_gap = 10.0_f32;
 
-    let current_layer = doc.get_page(page1).get_layer(layer1);
-
-    let x = Mm(20.0);
-    let mut y = Mm(277.0);
-    let line_height = Mm(5.0);
-    let section_gap = Mm(10.0);
+    let mut ops: Vec<Op> = Vec::new();
 
     // Title
-    current_layer.use_text(
-        format!("SECURITY ASSESSMENT: {}", report.metadata.target),
+    ops.extend(text_ops(
+        &font_bold,
         14.0,
         x,
         y,
-        &font_bold,
-    );
-    y -= Mm(8.0);
+        &format!("SECURITY ASSESSMENT: {}", report.metadata.target),
+    ));
+    y -= 8.0;
 
     // Underline
-    current_layer.use_text("=".repeat(60), 10.0, x, y, &font);
+    ops.extend(text_ops(&font, 10.0, x, y, &"=".repeat(60)));
     y -= section_gap;
 
     // Metadata
-    current_layer.use_text(
-        format!("Risk Rating: {}", report.summary.risk_rating),
+    ops.extend(text_ops(
+        &font,
         10.0,
         x,
         y,
-        &font,
-    );
+        &format!("Risk Rating: {}", report.summary.risk_rating),
+    ));
     y -= line_height;
 
-    current_layer.use_text(
-        format!(
+    ops.extend(text_ops(
+        &font,
+        10.0,
+        x,
+        y,
+        &format!(
             "Assessment: {} to {}",
             report.metadata.start_time.format("%Y-%m-%d"),
             report.metadata.end_time.format("%Y-%m-%d")
         ),
-        10.0,
-        x,
-        y,
-        &font,
-    );
+    ));
     y -= line_height;
 
-    current_layer.use_text(
-        format!("Session: {}", report.metadata.session_id),
+    ops.extend(text_ops(
+        &font,
         10.0,
         x,
         y,
-        &font,
-    );
+        &format!("Session: {}", report.metadata.session_id),
+    ));
     y -= section_gap;
 
     // Summary counts
-    current_layer.use_text("VULNERABILITY SUMMARY", 11.0, x, y, &font_bold);
+    ops.extend(text_ops(&font_bold, 11.0, x, y, "VULNERABILITY SUMMARY"));
     y -= line_height;
 
-    current_layer.use_text(
-        format!(
+    ops.extend(text_ops(
+        &font,
+        10.0,
+        x,
+        y,
+        &format!(
             "Critical: {} | High: {} | Medium: {} | Low: {} | Info: {}",
             report.summary.by_severity.critical,
             report.summary.by_severity.high,
@@ -461,16 +477,12 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
             report.summary.by_severity.low,
             report.summary.by_severity.info
         ),
-        10.0,
-        x,
-        y,
-        &font,
-    );
+    ));
     y -= section_gap;
 
     // Executive summary (truncated for PDF)
     if !report.summary.executive_summary.is_empty() {
-        current_layer.use_text("EXECUTIVE SUMMARY", 11.0, x, y, &font_bold);
+        ops.extend(text_ops(&font_bold, 11.0, x, y, "EXECUTIVE SUMMARY"));
         y -= line_height;
 
         let summary = if report.summary.executive_summary.chars().count() > 200 {
@@ -489,95 +501,108 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
 
         // Wrap long lines
         for line in wrap_text(&summary, 80) {
-            if y < Mm(30.0) {
+            if y < 30.0 {
                 break; // Don't overflow page
             }
-            current_layer.use_text(line, 9.0, x, y, &font);
+            ops.extend(text_ops(&font, 9.0, x, y, &line));
             y -= line_height;
         }
-        y -= Mm(5.0);
+        y -= 5.0;
     }
 
     // Findings
-    current_layer.use_text(
-        format!("FINDINGS ({})", report.findings.len()),
+    ops.extend(text_ops(
+        &font_bold,
         11.0,
         x,
         y,
-        &font_bold,
-    );
+        &format!("FINDINGS ({})", report.findings.len()),
+    ));
     y -= line_height;
 
     if report.findings.is_empty() {
-        current_layer.use_text("No vulnerabilities were identified.", 10.0, x, y, &font);
+        ops.extend(text_ops(
+            &font,
+            10.0,
+            x,
+            y,
+            "No vulnerabilities were identified.",
+        ));
     } else {
         for (i, finding) in report.findings.iter().take(10).enumerate() {
-            if y < Mm(40.0) {
-                current_layer.use_text("... (see HTML/JSON for full report)", 9.0, x, y, &font);
+            if y < 40.0 {
+                ops.extend(text_ops(
+                    &font,
+                    9.0,
+                    x,
+                    y,
+                    "... (see HTML/JSON for full report)",
+                ));
                 break;
             }
 
-            current_layer.use_text(
-                format!(
+            ops.extend(text_ops(
+                &font,
+                10.0,
+                x,
+                y,
+                &format!(
                     "{}. [{}] {}",
                     i + 1,
                     finding.severity.to_uppercase(),
                     truncate(&finding.title, 60)
                 ),
-                10.0,
-                x,
-                y,
-                &font,
-            );
+            ));
             y -= line_height;
 
-            current_layer.use_text(
-                format!("   Affected: {}", truncate(&finding.affected, 55)),
+            ops.extend(text_ops(
+                &font,
                 9.0,
                 x,
                 y,
-                &font,
-            );
-            y -= line_height + Mm(2.0);
+                &format!("   Affected: {}", truncate(&finding.affected, 55)),
+            ));
+            y -= line_height + 2.0;
         }
     }
 
     // Metrics at bottom
-    y = Mm(25.0);
-    current_layer.use_text(
-        format!(
+    y = 25.0;
+    ops.extend(text_ops(
+        &font,
+        8.0,
+        x,
+        y,
+        &format!(
             "Metrics: {} tool calls | {} hosts | {} ports | {} tokens",
             report.metrics.tool_calls,
             report.metrics.hosts_discovered,
             report.metrics.ports_discovered,
             report.metrics.input_tokens + report.metrics.output_tokens
         ),
+    ));
+
+    y -= line_height;
+    ops.extend(text_ops(
+        &font,
         8.0,
         x,
         y,
-        &font,
-    );
-
-    y -= line_height;
-    current_layer.use_text(
-        format!(
+        &format!(
             "Generated by feroxmute on {}",
             report.metadata.generated_at.format("%Y-%m-%d %H:%M UTC")
         ),
-        8.0,
-        x,
-        y,
-        &font,
-    );
+    ));
 
-    // Save to bytes
-    let mut buffer = BufWriter::new(Vec::new());
-    doc.save(&mut buffer)
-        .map_err(|e| crate::Error::Report(format!("Failed to save PDF: {}", e)))?;
+    // Build the page and document
+    let page = PdfPage::new(Mm(210.0), Mm(297.0), ops);
+    let mut doc = PdfDocument::new("Security Assessment Report");
+    doc.with_pages(vec![page]);
 
-    buffer
-        .into_inner()
-        .map_err(|e| crate::Error::Report(e.to_string()))
+    let mut warnings: Vec<PdfWarnMsg> = Vec::new();
+    let pdf_bytes = doc.save(&PdfSaveOptions::default(), &mut warnings);
+
+    Ok(pdf_bytes)
 }
 
 /// Wrap text to specified width
