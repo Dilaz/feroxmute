@@ -12,6 +12,7 @@ feroxmute automates security testing using a hierarchy of specialized AI agents.
 
 - **Hierarchical agent architecture** - Orchestrator delegates to specialist agents (recon, scanner, exploit, report, script)
 - **Multi-provider LLM support** - Anthropic, OpenAI, Gemini, Cohere, xAI, DeepSeek, Azure, Perplexity, Ollama, and LiteLLM (powered by [rig](https://github.com/0xPlaygrounds/rig)). Tested primarily with Gemini 3 Pro and Gemini 3 Flash.
+- **CLI agent providers** - Drive [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli) as LLM backends via the [Agent Client Protocol](https://github.com/anthropics/agent-client-protocol) (ACP). Tools are exposed over an ephemeral MCP server.
 - **Docker isolation** - All tools run inside a Kali Linux container
 - **Terminal UI** - Live dashboard showing agent activity, tool output, and findings
 - **Session persistence** - SQLite-backed state with resumable sessions
@@ -53,6 +54,7 @@ Each playbook includes:
 - Rust toolchain (1.75+)
 - Docker running
 - API key for your LLM provider (e.g., `ANTHROPIC_API_KEY`)
+- For CLI agent providers: the CLI binary installed and authenticated (see [CLI Agent Providers](#cli-agent-providers))
 
 ### Installation
 
@@ -87,8 +89,9 @@ feroxmute [OPTIONS] --target <TARGET>
 | Flag | Description |
 |------|-------------|
 | `--target <URL>` | Target URL or IP |
-| `--provider <NAME>` | LLM provider (anthropic, openai, gemini, ollama, etc.) |
+| `--provider <NAME>` | LLM provider (anthropic, openai, gemini, ollama, claude-code, codex, gemini-cli, etc.) |
 | `--model <MODEL>` | Override default model |
+| `--cli-path <PATH>` | Path to CLI agent binary (for claude-code, codex, gemini-cli providers) |
 | `--passive` | Passive reconnaissance only, no active scanning |
 | `--sast-only` | Source code analysis only, no web testing |
 | `--source <PATH>` | Link source code directory to target |
@@ -120,6 +123,42 @@ feroxmute --target https://app.example.com --source ./src
 
 # Source code analysis only
 feroxmute --sast-only --target ./my-project
+
+# Use Claude Code as the LLM backend
+feroxmute --target https://app.example.com --provider claude-code
+
+# Use Codex with a custom binary path
+feroxmute --target https://app.example.com --provider codex --cli-path /usr/local/bin/codex
+
+# Use Gemini CLI
+feroxmute --target https://app.example.com --provider gemini-cli
+```
+
+## CLI Agent Providers
+
+Instead of calling LLM APIs directly, feroxmute can drive CLI-based AI agents as backends. This uses the [Agent Client Protocol (ACP)](https://github.com/anthropics/agent-client-protocol) to communicate with the agent over stdin/stdout, and exposes feroxmute's tools via an ephemeral [MCP](https://modelcontextprotocol.io/) HTTP server.
+
+### How It Works
+
+1. feroxmute spawns the CLI agent as a subprocess
+2. An MCP HTTP server starts on a random local port with bearer token authentication
+3. The CLI agent connects to the MCP server to access feroxmute's tools (shell, findings, memory, orchestrator, report)
+4. Communication follows the ACP JSON-RPC protocol over stdin/stdout
+
+### Supported CLI Agents
+
+| Provider | Binary | Auth |
+|----------|--------|------|
+| `claude-code` | `claude-code-acp` | `ANTHROPIC_API_KEY` or `claude login` |
+| `codex` | [`codex-acp`](https://github.com/zed-industries/codex-acp) | `OPENAI_API_KEY` or `CODEX_API_KEY` |
+| `gemini-cli` | `gemini` | `gemini auth` |
+
+### Custom Binary Path
+
+If the CLI agent binary isn't on your `$PATH`, use `--cli-path`:
+
+```bash
+feroxmute --target example.com --provider claude-code --cli-path ~/bin/claude-code-acp
 ```
 
 ## Docker
