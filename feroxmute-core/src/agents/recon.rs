@@ -310,12 +310,16 @@ impl Agent for ReconAgent {
                             .and_then(|v| v.as_str())
                             .unwrap_or("other");
                         let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
-                        let finding = ReconFinding::new(finding_type, value, "recon-agent")
-                            .with_target(ctx.target);
-                        if let Err(e) = finding.insert(ctx.conn) {
-                            tracing::warn!("Failed to persist recon finding: {}", e);
-                        }
-                        let tool_result = format!("Recorded {} finding: {}", finding_type, value);
+                        let tool_result = if value.is_empty() {
+                            "Error: 'value' is required for record_recon_finding".to_string()
+                        } else {
+                            let finding = ReconFinding::new(finding_type, value, "recon-agent")
+                                .with_target(ctx.target);
+                            if let Err(e) = finding.insert(ctx.conn) {
+                                tracing::warn!("Failed to persist recon finding: {}", e);
+                            }
+                            format!("Recorded {} finding: {}", finding_type, value)
+                        };
                         messages.push(Message::assistant(format!(
                             "Tool {} executed. Result:\n{}",
                             tool_call.name, tool_result
