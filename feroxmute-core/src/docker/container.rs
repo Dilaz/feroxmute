@@ -1,12 +1,13 @@
 //! Docker container management for Kali tools
 
-use bollard::Docker;
-use bollard::container::{
-    Config, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
+use bollard::container::LogOutput;
+use bollard::exec::{CreateExecOptions, StartExecResults};
+use bollard::models::{ContainerCreateBody, HostConfig};
+use bollard::query_parameters::{
+    BuildImageOptions, CreateContainerOptions, RemoveContainerOptions, StartContainerOptions,
     StopContainerOptions,
 };
-use bollard::exec::{CreateExecOptions, StartExecResults};
-use bollard::image::BuildImageOptions;
+use bollard::{Docker, body_full};
 use futures::StreamExt;
 use hyper::body::Bytes;
 use std::path::Path;
@@ -112,14 +113,16 @@ impl ContainerManager {
 
         // Build image options
         let options = BuildImageOptions {
-            dockerfile: "Dockerfile",
-            t: &self.config.image,
+            dockerfile: "Dockerfile".to_string(),
+            t: Some(self.config.image.clone()),
             rm: true,
             ..Default::default()
         };
 
         // Stream the build output
-        let mut stream = self.docker.build_image(options, None, Some(bytes));
+        let mut stream = self
+            .docker
+            .build_image(options, None, Some(body_full(bytes)));
 
         while let Some(result) = stream.next().await {
             match result {
@@ -128,11 +131,14 @@ impl ContainerManager {
                     if let Some(stream_msg) = info.stream {
                         on_progress(&stream_msg);
                     }
-                    if let Some(error_msg) = info.error {
+                    if let Some(error_detail) = info.error_detail {
+                        let message = error_detail
+                            .message
+                            .unwrap_or_else(|| "Unknown build error".to_string());
                         return Err(Error::Docker(
                             bollard::errors::Error::DockerResponseServerError {
                                 status_code: 500,
-                                message: error_msg,
+                                message,
                             },
                         ));
                     }
@@ -177,7 +183,13 @@ impl ContainerManager {
                     // Stop and remove existing container by name (not id, since it's not set yet)
                     let _ = self
                         .docker
-                        .stop_container(&self.config.name, Some(StopContainerOptions { t: 5 }))
+                        .stop_container(
+                            &self.config.name,
+                            Some(StopContainerOptions {
+                                t: Some(5),
+                                ..Default::default()
+                            }),
+                        )
                         .await;
                     let _ = self
                         .docker
@@ -197,10 +209,7 @@ impl ContainerManager {
                     if info.state.and_then(|s| s.running) != Some(true) {
                         info!("Starting existing container: {}", self.config.name);
                         self.docker
-                            .start_container(
-                                &self.config.name,
-                                None::<StartContainerOptions<String>>,
-                            )
+                            .start_container(&self.config.name, None::<StartContainerOptions>)
                             .await?;
                     }
                 }
@@ -225,7 +234,7 @@ impl ContainerManager {
             binds.push(format!("{}:{}", host, container));
         }
 
-        let host_config = bollard::service::HostConfig {
+        let host_config = HostConfig {
             binds: Some(binds),
             cap_add: Some(vec!["NET_ADMIN".to_string(), "NET_RAW".to_string()]),
             security_opt: Some(vec!["seccomp:unconfined".to_string()]),
@@ -235,7 +244,7 @@ impl ContainerManager {
             ..Default::default()
         };
 
-        let config = Config {
+        let config = ContainerCreateBody {
             image: Some(self.config.image.clone()),
             hostname: Some("feroxmute".to_string()),
             working_dir: Some(self.config.workdir.clone()),
@@ -250,15 +259,15 @@ impl ContainerManager {
         };
 
         let options = CreateContainerOptions {
-            name: &self.config.name,
-            platform: None,
+            name: Some(self.config.name.clone()),
+            ..Default::default()
         };
 
         let response = self.docker.create_container(Some(options), config).await?;
         self.container_id = Some(response.id.clone());
 
         self.docker
-            .start_container(&self.config.name, None::<StartContainerOptions<String>>)
+            .start_container(&self.config.name, None::<StartContainerOptions>)
             .await?;
 
         info!("Container started: {}", response.id);
@@ -304,7 +313,7 @@ impl ContainerManager {
                 tokio::time::timeout(Duration::from_secs(EXEC_TIMEOUT_SECS), async {
                     while let Some(msg) = stream.next().await {
                         match msg {
-                            Ok(bollard::container::LogOutput::StdOut { message }) => {
+                            Ok(LogOutput::StdOut { message }) => {
                                 if !truncated {
                                     let chunk = String::from_utf8_lossy(&message);
                                     total_size += chunk.len();
@@ -317,7 +326,7 @@ impl ContainerManager {
                                     }
                                 }
                             }
-                            Ok(bollard::container::LogOutput::StdErr { message }) => {
+                            Ok(LogOutput::StdErr { message }) => {
                                 if !truncated {
                                     let chunk = String::from_utf8_lossy(&message);
                                     total_size += chunk.len();
@@ -368,7 +377,13 @@ impl ContainerManager {
         if let Some(ref id) = self.container_id {
             info!("Stopping container: {}", id);
             self.docker
-                .stop_container(id, Some(StopContainerOptions { t: 10 }))
+                .stop_container(
+                    id,
+                    Some(StopContainerOptions {
+                        t: Some(10),
+                        ..Default::default()
+                    }),
+                )
                 .await?;
         }
         Ok(())
