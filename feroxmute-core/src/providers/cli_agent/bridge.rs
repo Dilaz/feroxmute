@@ -20,7 +20,7 @@ use futures::io::AsyncWriteExt;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex, Notify, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use super::config::{CliAgentConfig, CliAgentType};
@@ -112,6 +112,9 @@ struct GeminiConnection {
     stdin: Arc<Mutex<tokio_util::compat::Compat<tokio::process::ChildStdin>>>,
     pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>,
     next_id: AtomicU64,
+    /// Signaled by the stdout reader whenever the agent shows activity (notifications,
+    /// agent-initiated requests). Used to reset the idle timeout in `call()`.
+    activity: Arc<Notify>,
 }
 
 impl GeminiConnection {
@@ -130,29 +133,76 @@ impl GeminiConnection {
         tracing::debug!("Gemini call #{id}: sending {method}");
         Self::write_message(&self.stdin, &request).await?;
 
-        // session/prompt can take very long (agent doing work); others should be quick
-        let timeout_dur = if method == "session/prompt" {
-            Duration::from_secs(600) // 10 min
+        if method == "session/prompt" {
+            // For session/prompt, use an idle-based timeout that resets whenever the
+            // agent shows activity (notifications, tool calls, messages). This prevents
+            // premature timeouts when the agent is actively working but hasn't returned
+            // the final response yet.
+            self.call_with_idle_timeout(id, method, rx).await
         } else {
-            Duration::from_secs(60) // 1 min
-        };
-
-        match tokio::time::timeout(timeout_dur, rx).await {
-            Ok(Ok(result)) => {
-                tracing::debug!("Gemini call #{id}: {method} completed");
-                result
+            // Other methods (initialize, new_session) should be quick.
+            match tokio::time::timeout(Duration::from_secs(60), rx).await {
+                Ok(Ok(result)) => {
+                    tracing::debug!("Gemini call #{id}: {method} completed");
+                    result
+                }
+                Ok(Err(_)) => Err(crate::Error::Provider(
+                    "Gemini connection task dropped".into(),
+                )),
+                Err(_) => {
+                    self.pending_requests.lock().await.remove(&id);
+                    Err(crate::Error::Provider(format!(
+                        "Gemini ACP call '{method}' (id={id}) timed out after 60s. \
+                         Check Gemini CLI logs and stderr for errors.",
+                    )))
+                }
             }
-            Ok(Err(_)) => Err(crate::Error::Provider(
-                "Gemini connection task dropped".into(),
-            )),
-            Err(_) => {
-                // Remove from pending so stdout reader doesn't try to resolve it
-                self.pending_requests.lock().await.remove(&id);
-                Err(crate::Error::Provider(format!(
-                    "Gemini ACP call '{method}' (id={id}) timed out after {}s. \
-                     Check Gemini CLI logs and stderr for errors.",
-                    timeout_dur.as_secs()
-                )))
+        }
+    }
+
+    /// Wait for a `session/prompt` response with an idle timeout that resets on activity.
+    ///
+    /// The timeout fires only after 10 minutes of *inactivity* (no notifications from
+    /// the agent). This allows long-running prompts that involve many tool calls to
+    /// complete without hitting a wall-clock timeout.
+    async fn call_with_idle_timeout(
+        &self,
+        id: u64,
+        method: &str,
+        rx: oneshot::Receiver<Result<Value>>,
+    ) -> Result<Value> {
+        let idle_duration = Duration::from_secs(600); // 10 min idle
+        let deadline = tokio::time::Instant::now() + idle_duration;
+        let sleep = tokio::time::sleep_until(deadline);
+        tokio::pin!(sleep);
+        tokio::pin!(rx);
+
+        loop {
+            tokio::select! {
+                result = &mut rx => {
+                    match result {
+                        Ok(result) => {
+                            tracing::debug!("Gemini call #{id}: {method} completed");
+                            return result;
+                        }
+                        Err(_) => {
+                            return Err(crate::Error::Provider(
+                                "Gemini connection task dropped".into(),
+                            ));
+                        }
+                    }
+                }
+                _ = &mut sleep => {
+                    self.pending_requests.lock().await.remove(&id);
+                    return Err(crate::Error::Provider(format!(
+                        "Gemini ACP call '{method}' (id={id}) timed out after 10 minutes \
+                         of inactivity. Check Gemini CLI logs and stderr for errors.",
+                    )));
+                }
+                _ = self.activity.notified() => {
+                    // Agent is still working — reset the idle deadline.
+                    sleep.as_mut().reset(tokio::time::Instant::now() + idle_duration);
+                }
             }
         }
     }
@@ -832,6 +882,8 @@ async fn do_connect(
         let pending_requests_clone = Arc::clone(&pending_requests);
         let event_tx_clone = event_tx.clone();
         let collector_clone = Rc::clone(collector);
+        let activity = Arc::new(Notify::new());
+        let activity_clone = Arc::clone(&activity);
 
         let stdin_clone = Arc::clone(&stdin);
         tokio::task::spawn_local(async move {
@@ -871,6 +923,9 @@ async fn do_connect(
                 } else if let Some(method) = val.get("method").and_then(|v| v.as_str()) {
                     let has_id = val.get("id").is_some();
 
+                    // Signal activity so idle timeout resets.
+                    activity_clone.notify_waiters();
+
                     if has_id {
                         // Agent-initiated request — needs a response sent back
                         tracing::debug!("Gemini agent request: {method} body={val}");
@@ -905,6 +960,7 @@ async fn do_connect(
             stdin,
             pending_requests,
             next_id: AtomicU64::new(1),
+            activity,
         };
 
         // Initialize Gemini connection

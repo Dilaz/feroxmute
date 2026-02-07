@@ -50,8 +50,8 @@ use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolCategory};
 use crate::providers::LlmProvider;
 use crate::reports::Report;
-use crate::state::models::FindingType;
 use crate::state::Severity;
+use crate::state::models::FindingType;
 use crate::tools::report::ReportContext;
 
 /// Errors from orchestrator tools
