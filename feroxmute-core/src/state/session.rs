@@ -79,11 +79,16 @@ impl Session {
             .host
             .trim_start_matches("https://")
             .trim_start_matches("http://");
-        let base_id = format!(
+        let raw_id = format!(
             "{}-{}",
             created_at.format("%Y-%m-%d"),
             host.replace('.', "-")
         );
+        // Sanitize: only allow alphanumeric chars and hyphens to prevent path traversal
+        let base_id: String = raw_id
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-')
+            .collect();
 
         // Find unique ID by appending counter if needed
         let base_dir = base_dir.as_ref();
@@ -106,6 +111,13 @@ impl Session {
 
         std::fs::create_dir_all(&path)?;
 
+        // Set restrictive permissions on session directory
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+        }
+
         // Create subdirectories
         std::fs::create_dir_all(path.join("artifacts/downloads"))?;
         std::fs::create_dir_all(path.join("artifacts/evidence"))?;
@@ -118,7 +130,14 @@ impl Session {
         let config_path = path.join("config.toml");
         let config_str =
             toml::to_string_pretty(&config).map_err(|e| Error::Config(e.to_string()))?;
-        std::fs::write(&config_path, config_str)?;
+        std::fs::write(&config_path, &config_str)?;
+
+        // Set restrictive permissions on config (may contain credentials)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600))?;
+        }
 
         // Create database
         let db_path = path.join("session.db");

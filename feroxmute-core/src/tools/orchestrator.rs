@@ -15,7 +15,9 @@ use tokio_util::sync::CancellationToken;
 
 use chrono::Utc;
 
-use crate::agents::{AgentRegistry, AgentResult, AgentStatus, EngagementPhase, Prompts};
+use crate::agents::{
+    AgentRegistry, AgentResult, AgentResultWaiter, AgentStatus, EngagementPhase, Prompts,
+};
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolCategory};
 use crate::providers::LlmProvider;
@@ -170,6 +172,7 @@ pub trait EventSender: Send + Sync {
 /// Shared context for all orchestrator tools
 pub struct OrchestratorContext {
     pub registry: Arc<Mutex<AgentRegistry>>,
+    pub waiter: Arc<Mutex<AgentResultWaiter>>,
     pub provider: Arc<dyn LlmProvider>,
     pub container: Arc<ContainerManager>,
     pub events: Arc<dyn EventSender>,
@@ -510,17 +513,35 @@ impl Tool for WaitForAgentTool {
             .events
             .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
 
-        // Get instructions before waiting (registry will be locked during wait)
-        let instructions = {
+        // Brief lock: check agent status and get instructions
+        let (is_running, instructions) = {
             let registry = self.context.registry.lock().await;
-            registry
+            let running = registry.is_agent_running(&args.name);
+            let instr = registry
                 .get_agent_instructions(&args.name)
-                .unwrap_or_default()
+                .unwrap_or_default();
+            (running, instr)
         };
+        // Registry lock released here
 
-        let mut registry = self.context.registry.lock().await;
-        let result = registry.wait_for_agent(&args.name).await;
-        drop(registry);
+        // If agent doesn't exist or already completed, return immediately
+        let result = match is_running {
+            None | Some(false) => None,
+            Some(true) => {
+                // Wait on the waiter (no registry lock held)
+                let mut waiter = self.context.waiter.lock().await;
+                let r = waiter.wait_for_agent(&args.name).await;
+                drop(waiter);
+
+                // Brief lock: update agent status
+                if let Some(ref res) = r {
+                    let mut registry = self.context.registry.lock().await;
+                    registry.mark_agent_result(&res.name, res.success);
+                }
+
+                r
+            }
+        };
 
         // Restore orchestrator status to Running
         self.context.events.send_status(
@@ -654,31 +675,45 @@ impl Tool for WaitForAnyTool {
             .events
             .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
 
-        let mut registry = self.context.registry.lock().await;
-        let result = registry.wait_for_any().await;
+        // Brief lock: check if anything is running
+        let should_wait = {
+            let registry = self.context.registry.lock().await;
+            let waiter = self.context.waiter.lock().await;
+            registry.running_count() > 0 || waiter.has_pending()
+        };
+        // Both locks released here
 
-        // Get instructions while we still have the lock
-        let instructions = result
-            .as_ref()
-            .and_then(|r| registry.get_agent_instructions(&r.name))
-            .unwrap_or_default();
+        let result = if should_wait {
+            // Wait on the waiter (no registry lock held)
+            let mut waiter = self.context.waiter.lock().await;
+            let r = waiter.wait_for_any().await;
+            drop(waiter);
 
-        // Count remaining running agents
-        let remaining_running = registry
-            .list_agents()
-            .iter()
-            .filter(|(_, _, status)| {
-                matches!(
-                    status,
-                    AgentStatus::Thinking
-                        | AgentStatus::Streaming
-                        | AgentStatus::Executing
-                        | AgentStatus::Processing
-                )
-            })
-            .count();
+            // Brief lock: update agent status
+            if let Some(ref res) = r {
+                let mut registry = self.context.registry.lock().await;
+                registry.mark_agent_result(&res.name, res.success);
+            }
 
-        drop(registry);
+            r
+        } else {
+            None
+        };
+
+        // Brief lock: get instructions and remaining count
+        let (instructions, remaining_running, has_scanner, has_report) = {
+            let registry = self.context.registry.lock().await;
+            let instr = result
+                .as_ref()
+                .and_then(|r| registry.get_agent_instructions(&r.name))
+                .unwrap_or_default();
+            let remaining = registry.running_count();
+            let all_agents = registry.list_agents();
+            let scanner = all_agents.iter().any(|(_, t, _)| *t == "scanner");
+            let report = all_agents.iter().any(|(_, t, _)| *t == "report");
+            (instr, remaining, scanner, report)
+        };
+        // Registry lock released here
 
         // Restore orchestrator status to Running
         self.context.events.send_status(
@@ -718,14 +753,6 @@ impl Tool for WaitForAnyTool {
                 self.context.events.send_summary(&result.name, &summary);
 
                 // Generate workflow hint based on current state
-                let (has_scanner, has_report) = {
-                    let registry = self.context.registry.lock().await;
-                    let all_agents = registry.list_agents();
-                    let has_scanner = all_agents.iter().any(|(_, t, _)| *t == "scanner");
-                    let has_report = all_agents.iter().any(|(_, t, _)| *t == "report");
-                    (has_scanner, has_report)
-                };
-
                 let workflow_hint = if result.agent_type == "recon" && !has_scanner {
                     "RECON COMPLETED. You MUST now spawn scanner agent(s) to test the discovered endpoints/services. DO NOT call complete_engagement yet.".to_string()
                 } else if result.agent_type == "scanner" && remaining_running == 0 && !has_report {

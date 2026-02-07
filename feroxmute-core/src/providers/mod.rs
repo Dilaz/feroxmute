@@ -6,6 +6,7 @@
 
 #[macro_use]
 mod macros;
+pub mod cli_agent;
 mod definitions;
 pub mod factory;
 pub mod retry;
@@ -30,3 +31,6 @@ pub use definitions::{
 // Re-export manual implementations
 pub use azure::AzureProvider;
 pub use ollama::OllamaProvider;
+
+// Re-export CLI agent types
+pub use cli_agent::{CliAgentConfig, CliAgentProvider, CliAgentType};

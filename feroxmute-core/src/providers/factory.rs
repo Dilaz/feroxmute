@@ -1,20 +1,45 @@
 //! Provider factory for creating LLM provider instances
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::{ProviderConfig, ProviderName};
 use crate::state::MetricsTracker;
 use crate::{Error, Result};
 
+use super::cli_agent::{CliAgentConfig, CliAgentProvider, CliAgentType};
 use super::{
     AnthropicProvider, AzureProvider, CohereProvider, DeepSeekProvider, GeminiProvider,
     LlmProvider, MiraProvider, OllamaProvider, OpenAiProvider, PerplexityProvider, XaiProvider,
 };
 
+/// Helper to create CLI agent providers (reduces duplication)
+fn create_cli_agent(
+    agent_type: CliAgentType,
+    working_dir: Option<PathBuf>,
+    metrics: MetricsTracker,
+) -> Result<Arc<dyn LlmProvider>> {
+    let working_dir = working_dir.ok_or_else(|| {
+        Error::Provider(format!(
+            "CLI agent provider '{:?}' requires a working directory",
+            agent_type
+        ))
+    })?;
+    let cli_config = CliAgentConfig::new(agent_type);
+    let provider = CliAgentProvider::new(cli_config, working_dir, metrics);
+    Ok(Arc::new(provider))
+}
+
 /// Create a provider from configuration
+///
+/// # Arguments
+/// * `config` - Provider configuration (name, model, api_key, etc.)
+/// * `metrics` - Metrics tracker for token usage and costs
+/// * `working_dir` - Working directory for CLI agent providers (optional, required for CLI agents)
 pub fn create_provider(
     config: &ProviderConfig,
     metrics: MetricsTracker,
+    working_dir: Option<PathBuf>,
 ) -> Result<Arc<dyn LlmProvider>> {
     match config.name {
         ProviderName::Anthropic => {
@@ -147,6 +172,12 @@ pub fn create_provider(
             };
             Ok(Arc::new(provider))
         }
+        // CLI agent providers
+        ProviderName::ClaudeCode => {
+            create_cli_agent(CliAgentType::ClaudeCode, working_dir, metrics)
+        }
+        ProviderName::Codex => create_cli_agent(CliAgentType::Codex, working_dir, metrics),
+        ProviderName::GeminiCli => create_cli_agent(CliAgentType::GeminiCli, working_dir, metrics),
     }
 }
 
@@ -168,7 +199,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
 
         // Restore
@@ -190,7 +221,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
 
         if let Some(key) = original {
@@ -211,7 +242,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
 
         if let Some(key) = original {
@@ -233,7 +264,7 @@ mod tests {
             api_key: Some("test-key".to_string()),
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
         if let Err(err) = result {
             assert!(err.to_string().contains("base_url"));
@@ -261,7 +292,7 @@ mod tests {
             api_key: Some("test-key-from-config".to_string()),
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
 
         if let Some(key) = original {
@@ -282,7 +313,7 @@ mod tests {
             api_key: Some("test-key-from-config".to_string()),
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
 
         if let Some(key) = original {
@@ -307,7 +338,7 @@ mod tests {
             api_key: Some("test-key-from-config".to_string()),
             base_url: Some("http://localhost:4000".to_string()),
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
 
         // SAFETY: Tests run single-threaded
@@ -330,7 +361,7 @@ mod tests {
             api_key: None,
             base_url: None,
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
     }
 
@@ -342,7 +373,43 @@ mod tests {
             api_key: None,
             base_url: Some("http://custom:11434".to_string()),
         };
-        let result = create_provider(&config, MetricsTracker::new());
+        let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cli_agent_requires_working_dir() {
+        // Claude Code should fail without working_dir
+        let config = ProviderConfig {
+            name: ProviderName::ClaudeCode,
+            model: "claude-opus-4.5".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new(), None);
+        assert!(result.is_err());
+        if let Err(err) = result {
+            assert!(err.to_string().contains("working directory"));
+        }
+
+        // Codex should also fail without working_dir
+        let config = ProviderConfig {
+            name: ProviderName::Codex,
+            model: "gpt-5.2".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new(), None);
+        assert!(result.is_err());
+
+        // GeminiCli should also fail without working_dir
+        let config = ProviderConfig {
+            name: ProviderName::GeminiCli,
+            model: "gemini-3-pro".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let result = create_provider(&config, MetricsTracker::new(), None);
+        assert!(result.is_err());
     }
 }

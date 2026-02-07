@@ -72,6 +72,7 @@ impl ToolRegistry {
 
         // SAST
         tools.insert("semgrep", Sast);
+        tools.insert("opengrep", Sast);
         tools.insert("gitleaks", Sast);
         tools.insert("grype", Sast);
         tools.insert("ast-grep", Sast);

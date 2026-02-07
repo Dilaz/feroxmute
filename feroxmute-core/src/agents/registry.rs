@@ -31,20 +31,32 @@ pub struct SpawnedAgent {
 pub struct AgentRegistry {
     agents: HashMap<String, SpawnedAgent>,
     result_tx: mpsc::Sender<AgentResult>,
+}
+
+/// Receives agent results without holding the registry lock.
+///
+/// This is separated from `AgentRegistry` so that waiting on the channel
+/// (an async operation) does not block other registry operations like
+/// spawn, list, or status updates.
+pub struct AgentResultWaiter {
     result_rx: mpsc::Receiver<AgentResult>,
     pending_results: Vec<AgentResult>,
 }
 
 impl AgentRegistry {
-    /// Create a new agent registry
-    pub fn new() -> Self {
-        let (result_tx, result_rx) = mpsc::channel(32);
-        Self {
-            agents: HashMap::new(),
-            result_tx,
-            result_rx,
-            pending_results: Vec::new(),
-        }
+    /// Create a new agent registry and its companion result waiter
+    pub fn new() -> (Self, AgentResultWaiter) {
+        let (result_tx, result_rx) = mpsc::channel(128);
+        (
+            Self {
+                agents: HashMap::new(),
+                result_tx,
+            },
+            AgentResultWaiter {
+                result_rx,
+                pending_results: Vec::new(),
+            },
+        )
     }
 
     /// Get the sender for agent results
@@ -105,92 +117,64 @@ impl AgentRegistry {
             .count()
     }
 
-    /// Wait for a specific agent to complete
-    /// Returns None if agent doesn't exist or already completed, Some(result) when complete
-    pub async fn wait_for_agent(&mut self, name: &str) -> Option<AgentResult> {
-        // Check if agent exists and is still running
-        match self.agents.get(name) {
-            None => return None,
-            Some(agent) => {
-                // Agent already completed - result was already consumed
-                if matches!(agent.status, AgentStatus::Completed | AgentStatus::Failed) {
-                    return None;
-                }
-            }
-        }
+    /// Check if an agent is still running (not completed/failed)
+    pub fn is_agent_running(&self, name: &str) -> Option<bool> {
+        self.agents
+            .get(name)
+            .map(|a| !matches!(a.status, AgentStatus::Completed | AgentStatus::Failed))
+    }
 
+    /// Update an agent's status based on a result
+    pub fn mark_agent_result(&mut self, name: &str, success: bool) {
+        if let Some(agent) = self.agents.get_mut(name) {
+            agent.status = if success {
+                AgentStatus::Completed
+            } else {
+                AgentStatus::Failed
+            };
+        }
+    }
+}
+
+impl AgentResultWaiter {
+    /// Wait for a specific agent's result.
+    ///
+    /// Results for other agents are buffered in `pending_results`.
+    /// Returns `None` if the channel is closed before the target agent reports.
+    pub async fn wait_for_agent(&mut self, name: &str) -> Option<AgentResult> {
         // Check pending results first
         if let Some(idx) = self.pending_results.iter().position(|r| r.name == name) {
-            let result = self.pending_results.remove(idx);
-            if let Some(agent) = self.agents.get_mut(name) {
-                agent.status = if result.success {
-                    AgentStatus::Completed
-                } else {
-                    AgentStatus::Failed
-                };
-            }
-            return Some(result);
+            return Some(self.pending_results.remove(idx));
         }
 
         // Wait for results from channel
         while let Some(result) = self.result_rx.recv().await {
             if result.name == name {
-                if let Some(agent) = self.agents.get_mut(name) {
-                    agent.status = if result.success {
-                        AgentStatus::Completed
-                    } else {
-                        AgentStatus::Failed
-                    };
-                }
                 return Some(result);
-            } else {
-                // Store for later
-                self.pending_results.push(result);
             }
+            // Store for later
+            self.pending_results.push(result);
         }
 
         None
     }
 
-    /// Wait for any agent to complete
-    /// Returns None if no agents are running
+    /// Wait for any agent's result.
+    ///
+    /// Returns a pending result if available, otherwise waits on the channel.
     pub async fn wait_for_any(&mut self) -> Option<AgentResult> {
-        if self.running_count() == 0 && self.pending_results.is_empty() {
-            return None;
-        }
-
         // Check pending results first
         if !self.pending_results.is_empty() {
-            let result = self.pending_results.remove(0);
-            if let Some(agent) = self.agents.get_mut(&result.name) {
-                agent.status = if result.success {
-                    AgentStatus::Completed
-                } else {
-                    AgentStatus::Failed
-                };
-            }
-            return Some(result);
+            return Some(self.pending_results.remove(0));
         }
 
         // Wait for next result
-        if let Some(result) = self.result_rx.recv().await {
-            if let Some(agent) = self.agents.get_mut(&result.name) {
-                agent.status = if result.success {
-                    AgentStatus::Completed
-                } else {
-                    AgentStatus::Failed
-                };
-            }
-            return Some(result);
-        }
-
-        None
+        self.result_rx.recv().await
     }
-}
 
-impl Default for AgentRegistry {
-    fn default() -> Self {
-        Self::new()
+    /// Check if there are buffered pending results
+    pub fn has_pending(&self) -> bool {
+        !self.pending_results.is_empty()
     }
 }
 
@@ -201,34 +185,26 @@ mod tests {
 
     #[test]
     fn test_registry_creation() {
-        let registry = AgentRegistry::new();
+        let (registry, _waiter) = AgentRegistry::new();
         assert_eq!(registry.running_count(), 0);
         assert!(registry.list_agents().is_empty());
     }
 
     #[test]
     fn test_has_agent() {
-        let registry = AgentRegistry::new();
+        let (registry, _waiter) = AgentRegistry::new();
         assert!(!registry.has_agent("test-agent"));
     }
 
     #[tokio::test]
-    async fn test_wait_for_any_no_agents() {
-        let mut registry = AgentRegistry::new();
-        let result = registry.wait_for_any().await;
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_wait_for_agent_not_found() {
-        let mut registry = AgentRegistry::new();
-        let result = registry.wait_for_agent("nonexistent").await;
-        assert!(result.is_none());
+    async fn test_wait_for_any_no_pending() {
+        let (_registry, waiter) = AgentRegistry::new();
+        assert!(!waiter.has_pending());
     }
 
     #[tokio::test]
     async fn test_get_agent_instructions() {
-        let mut registry = AgentRegistry::new();
+        let (mut registry, _waiter) = AgentRegistry::new();
 
         // Register a mock agent
         let handle = tokio::spawn(async {});
@@ -247,5 +223,25 @@ mod tests {
 
         let missing = registry.get_agent_instructions("nonexistent");
         assert_eq!(missing, None);
+    }
+
+    #[tokio::test]
+    async fn test_is_agent_running() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+
+        assert_eq!(registry.is_agent_running("nonexistent"), None);
+
+        let handle = tokio::spawn(async {});
+        registry.register(
+            "agent-1".to_string(),
+            "recon".to_string(),
+            "test".to_string(),
+            handle,
+        );
+
+        assert_eq!(registry.is_agent_running("agent-1"), Some(true));
+
+        registry.mark_agent_result("agent-1", true);
+        assert_eq!(registry.is_agent_running("agent-1"), Some(false));
     }
 }

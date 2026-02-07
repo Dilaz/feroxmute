@@ -230,7 +230,7 @@ fn prepare_output(output: &str) -> (String, bool) {
 
 /// Extract all command names from a shell command string
 /// Handles pipes (|), AND (&&), OR (||), semicolons (;), and subshells ($(...))
-fn extract_commands(input: &str) -> Vec<&str> {
+pub(crate) fn extract_commands(input: &str) -> Vec<&str> {
     let mut commands = Vec::new();
 
     // Split on shell operators
@@ -262,6 +262,8 @@ fn extract_commands(input: &str) -> Vec<&str> {
         if let Some(cmd) = trimmed.split_whitespace().next() {
             // Handle subshells: $(cmd ...) or `cmd ...`
             let cmd = cmd.trim_start_matches("$(").trim_start_matches('`');
+            // Strip path prefix so /usr/bin/nmap is recognized as nmap
+            let cmd = cmd.rsplit('/').next().unwrap_or(cmd);
             if !cmd.is_empty() {
                 commands.push(cmd);
             }
@@ -312,7 +314,16 @@ impl DockerShellTool {
                 self.events.send_feed(&self.agent_name, &msg, true);
                 return Err(msg);
             }
-            // Unknown commands are allowed (with no warning - too noisy)
+            // Block unknown commands by default for security
+            // This prevents bypassing restrictions via unregistered tools
+            else if self.tool_registry.categorize(cmd).is_none() {
+                let msg = format!(
+                    "Blocked: '{}' is not in the tool registry and is blocked by default",
+                    cmd
+                );
+                self.events.send_feed(&self.agent_name, &msg, true);
+                return Err(msg);
+            }
         }
 
         Ok(())
@@ -342,11 +353,17 @@ impl DockerShellTool {
             }
         }
 
-        // Try to parse semgrep output
-        if cmd_lower.starts_with("semgrep")
+        // Try to parse semgrep/opengrep output (same JSON format)
+        if (cmd_lower.starts_with("semgrep") || cmd_lower.starts_with("opengrep"))
             && cmd_lower.contains("--json")
             && let Ok(semgrep_output) = SemgrepOutput::parse(output)
         {
+            // Determine tool name from command
+            let tool_name = if cmd_lower.starts_with("opengrep") {
+                "opengrep"
+            } else {
+                "semgrep"
+            };
             for finding in semgrep_output.to_code_findings() {
                 self.events.send_code_finding(
                     &self.agent_name,
@@ -355,7 +372,7 @@ impl DockerShellTool {
                     finding.severity,
                     finding.finding_type,
                     &finding.title,
-                    &finding.tool,
+                    tool_name,
                     finding.cwe_id.as_deref(),
                     None,
                 );

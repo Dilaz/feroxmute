@@ -1,2 +1,5 @@
 /target
 error.log
+
+# Git worktrees
+.worktrees/

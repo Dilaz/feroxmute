@@ -389,8 +389,10 @@ async fn run_orchestrator_with_tools(
     });
 
     // Create the orchestrator context with all shared state
+    let (registry, waiter) = AgentRegistry::new();
     let context = Arc::new(OrchestratorContext {
-        registry: Arc::new(Mutex::new(AgentRegistry::new())),
+        registry: Arc::new(Mutex::new(registry)),
+        waiter: Arc::new(Mutex::new(waiter)),
         provider: Arc::clone(&provider),
         container,
         events,

@@ -189,10 +189,16 @@ FEROXMUTE_SCRIPT_EOF_{}",
         // Get raw output and check if truncation needed
         let raw_output = result.output();
         let (output, truncated) = if raw_output.len() > MAX_OUTPUT_LENGTH {
+            // Use char-safe truncation to avoid panicking on multi-byte UTF-8 boundaries
+            let safe_truncated: String = raw_output
+                .char_indices()
+                .take_while(|(i, _)| *i < MAX_OUTPUT_LENGTH)
+                .map(|(_, c)| c)
+                .collect();
             (
                 format!(
                     "{}\n\n[OUTPUT TRUNCATED - {} bytes total]",
-                    &raw_output[..MAX_OUTPUT_LENGTH],
+                    safe_truncated,
                     raw_output.len()
                 ),
                 true,

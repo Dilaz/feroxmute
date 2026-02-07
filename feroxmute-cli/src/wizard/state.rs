@@ -176,28 +176,32 @@ impl WizardState {
             WizardScreen::ApiKey => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
                 KeyCode::Char(c) => {
-                    self.text_input.insert(self.cursor_position, c);
+                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                    self.text_input.insert(byte_idx, c);
                     self.cursor_position += 1;
                 }
                 KeyCode::Backspace => {
                     if self.cursor_position > 0 {
                         self.cursor_position -= 1;
-                        self.text_input.remove(self.cursor_position);
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.len() {
-                        self.text_input.remove(self.cursor_position);
+                    if self.cursor_position < self.text_input.chars().count() {
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                    self.cursor_position =
+                        (self.cursor_position + 1).min(self.text_input.chars().count());
                 }
                 KeyCode::Home => self.cursor_position = 0,
-                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::End => self.cursor_position = self.text_input.chars().count(),
                 KeyCode::Enter => {
                     if !self.text_input.is_empty() {
                         self.data.api_key = self.text_input.clone();
@@ -217,28 +221,32 @@ impl WizardState {
             WizardScreen::AzureEndpoint => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
                 KeyCode::Char(c) => {
-                    self.text_input.insert(self.cursor_position, c);
+                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                    self.text_input.insert(byte_idx, c);
                     self.cursor_position += 1;
                 }
                 KeyCode::Backspace => {
                     if self.cursor_position > 0 {
                         self.cursor_position -= 1;
-                        self.text_input.remove(self.cursor_position);
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.len() {
-                        self.text_input.remove(self.cursor_position);
+                    if self.cursor_position < self.text_input.chars().count() {
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                    self.cursor_position =
+                        (self.cursor_position + 1).min(self.text_input.chars().count());
                 }
                 KeyCode::Home => self.cursor_position = 0,
-                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::End => self.cursor_position = self.text_input.chars().count(),
                 KeyCode::Enter => {
                     if !self.text_input.is_empty() {
                         self.data.base_url = Some(self.text_input.clone());
@@ -258,28 +266,32 @@ impl WizardState {
             WizardScreen::OllamaBaseUrl => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
                 KeyCode::Char(c) => {
-                    self.text_input.insert(self.cursor_position, c);
+                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                    self.text_input.insert(byte_idx, c);
                     self.cursor_position += 1;
                 }
                 KeyCode::Backspace => {
                     if self.cursor_position > 0 {
                         self.cursor_position -= 1;
-                        self.text_input.remove(self.cursor_position);
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.len() {
-                        self.text_input.remove(self.cursor_position);
+                    if self.cursor_position < self.text_input.chars().count() {
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                    self.cursor_position =
+                        (self.cursor_position + 1).min(self.text_input.chars().count());
                 }
                 KeyCode::Home => self.cursor_position = 0,
-                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::End => self.cursor_position = self.text_input.chars().count(),
                 KeyCode::Enter => {
                     // Use default localhost:11434 if empty
                     let base_url = if self.text_input.is_empty() {
@@ -303,28 +315,32 @@ impl WizardState {
             WizardScreen::OllamaApiKey => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
                 KeyCode::Char(c) => {
-                    self.text_input.insert(self.cursor_position, c);
+                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                    self.text_input.insert(byte_idx, c);
                     self.cursor_position += 1;
                 }
                 KeyCode::Backspace => {
                     if self.cursor_position > 0 {
                         self.cursor_position -= 1;
-                        self.text_input.remove(self.cursor_position);
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.len() {
-                        self.text_input.remove(self.cursor_position);
+                    if self.cursor_position < self.text_input.chars().count() {
+                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+                        self.text_input.remove(byte_idx);
                     }
                 }
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
                 KeyCode::Right => {
-                    self.cursor_position = (self.cursor_position + 1).min(self.text_input.len());
+                    self.cursor_position =
+                        (self.cursor_position + 1).min(self.text_input.chars().count());
                 }
                 KeyCode::Home => self.cursor_position = 0,
-                KeyCode::End => self.cursor_position = self.text_input.len(),
+                KeyCode::End => self.cursor_position = self.text_input.chars().count(),
                 KeyCode::Enter => {
                     // API key is optional for Ollama, so allow empty
                     if !self.text_input.is_empty() {
@@ -546,6 +562,10 @@ impl WizardState {
             ProviderName::Mira => "mira",
             ProviderName::LiteLlm => "litellm",
             ProviderName::Ollama => "ollama",
+            // CLI agent providers
+            ProviderName::ClaudeCode => "claude-code",
+            ProviderName::Codex => "codex",
+            ProviderName::GeminiCli => "gemini-cli",
         };
 
         #[allow(clippy::unnecessary_lazy_evaluations)]
@@ -565,6 +585,10 @@ impl WizardState {
                 ProviderName::Mira => "mira-chat",
                 ProviderName::LiteLlm => "openai/gpt-4o",
                 ProviderName::Ollama => "llama3.2",
+                // CLI agent providers (default models)
+                ProviderName::ClaudeCode => "claude-opus-4.5",
+                ProviderName::Codex => "gpt-5.2",
+                ProviderName::GeminiCli => "gemini-3-pro",
             });
 
         let mut toml = String::new();
@@ -575,11 +599,20 @@ impl WizardState {
         ));
 
         toml.push_str("[provider]\n");
-        toml.push_str(&format!("name = \"{}\"\n", provider_name));
-        toml.push_str(&format!("api_key = \"{}\"\n", self.data.api_key));
-        toml.push_str(&format!("model = \"{}\"\n", model));
+        toml.push_str(&format!(
+            "name = \"{}\"\n",
+            escape_toml_string(provider_name)
+        ));
+        toml.push_str(&format!(
+            "api_key = \"{}\"\n",
+            escape_toml_string(&self.data.api_key)
+        ));
+        toml.push_str(&format!("model = \"{}\"\n", escape_toml_string(model)));
         if let Some(ref base_url) = self.data.base_url {
-            toml.push_str(&format!("base_url = \"{}\"\n", base_url));
+            toml.push_str(&format!(
+                "base_url = \"{}\"\n",
+                escape_toml_string(base_url)
+            ));
         }
         toml.push('\n');
 
@@ -603,5 +636,71 @@ impl WizardState {
         toml.push_str(&format!("export_pdf = {}\n", self.data.export_pdf));
 
         Ok(toml)
+    }
+}
+
+/// Convert a character index to a byte index in a string.
+///
+/// `cursor_position` tracks the number of characters, but `String::insert()`
+/// and `String::remove()` require byte indices. This function converts between
+/// the two so that multi-byte characters are handled correctly.
+fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
+    s.char_indices()
+        .nth(char_idx)
+        .map(|(byte_idx, _)| byte_idx)
+        .unwrap_or(s.len())
+}
+
+/// Escape a string for use inside TOML double-quoted strings.
+///
+/// Handles backslashes, double quotes, and control characters that would
+/// break or inject into the TOML output.
+fn escape_toml_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => {
+                // Encode other control chars as \uXXXX
+                for unit in c.encode_utf16(&mut [0; 2]) {
+                    out.push_str(&format!("\\u{:04X}", unit));
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_toml_string_plain() {
+        assert_eq!(escape_toml_string("sk-ant-123"), "sk-ant-123");
+    }
+
+    #[test]
+    fn test_escape_toml_string_quotes() {
+        assert_eq!(escape_toml_string(r#"key"val"#), r#"key\"val"#);
+    }
+
+    #[test]
+    fn test_escape_toml_string_backslash() {
+        assert_eq!(escape_toml_string(r"path\to"), r"path\\to");
+    }
+
+    #[test]
+    fn test_escape_toml_string_newline_injection() {
+        // An attacker might try to inject a newline + extra TOML key
+        let malicious = "real-key\"\nmalicious = \"injected";
+        let escaped = escape_toml_string(malicious);
+        assert!(!escaped.contains('\n'));
+        assert!(escaped.contains("\\n"));
     }
 }
