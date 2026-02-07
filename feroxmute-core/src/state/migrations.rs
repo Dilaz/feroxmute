@@ -59,7 +59,10 @@ mod tests {
         let fk_enabled: bool = conn
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
             .expect("should query pragma");
-        assert!(fk_enabled, "foreign_keys should be enabled after migrations");
+        assert!(
+            fk_enabled,
+            "foreign_keys should be enabled after migrations"
+        );
     }
 
     #[test]

@@ -207,6 +207,7 @@ impl McpTool for McpSpawnAgentTool {
                     findings,
                     report: Arc::new(Mutex::new(None::<Report>)),
                     reports_dir,
+                    session_db_path: None,
                 });
 
                 let output = match provider
