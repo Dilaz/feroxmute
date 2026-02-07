@@ -11,6 +11,7 @@ use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolRegistry};
 use crate::mcp::{McpTool, McpToolResult};
 use crate::tools::EventSender;
+use crate::tools::shell::extract_commands;
 
 /// MCP wrapper for docker shell execution
 pub struct McpDockerShellTool {
@@ -48,19 +49,31 @@ impl McpDockerShellTool {
         }
     }
 
-    /// Check if a command is allowed by engagement limitations
+    /// Check if all commands in a (potentially chained) command string are allowed.
+    ///
+    /// Uses [`extract_commands`] to split on shell operators (`&&`, `||`, `;`, `|`,
+    /// subshells) and validates every command against engagement limitations,
+    /// matching the rig-based `DockerShellTool` logic.
     fn check_command_allowed(&self, command: &str) -> std::result::Result<(), String> {
+        let commands = extract_commands(command);
         let allowed = self.limitations.allowed_categories();
 
-        // Extract the first word as the command name and check against limitations
-        if let Some(cmd) = command.split_whitespace().next()
-            && let Some(category) = self.tool_registry.categorize(cmd)
-            && !allowed.contains(&category)
-        {
-            return Err(format!(
-                "'{}' requires {:?} which is not allowed in current scope",
-                cmd, category
-            ));
+        for cmd in commands {
+            if let Some(category) = self.tool_registry.categorize(cmd)
+                && !allowed.contains(&category)
+            {
+                return Err(format!(
+                    "'{}' requires {:?} which is not allowed in current scope",
+                    cmd, category
+                ));
+            }
+            // Block unknown commands by default for security
+            else if self.tool_registry.categorize(cmd).is_none() {
+                return Err(format!(
+                    "'{}' is not in the tool registry and is blocked by default",
+                    cmd
+                ));
+            }
         }
 
         Ok(())

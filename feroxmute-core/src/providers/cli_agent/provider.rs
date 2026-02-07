@@ -69,13 +69,13 @@ impl CliAgentProvider {
         }
     }
 
-    /// Ensure the HTTP MCP server is running, returning its base URL.
-    async fn ensure_http_server(&self) -> Result<String> {
+    /// Ensure the HTTP MCP server is running, returning `(url, bearer_token)`.
+    async fn ensure_http_server(&self) -> Result<(String, String)> {
         let http = self
             .http_server
             .get_or_try_init(|| async { HttpMcpServer::start(Arc::clone(&self.mcp_server)).await })
             .await?;
-        Ok(http.url())
+        Ok((http.url(), http.token().to_string()))
     }
 
     /// Connect the bridge if not already connected.
@@ -199,7 +199,7 @@ impl LlmProvider for CliAgentProvider {
 
         let session_id = self
             .bridge
-            .new_session("completion", &self.working_dir, None)
+            .new_session("completion", &self.working_dir, None, None)
             .await?;
 
         let combined: String = request
@@ -230,7 +230,7 @@ impl LlmProvider for CliAgentProvider {
         memory: Arc<MemoryContext>,
     ) -> Result<String> {
         // 1. Start HTTP MCP server
-        let http_url = self.ensure_http_server().await?;
+        let (http_url, token) = self.ensure_http_server().await?;
 
         // 2. Register shell tools
         self.register_shell_tools(
@@ -259,7 +259,7 @@ impl LlmProvider for CliAgentProvider {
         // ACP sends a single user message, so combine system instructions with the task.
         let session_id = self
             .bridge
-            .new_session(agent_name, &self.working_dir, Some(http_url))
+            .new_session(agent_name, &self.working_dir, Some(http_url), Some(token))
             .await?;
 
         let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
@@ -275,7 +275,7 @@ impl LlmProvider for CliAgentProvider {
         context: Arc<OrchestratorContext>,
     ) -> Result<String> {
         // 1. Start HTTP MCP server
-        let http_url = self.ensure_http_server().await?;
+        let (http_url, token) = self.ensure_http_server().await?;
 
         // 2. Register all tools: shell + orchestrator + report
         // For the orchestrator, register shell+memory for the orchestrator's own use,
@@ -322,7 +322,12 @@ impl LlmProvider for CliAgentProvider {
         // The user_prompt contains the actual target URL, engagement limitations, and workflow.
         let session_id = self
             .bridge
-            .new_session("orchestrator", &self.working_dir, Some(http_url))
+            .new_session(
+                "orchestrator",
+                &self.working_dir,
+                Some(http_url),
+                Some(token),
+            )
             .await?;
 
         let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
@@ -345,7 +350,7 @@ impl LlmProvider for CliAgentProvider {
         context: Arc<ReportContext>,
     ) -> Result<String> {
         // 1. Start HTTP MCP server
-        let http_url = self.ensure_http_server().await?;
+        let (http_url, token) = self.ensure_http_server().await?;
 
         // 2. Register report + memory tools
         self.register_report_tools(Arc::clone(&context)).await;
@@ -367,7 +372,7 @@ impl LlmProvider for CliAgentProvider {
         // ACP sends a single user message, so combine system instructions with the task.
         let session_id = self
             .bridge
-            .new_session("report", &self.working_dir, Some(http_url))
+            .new_session("report", &self.working_dir, Some(http_url), Some(token))
             .await?;
 
         let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");

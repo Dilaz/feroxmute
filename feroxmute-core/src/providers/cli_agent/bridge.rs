@@ -67,6 +67,7 @@ enum AcpCommand {
         agent_role: String,
         working_dir: PathBuf,
         mcp_server_url: Option<String>,
+        bearer_token: Option<String>,
         reply: oneshot::Sender<Result<acp::SessionId>>,
     },
     Prompt {
@@ -213,11 +214,14 @@ impl AcpBridge {
     ///
     /// If `mcp_server_url` is provided, it will be passed to the agent as an
     /// HTTP MCP server so that feroxmute tools are available in the session.
+    /// If `bearer_token` is also provided, it is sent as an `Authorization`
+    /// header so the MCP server can authenticate the CLI agent's requests.
     pub async fn new_session(
         &self,
         agent_role: &str,
         working_dir: &Path,
         mcp_server_url: Option<String>,
+        bearer_token: Option<String>,
     ) -> Result<acp::SessionId> {
         let (tx, rx) = oneshot::channel();
         self.cmd_tx
@@ -225,6 +229,7 @@ impl AcpBridge {
                 agent_role: agent_role.to_string(),
                 working_dir: working_dir.to_path_buf(),
                 mcp_server_url,
+                bearer_token,
                 reply: tx,
             })
             .await
@@ -329,6 +334,7 @@ async fn command_loop(
                 agent_role,
                 working_dir,
                 mcp_server_url,
+                bearer_token,
                 reply,
             } => {
                 let result = match connection.as_ref() {
@@ -337,9 +343,14 @@ async fn command_loop(
                         let mut request = acp::NewSessionRequest::new(&working_dir);
                         if let Some(url) = mcp_server_url {
                             tracing::debug!("Attaching MCP server at {}", url);
-                            request = request.mcp_servers(vec![acp::McpServer::Http(
-                                acp::McpServerHttp::new("feroxmute", url),
-                            )]);
+                            let mut mcp_http = acp::McpServerHttp::new("feroxmute", url);
+                            if let Some(ref token) = bearer_token {
+                                mcp_http = mcp_http.headers(vec![acp::HttpHeader::new(
+                                    "Authorization",
+                                    format!("Bearer {token}"),
+                                )]);
+                            }
+                            request = request.mcp_servers(vec![acp::McpServer::Http(mcp_http)]);
                         }
                         conn.new_session(request)
                             .await
@@ -352,11 +363,18 @@ async fn command_loop(
                         tracing::debug!("Creating Gemini ACP session for role '{}'", agent_role);
                         let mut mcp_servers = Vec::new();
                         if let Some(url) = mcp_server_url {
+                            let mut headers = vec![];
+                            if let Some(ref token) = bearer_token {
+                                headers.push(json!({
+                                    "name": "Authorization",
+                                    "value": format!("Bearer {token}")
+                                }));
+                            }
                             mcp_servers.push(json!({
                                 "name": "feroxmute",
                                 "type": "http",
                                 "url": url,
-                                "headers": []
+                                "headers": headers
                             }));
                         }
 

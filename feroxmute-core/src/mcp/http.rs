@@ -2,6 +2,10 @@
 //!
 //! Provides an HTTP POST endpoint that CLI agents can use to access
 //! feroxmute tools via the MCP protocol over JSON-RPC.
+//!
+//! Each server instance generates a random bearer token on startup.
+//! Requests without a valid `Authorization: Bearer <token>` header
+//! are rejected with `401 Unauthorized`.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -16,6 +20,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, warn};
+use uuid::Uuid;
 
 use crate::Result;
 use crate::mcp::McpServer;
@@ -24,9 +29,12 @@ use crate::mcp::protocol::{JsonRpcRequest, error_codes};
 /// HTTP server wrapping an MCP server for tool access via HTTP POST.
 ///
 /// Binds to an OS-assigned port on localhost and forwards JSON-RPC
-/// requests to the underlying [`McpServer`].
+/// requests to the underlying [`McpServer`]. All requests must include
+/// a valid `Authorization: Bearer <token>` header.
 pub struct HttpMcpServer {
     port: u16,
+    /// Bearer token required for all requests.
+    token: String,
     shutdown_tx: Option<oneshot::Sender<()>>,
     _task: JoinHandle<()>,
 }
@@ -35,23 +43,28 @@ impl HttpMcpServer {
     /// Start the HTTP MCP server on an OS-assigned port.
     ///
     /// Binds to `127.0.0.1:0` and spawns a background task to accept
-    /// connections. Use [`url()`](Self::url) to get the server address.
+    /// connections. A random bearer token is generated; use
+    /// [`token()`](Self::token) to retrieve it for passing to CLI agents.
     pub async fn start(server: Arc<McpServer>) -> Result<Self> {
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = TcpListener::bind(addr).await?;
         let local_addr = listener.local_addr()?;
         let port = local_addr.port();
 
+        let token = Uuid::new_v4().to_string();
+
         debug!("MCP HTTP server listening on {}", local_addr);
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
+        let accept_token = token.clone();
         let task = tokio::spawn(async move {
-            Self::accept_loop(listener, server, shutdown_rx).await;
+            Self::accept_loop(listener, server, accept_token, shutdown_rx).await;
         });
 
         Ok(Self {
             port,
+            token,
             shutdown_tx: Some(shutdown_tx),
             _task: task,
         })
@@ -60,6 +73,11 @@ impl HttpMcpServer {
     /// The full URL of the running server (e.g. `http://127.0.0.1:12345`).
     pub fn url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
+    }
+
+    /// The bearer token required for authentication.
+    pub fn token(&self) -> &str {
+        &self.token
     }
 
     /// The port the server is listening on.
@@ -78,8 +96,10 @@ impl HttpMcpServer {
     async fn accept_loop(
         listener: TcpListener,
         server: Arc<McpServer>,
+        token: String,
         mut shutdown_rx: oneshot::Receiver<()>,
     ) {
+        let token = Arc::new(token);
         loop {
             tokio::select! {
                 result = listener.accept() => {
@@ -87,11 +107,13 @@ impl HttpMcpServer {
                         Ok((stream, addr)) => {
                             debug!("MCP HTTP connection from {}", addr);
                             let server = Arc::clone(&server);
+                            let token = Arc::clone(&token);
                             tokio::spawn(async move {
                                 let io = TokioIo::new(stream);
                                 let service = service_fn(move |req| {
                                     let server = Arc::clone(&server);
-                                    handle_mcp_request(server, req)
+                                    let token = Arc::clone(&token);
+                                    handle_mcp_request(server, token, req)
                                 });
                                 if let Err(e) = http1::Builder::new()
                                     .serve_connection(io, service)
@@ -132,9 +154,19 @@ fn json_response(status: StatusCode, body: &serde_json::Value) -> Response<Full<
         })
 }
 
+/// Validate the `Authorization: Bearer <token>` header.
+fn check_bearer_token(req: &Request<hyper::body::Incoming>, expected: &str) -> bool {
+    req.headers()
+        .get(hyper::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .is_some_and(|t| t == expected)
+}
+
 /// Handle a single HTTP request by dispatching to the MCP server.
 async fn handle_mcp_request(
     server: Arc<McpServer>,
+    token: Arc<String>,
     req: Request<hyper::body::Incoming>,
 ) -> std::result::Result<Response<Full<Bytes>>, hyper::Error> {
     // Only accept POST requests
@@ -148,6 +180,19 @@ async fn handle_mcp_request(
             }
         });
         return Ok(json_response(StatusCode::METHOD_NOT_ALLOWED, &body));
+    }
+
+    // Validate bearer token
+    if !check_bearer_token(&req, &token) {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {
+                "code": error_codes::INVALID_REQUEST,
+                "message": "Unauthorized: missing or invalid bearer token"
+            }
+        });
+        return Ok(json_response(StatusCode::UNAUTHORIZED, &body));
     }
 
     // Read and collect the request body
@@ -245,6 +290,7 @@ mod tests {
         assert!(http.port() > 0);
         let url = http.url();
         assert!(url.starts_with("http://127.0.0.1:"));
+        assert!(!http.token().is_empty());
 
         http.shutdown().await;
     }

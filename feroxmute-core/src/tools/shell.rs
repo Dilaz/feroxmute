@@ -230,7 +230,7 @@ fn prepare_output(output: &str) -> (String, bool) {
 
 /// Extract all command names from a shell command string
 /// Handles pipes (|), AND (&&), OR (||), semicolons (;), and subshells ($(...))
-fn extract_commands(input: &str) -> Vec<&str> {
+pub(crate) fn extract_commands(input: &str) -> Vec<&str> {
     let mut commands = Vec::new();
 
     // Split on shell operators
