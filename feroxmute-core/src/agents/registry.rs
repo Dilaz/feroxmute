@@ -88,6 +88,11 @@ impl AgentRegistry {
         self.agents.contains_key(name)
     }
 
+    /// Check if any agent of the given type exists
+    pub fn has_agent_type(&self, agent_type: &str) -> bool {
+        self.agents.values().any(|a| a.agent_type == agent_type)
+    }
+
     /// Get the status of all agents
     pub fn list_agents(&self) -> Vec<(&str, &str, AgentStatus)> {
         self.agents
@@ -193,6 +198,24 @@ mod tests {
     fn test_has_agent() {
         let (registry, _waiter) = AgentRegistry::new();
         assert!(!registry.has_agent("test-agent"));
+    }
+
+    #[tokio::test]
+    async fn test_has_agent_type() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+
+        assert!(!registry.has_agent_type("report"));
+
+        let handle = tokio::spawn(async {});
+        registry.register(
+            "my-report".to_string(),
+            "report".to_string(),
+            "Generate final report".to_string(),
+            handle,
+        );
+
+        assert!(registry.has_agent_type("report"));
+        assert!(!registry.has_agent_type("recon"));
     }
 
     #[tokio::test]

@@ -18,7 +18,6 @@ use crate::agents::{AgentResult, AgentStatus, EngagementPhase};
 use crate::limitations::ToolCategory;
 use crate::mcp::{McpTool, McpToolResult};
 use crate::reports::Report;
-use crate::state::MetricsTracker;
 use crate::tools::OrchestratorContext;
 use crate::tools::report::ReportContext;
 
@@ -139,6 +138,12 @@ impl McpTool for McpSpawnAgentTool {
             )));
         }
 
+        if args.agent_type == "report" && registry.has_agent_type("report") {
+            return Ok(McpToolResult::error(
+                "A report agent has already been spawned. Only one report agent is allowed per engagement.".to_string(),
+            ));
+        }
+
         // Get base prompt for agent type
         let base_prompt = self.context.prompts.get(&args.agent_type).unwrap_or("");
 
@@ -194,6 +199,8 @@ impl McpTool for McpSpawnAgentTool {
         let reports_dir = self.context.reports_dir.clone();
         let session_db_path = self.context.session_db_path.clone();
 
+        let provider_metrics = provider.metrics().clone();
+
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
             tokio::spawn(async move {
@@ -204,7 +211,7 @@ impl McpTool for McpSpawnAgentTool {
                     target: target.clone(),
                     session_id,
                     start_time: Utc::now(),
-                    metrics: MetricsTracker::new(),
+                    metrics: provider_metrics,
                     findings,
                     report: Arc::new(Mutex::new(None::<Report>)),
                     reports_dir,
@@ -755,7 +762,7 @@ impl McpTool for McpCompleteEngagementTool {
             .engagement_completed
             .store(true, Ordering::SeqCst);
 
-        // Mark session as completed in the database
+        // Mark session as completed in the database and persist metrics
         if let Some(ref db_path) = self.context.session_db_path {
             match rusqlite::Connection::open(db_path) {
                 Ok(conn) => {
@@ -766,6 +773,14 @@ impl McpTool for McpCompleteEngagementTool {
                         self.context.events.send_feed(
                             "orchestrator",
                             &format!("Warning: Failed to persist completion status: {e}"),
+                            true,
+                        );
+                    }
+                    // Persist accumulated metrics before shutdown
+                    if let Err(e) = self.context.provider.metrics().save(&conn) {
+                        self.context.events.send_feed(
+                            "orchestrator",
+                            &format!("Warning: Failed to persist metrics: {e}"),
                             true,
                         );
                     }

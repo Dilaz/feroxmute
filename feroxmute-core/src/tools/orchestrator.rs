@@ -51,7 +51,7 @@ use crate::limitations::{EngagementLimitations, ToolCategory};
 use crate::providers::LlmProvider;
 use crate::reports::Report;
 use crate::state::models::FindingType;
-use crate::state::{MetricsTracker, Severity};
+use crate::state::Severity;
 use crate::tools::report::ReportContext;
 
 /// Errors from orchestrator tools
@@ -329,6 +329,13 @@ impl Tool for SpawnAgentTool {
             });
         }
 
+        if args.agent_type == "report" && registry.has_agent_type("report") {
+            return Ok(SpawnAgentOutput {
+                success: false,
+                message: "A report agent has already been spawned. Only one report agent is allowed per engagement.".to_string(),
+            });
+        }
+
         // Get base prompt for agent type
         let base_prompt = self.context.prompts.get(&args.agent_type).unwrap_or("");
 
@@ -387,6 +394,8 @@ impl Tool for SpawnAgentTool {
         let reports_dir = self.context.reports_dir.clone();
         let session_db_path = self.context.session_db_path.clone();
 
+        let provider_metrics = provider.metrics().clone();
+
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
             tokio::spawn(async move {
@@ -398,7 +407,7 @@ impl Tool for SpawnAgentTool {
                     target: target.clone(),
                     session_id,
                     start_time: Utc::now(),
-                    metrics: MetricsTracker::new(),
+                    metrics: provider_metrics,
                     findings,
                     report: Arc::new(Mutex::new(None::<Report>)),
                     reports_dir,
@@ -1117,7 +1126,7 @@ impl Tool for CompleteEngagementTool {
             .engagement_completed
             .store(true, Ordering::SeqCst);
 
-        // Mark session as completed
+        // Mark session as completed and persist metrics
         if let Some(ref db_path) = self.context.session_db_path {
             match rusqlite::Connection::open(db_path) {
                 Ok(conn) => {
@@ -1128,6 +1137,14 @@ impl Tool for CompleteEngagementTool {
                         self.context.events.send_feed(
                             "orchestrator",
                             &format!("Warning: Failed to persist completion status: {}", e),
+                            true,
+                        );
+                    }
+                    // Persist accumulated metrics before shutdown
+                    if let Err(e) = self.context.provider.metrics().save(&conn) {
+                        self.context.events.send_feed(
+                            "orchestrator",
+                            &format!("Warning: Failed to persist metrics: {}", e),
                             true,
                         );
                     }
