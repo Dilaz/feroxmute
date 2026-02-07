@@ -440,12 +440,15 @@ mod tests {
     fn test_orchestrator_with_source_target_has_sast_tool() {
         let agent = OrchestratorAgent::new().with_source_target();
         let tools = agent.tools();
-        // SAST agent type should be mentioned in spawn_agent description when source target is set
+        // SAST agent type should appear in spawn_agent parameters enum when source target is set
         let spawn_tool = tools.iter().find(|t| t.name == "spawn_agent").unwrap();
-        let desc = &spawn_tool.description;
+        let params = &spawn_tool.parameters;
+        let agent_type_enum = params["properties"]["agent_type"]["enum"]
+            .as_array()
+            .expect("agent_type should have enum");
         assert!(
-            desc.contains("sast") || agent.has_source_target(),
-            "Agent should have source target enabled"
+            agent_type_enum.iter().any(|v| v.as_str() == Some("sast")),
+            "spawn_agent should include 'sast' in agent_type enum when source target is set"
         );
     }
 

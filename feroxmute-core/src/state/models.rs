@@ -761,7 +761,12 @@ impl ReconFinding {
                 target: row.get(5)?,
                 discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
                     .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now()),
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            "Invalid discovered_at timestamp in DB, defaulting to now: {e}"
+                        );
+                        Utc::now()
+                    }),
             });
         }
         Ok(findings)
@@ -784,7 +789,12 @@ impl ReconFinding {
                 target: row.get(5)?,
                 discovered_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(6)?)
                     .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now()),
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(
+                            "Invalid discovered_at timestamp in DB, defaulting to now: {e}"
+                        );
+                        Utc::now()
+                    }),
             });
         }
         Ok(findings)
