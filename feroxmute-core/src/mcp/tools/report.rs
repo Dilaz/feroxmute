@@ -680,6 +680,7 @@ mod tests {
             ])),
             report: Arc::new(Mutex::new(None)),
             reports_dir,
+            session_db_path: None,
         })
     }
 
