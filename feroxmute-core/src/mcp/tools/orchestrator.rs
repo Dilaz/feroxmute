@@ -192,6 +192,7 @@ impl McpTool for McpSpawnAgentTool {
         let memory = Arc::clone(&self.context.memory);
         let session_id = self.context.session_id.clone();
         let reports_dir = self.context.reports_dir.clone();
+        let session_db_path = self.context.session_db_path.clone();
 
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
@@ -207,7 +208,7 @@ impl McpTool for McpSpawnAgentTool {
                     findings,
                     report: Arc::new(Mutex::new(None::<Report>)),
                     reports_dir,
-                    session_db_path: None,
+                    session_db_path,
                 });
 
                 let output = match provider

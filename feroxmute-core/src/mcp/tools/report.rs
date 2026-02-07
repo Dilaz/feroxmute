@@ -12,7 +12,7 @@ use crate::Result;
 use crate::mcp::{McpTool, McpToolResult};
 use crate::reports::{
     Finding, Report, ReportMetadata, ReportMetrics, ReportSummary, RiskRating, SeverityCounts,
-    StatusCounts, export_html, export_json, export_markdown, export_pdf,
+    StatusCounts, export_html, export_json, export_markdown, export_pdf, generate_report,
 };
 use crate::tools::report::ReportContext;
 
@@ -112,46 +112,9 @@ impl McpGenerateReportTool {
     pub fn new(context: Arc<ReportContext>) -> Self {
         Self { context }
     }
-}
 
-#[async_trait]
-impl McpTool for McpGenerateReportTool {
-    fn name(&self) -> &str {
-        "generate_report"
-    }
-
-    fn description(&self) -> &str {
-        "Generate the penetration testing report from collected findings. Call this before exporting to JSON, Markdown, HTML, or PDF."
-    }
-
-    fn input_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "executive_summary": {
-                    "type": "string",
-                    "description": "Executive summary for the report"
-                },
-                "key_findings": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of key findings to highlight"
-                }
-            }
-        })
-    }
-
-    async fn execute(&self, arguments: Value) -> Result<McpToolResult> {
-        let args: GenerateReportArgs = serde_json::from_value(arguments).map_err(|e| {
-            crate::Error::Provider(format!("Invalid generate_report arguments: {e}"))
-        })?;
-
-        self.context.events.send_tool_call();
-        self.context
-            .events
-            .send_feed("report", "Generating report from findings...", false);
-
-        let end_time = Utc::now();
+    /// Fallback: build a report from the in-memory findings Vec
+    async fn build_report_from_memory(&self, end_time: chrono::DateTime<Utc>) -> Report {
         let findings_strings = self.context.findings.lock().await;
 
         // Convert string findings to Finding structs
@@ -196,7 +159,6 @@ impl McpTool for McpGenerateReportTool {
 
         let finding_count = findings.len();
 
-        // Count by severity
         let mut severity_counts = SeverityCounts::default();
         for f in &findings {
             match f.severity.to_lowercase().as_str() {
@@ -216,7 +178,7 @@ impl McpTool for McpGenerateReportTool {
 
         let metrics = self.context.metrics.snapshot();
 
-        let report = Report {
+        Report {
             metadata: ReportMetadata::new(
                 &self.context.target,
                 &self.context.session_id,
@@ -228,13 +190,11 @@ impl McpTool for McpGenerateReportTool {
                 by_severity: severity_counts,
                 by_status: StatusCounts::default(),
                 risk_rating,
-                key_findings: args.key_findings.unwrap_or_default(),
-                executive_summary: args.executive_summary.unwrap_or_else(|| {
-                    format!(
-                        "Security assessment of {} completed with {} findings.",
-                        self.context.target, finding_count
-                    )
-                }),
+                key_findings: Vec::new(),
+                executive_summary: format!(
+                    "Security assessment of {} completed with {} findings.",
+                    self.context.target, finding_count
+                ),
             },
             findings,
             metrics: ReportMetrics {
@@ -245,8 +205,89 @@ impl McpTool for McpGenerateReportTool {
                 hosts_discovered: 0,
                 ports_discovered: 0,
             },
+        }
+    }
+}
+
+#[async_trait]
+impl McpTool for McpGenerateReportTool {
+    fn name(&self) -> &str {
+        "generate_report"
+    }
+
+    fn description(&self) -> &str {
+        "Generate the penetration testing report from collected findings. Call this before exporting to JSON, Markdown, HTML, or PDF."
+    }
+
+    fn input_schema(&self) -> Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "executive_summary": {
+                    "type": "string",
+                    "description": "Executive summary for the report"
+                },
+                "key_findings": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of key findings to highlight"
+                }
+            }
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> Result<McpToolResult> {
+        let args: GenerateReportArgs = serde_json::from_value(arguments).map_err(|e| {
+            crate::Error::Provider(format!("Invalid generate_report arguments: {e}"))
+        })?;
+
+        self.context.events.send_tool_call();
+        self.context
+            .events
+            .send_feed("report", "Generating report from findings...", false);
+
+        let end_time = Utc::now();
+
+        // Try loading findings from the database first (authoritative source),
+        // falling back to the in-memory Vec for backwards compatibility
+        let mut report = if let Some(ref db_path) = self.context.session_db_path {
+            match rusqlite::Connection::open(db_path) {
+                Ok(conn) => match generate_report(
+                    &conn,
+                    &self.context.target,
+                    &self.context.session_id,
+                    self.context.start_time,
+                    end_time,
+                    &self.context.metrics,
+                ) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to generate report from database: {e}, falling back to in-memory findings"
+                        );
+                        self.build_report_from_memory(end_time).await
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to open session database: {e}, falling back to in-memory findings"
+                    );
+                    self.build_report_from_memory(end_time).await
+                }
+            }
+        } else {
+            self.build_report_from_memory(end_time).await
         };
 
+        // Override summary fields with LLM-provided content
+        if let Some(summary) = args.executive_summary {
+            report.summary.executive_summary = summary;
+        }
+        if let Some(key_findings) = args.key_findings {
+            report.summary.key_findings = key_findings;
+        }
+
+        let finding_count = report.findings.len();
         let risk_rating_str = format!("{}", report.summary.risk_rating);
 
         // Store the report for export tools
@@ -851,5 +892,103 @@ mod tests {
                 .iter()
                 .any(|f| f.contains("Enable WAF"))
         );
+    }
+
+    #[tokio::test]
+    async fn test_generate_report_loads_from_database() {
+        use crate::state::{VulnStatus, Vulnerability, run_migrations};
+
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let db_path = tmp.path().join("session.db");
+        let reports_dir = tmp.path().join("reports");
+        std::fs::create_dir_all(&reports_dir).ok();
+
+        // Create DB with schema and insert findings
+        let conn = rusqlite::Connection::open(&db_path).expect("open db");
+        run_migrations(&conn).expect("run migrations");
+
+        let vuln1 = Vulnerability {
+            id: "VULN-001".to_string(),
+            host_id: None,
+            vuln_type: "sqli".to_string(),
+            severity: Severity::Critical,
+            title: "SQL Injection in login".to_string(),
+            description: Some("Login form vulnerable".to_string()),
+            evidence: Some("Error-based SQLi detected".to_string()),
+            status: VulnStatus::Verified,
+            cwe: Some("CWE-89".to_string()),
+            cvss: None,
+            asset: Some("/api/login".to_string()),
+            remediation: Some("Use parameterized queries".to_string()),
+            discovered_by: "scanner-01".to_string(),
+            verified_by: None,
+            discovered_at: Utc::now(),
+            verified_at: None,
+        };
+        vuln1.insert(&conn).expect("insert vuln1");
+
+        let vuln2 = Vulnerability {
+            id: "VULN-002".to_string(),
+            host_id: None,
+            vuln_type: "xss".to_string(),
+            severity: Severity::High,
+            title: "Reflected XSS".to_string(),
+            description: Some("XSS in search".to_string()),
+            evidence: None,
+            status: VulnStatus::Potential,
+            cwe: None,
+            cvss: None,
+            asset: Some("/search".to_string()),
+            remediation: None,
+            discovered_by: "scanner-01".to_string(),
+            verified_by: None,
+            discovered_at: Utc::now(),
+            verified_at: None,
+        };
+        vuln2.insert(&conn).expect("insert vuln2");
+        drop(conn);
+
+        // Create context WITH session_db_path set (empty in-memory findings)
+        let context = Arc::new(ReportContext {
+            events: Arc::new(NoopEventSender),
+            target: "example.com".to_string(),
+            session_id: "test-db-session".to_string(),
+            start_time: Utc::now(),
+            metrics: MetricsTracker::new(),
+            findings: Arc::new(Mutex::new(Vec::new())), // Empty in-memory
+            report: Arc::new(Mutex::new(None)),
+            reports_dir,
+            session_db_path: Some(db_path),
+        });
+
+        let tool = McpGenerateReportTool::new(Arc::clone(&context));
+        let result = tool
+            .execute(serde_json::json!({
+                "executive_summary": "Test DB loading",
+                "key_findings": ["Critical SQLi found"]
+            }))
+            .await
+            .expect("should generate report from DB");
+
+        let content = result.content.expect("should have content");
+        let text = match &content[0] {
+            crate::mcp::McpContent::Text { text } => text,
+        };
+        let parsed: serde_json::Value = serde_json::from_str(text).expect("should parse JSON");
+
+        // Should have loaded 2 findings from DB, not 0 from empty in-memory Vec
+        assert_eq!(parsed["success"], true);
+        assert_eq!(parsed["finding_count"], 2);
+        assert_eq!(parsed["risk_rating"], "Critical");
+
+        // Verify report struct details
+        let report_lock = context.report.lock().await;
+        let report = report_lock.as_ref().unwrap();
+        assert_eq!(report.findings.len(), 2);
+        assert_eq!(report.summary.by_severity.critical, 1);
+        assert_eq!(report.summary.by_severity.high, 1);
+        assert_eq!(report.summary.total_vulnerabilities, 2);
+        assert_eq!(report.summary.executive_summary, "Test DB loading");
+        assert_eq!(report.summary.key_findings, vec!["Critical SQLi found"]);
     }
 }

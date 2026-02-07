@@ -301,7 +301,7 @@ impl LlmProvider for CliAgentProvider {
             findings: Arc::clone(&context.findings),
             report: Arc::new(Mutex::new(None)),
             reports_dir: context.reports_dir.clone(),
-            session_db_path: None,
+            session_db_path: context.session_db_path.clone(),
         });
         self.register_report_tools(report_context).await;
 
