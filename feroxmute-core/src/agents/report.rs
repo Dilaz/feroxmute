@@ -405,8 +405,7 @@ mod tests {
             "priority": "high"
         });
         let result = agent.handle_add_recommendation(&args);
-        assert!(result.contains("[HIGH]"));
-        assert!(result.contains("Update TLS to 1.3"));
+        assert_eq!(result, "Added recommendation: [HIGH] Update TLS to 1.3");
 
         // Verify it was stored
         let report = agent.generated_report.as_ref().unwrap();
@@ -415,7 +414,7 @@ mod tests {
                 .summary
                 .key_findings
                 .iter()
-                .any(|f| f.contains("[HIGH] Update TLS to 1.3"))
+                .any(|f| f == "[HIGH] Update TLS to 1.3")
         );
     }
 

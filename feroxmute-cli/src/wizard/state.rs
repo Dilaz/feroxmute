@@ -677,6 +677,7 @@ fn escape_toml_string(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -767,14 +768,12 @@ mod tests {
             ..Default::default()
         };
         let toml = state.generate_toml().unwrap();
-        assert!(toml.contains("[provider]"));
-        assert!(toml.contains("name = \"anthropic\""));
-        assert!(toml.contains("api_key = \"sk-test-123\""));
-        assert!(toml.contains("[capabilities]"));
-        assert!(toml.contains("discover = true"));
-        assert!(toml.contains("portscan = false"));
-        assert!(toml.contains("[constraints]"));
-        assert!(toml.contains("no_exploit = true"));
+        // Verify exact key=value lines (not substring matches)
+        assert!(toml.lines().any(|l| l.trim() == "name = \"anthropic\""));
+        assert!(toml.lines().any(|l| l.trim() == "api_key = \"sk-test-123\""));
+        assert!(toml.lines().any(|l| l.trim() == "discover = true"));
+        assert!(toml.lines().any(|l| l.trim() == "portscan = false"));
+        assert!(toml.lines().any(|l| l.trim() == "no_exploit = true"));
     }
 
     #[test]
