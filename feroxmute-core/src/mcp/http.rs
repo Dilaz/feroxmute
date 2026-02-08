@@ -306,4 +306,37 @@ mod tests {
 
         http.shutdown().await;
     }
+
+    #[tokio::test]
+    async fn test_http_server_unique_tokens() {
+        let server1 = Arc::new(McpServer::new("test1", "1.0.0"));
+        let server2 = Arc::new(McpServer::new("test2", "1.0.0"));
+
+        let http1 = HttpMcpServer::start(server1).await.unwrap();
+        let http2 = HttpMcpServer::start(server2).await.unwrap();
+
+        assert_ne!(
+            http1.token(),
+            http2.token(),
+            "each server should have a unique token"
+        );
+
+        http1.shutdown().await;
+        http2.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_http_url_format() {
+        let server = Arc::new(McpServer::new("test", "1.0.0"));
+        let http = HttpMcpServer::start(server).await.unwrap();
+
+        let url = http.url();
+        assert!(url.starts_with("http://127.0.0.1:"));
+        let port_str = url.strip_prefix("http://127.0.0.1:").unwrap();
+        let port: u16 = port_str.parse().expect("port should be a valid u16");
+        assert!(port > 0);
+        assert_eq!(port, http.port());
+
+        http.shutdown().await;
+    }
 }

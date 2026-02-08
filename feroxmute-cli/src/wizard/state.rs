@@ -703,4 +703,95 @@ mod tests {
         assert!(!escaped.contains('\n'));
         assert!(escaped.contains("\\n"));
     }
+
+    #[test]
+    fn test_char_to_byte_index_ascii() {
+        assert_eq!(char_to_byte_index("hello", 3), 3);
+    }
+
+    #[test]
+    fn test_char_to_byte_index_multibyte() {
+        // "café" - é is 2 bytes, so char index 4 -> byte index 5
+        assert_eq!(char_to_byte_index("café", 4), 5);
+    }
+
+    #[test]
+    fn test_char_to_byte_index_cjk() {
+        // "日本語" - each char is 3 bytes
+        assert_eq!(char_to_byte_index("日本語", 1), 3);
+    }
+
+    #[test]
+    fn test_char_to_byte_index_past_end() {
+        assert_eq!(char_to_byte_index("hi", 10), 2);
+    }
+
+    #[test]
+    fn test_char_to_byte_index_empty() {
+        assert_eq!(char_to_byte_index("", 0), 0);
+    }
+
+    #[test]
+    fn test_escape_toml_control_chars() {
+        let input = "\x01\x02";
+        let escaped = escape_toml_string(input);
+        assert!(escaped.contains("\\u0001"));
+        assert!(escaped.contains("\\u0002"));
+        assert!(!escaped.contains('\x01'));
+        assert!(!escaped.contains('\x02'));
+    }
+
+    fn test_wizard_state() -> WizardState {
+        WizardState {
+            screen: WizardScreen::Welcome,
+            data: WizardData::default(),
+            selected_index: 0,
+            text_input: String::new(),
+            cursor_position: 0,
+            show_advanced: false,
+            error_message: None,
+        }
+    }
+
+    #[test]
+    fn test_generate_toml_basic() {
+        let mut state = test_wizard_state();
+        state.data = WizardData {
+            provider: ProviderName::Anthropic,
+            api_key: "sk-test-123".to_string(),
+            discover: true,
+            portscan: false,
+            network: false,
+            passive: false,
+            no_exploit: true,
+            ..Default::default()
+        };
+        let toml = state.generate_toml().unwrap();
+        assert!(toml.contains("[provider]"));
+        assert!(toml.contains("name = \"anthropic\""));
+        assert!(toml.contains("api_key = \"sk-test-123\""));
+        assert!(toml.contains("[capabilities]"));
+        assert!(toml.contains("discover = true"));
+        assert!(toml.contains("portscan = false"));
+        assert!(toml.contains("[constraints]"));
+        assert!(toml.contains("no_exploit = true"));
+    }
+
+    #[test]
+    fn test_wizard_quit_on_q() {
+        let mut state = test_wizard_state();
+        assert_eq!(state.screen, WizardScreen::Welcome);
+        let action = state.handle_key(KeyEvent::from(KeyCode::Char('q')));
+        assert!(matches!(action, WizardAction::Quit));
+    }
+
+    #[test]
+    fn test_wizard_screen_navigation() {
+        let mut state = test_wizard_state();
+        assert_eq!(state.screen, WizardScreen::Welcome);
+        let action = state.handle_key(KeyEvent::from(KeyCode::Enter));
+        assert!(matches!(action, WizardAction::Continue));
+        // After pressing Enter on Welcome, screen should advance
+        assert_ne!(state.screen, WizardScreen::Welcome);
+    }
 }
