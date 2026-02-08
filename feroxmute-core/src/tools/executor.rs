@@ -284,4 +284,60 @@ mod tests {
         assert_eq!(exec.exit_code, Some(0));
         assert!(exec.completed_at.is_some());
     }
+
+    #[test]
+    fn test_tool_execution_save_to_db() {
+        use crate::state::migrations::run_migrations;
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let mut exec = ToolExecution::new(
+            "recon",
+            "nmap",
+            vec!["-sV".to_string(), "localhost".to_string()],
+        );
+        let result = ExecResult {
+            stdout: "22/tcp open ssh".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+        exec.complete(&result);
+        exec.save(&conn).unwrap();
+
+        // Query back
+        let mut stmt = conn
+            .prepare("SELECT agent, tool, output FROM tool_executions WHERE id = ?1")
+            .unwrap();
+        let (agent, tool, output): (String, String, Option<String>) = stmt
+            .query_row([&exec.id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(agent, "recon");
+        assert_eq!(tool, "nmap");
+        assert_eq!(output.unwrap(), "22/tcp open ssh");
+    }
+
+    #[test]
+    fn test_tool_registry_all() {
+        let registry = ToolRegistry::new();
+        let all = registry.all();
+        assert!(!all.is_empty(), "registry should have tools");
+        assert!(all.iter().any(|t| t.name == "nmap"));
+        assert!(all.iter().any(|t| t.name == "subfinder"));
+    }
+
+    #[test]
+    fn test_tool_registry_json_tools_subset() {
+        let registry = ToolRegistry::new();
+        let json_tools = registry.json_tools();
+        for tool in &json_tools {
+            assert!(
+                tool.json_output,
+                "json_tools() should only return tools with json_output=true"
+            );
+        }
+    }
 }

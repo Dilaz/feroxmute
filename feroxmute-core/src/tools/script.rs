@@ -233,11 +233,57 @@ FEROXMUTE_SCRIPT_EOF_{}",
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_default_timeout() {
         assert_eq!(default_timeout(), Some(30));
+    }
+
+    #[test]
+    fn test_run_script_args_default_timeout() {
+        let json = serde_json::json!({
+            "script": "echo hi",
+            "language": "bash",
+            "reason": "test"
+        });
+        let args: RunScriptArgs = serde_json::from_value(json).unwrap();
+        assert_eq!(args.timeout, Some(30), "should default to 30 seconds");
+    }
+
+    #[test]
+    fn test_run_script_output_skip_serializing_false_flags() {
+        let output = RunScriptOutput {
+            output: "hello".to_string(),
+            exit_code: 0,
+            timed_out: false,
+            truncated: false,
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert!(
+            json.get("timed_out").is_none(),
+            "false timed_out should be omitted"
+        );
+        assert!(
+            json.get("truncated").is_none(),
+            "false truncated should be omitted"
+        );
+        assert_eq!(json["output"], "hello");
+        assert_eq!(json["exit_code"], 0);
+    }
+
+    #[test]
+    fn test_run_script_output_true_flags() {
+        let output = RunScriptOutput {
+            output: "partial".to_string(),
+            exit_code: 137,
+            timed_out: true,
+            truncated: true,
+        };
+        let json = serde_json::to_value(&output).unwrap();
+        assert_eq!(json["timed_out"], true);
+        assert_eq!(json["truncated"], true);
     }
 }
