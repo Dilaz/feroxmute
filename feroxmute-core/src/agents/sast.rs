@@ -389,4 +389,28 @@ mod tests {
         assert_eq!(agent.detected_languages.len(), 2);
         assert!(agent.detected_languages.contains(&"rust".to_string()));
     }
+
+    #[test]
+    fn test_sast_default_impl() {
+        let agent = SastAgent::with_prompts(Prompts::default());
+        assert_eq!(agent.source_path, PathBuf::from("."));
+        assert!(agent.detected_languages.is_empty());
+        assert_eq!(agent.status(), AgentStatus::Idle);
+    }
+
+    #[test]
+    fn test_sast_set_source_path() {
+        let mut agent = SastAgent::new(PathBuf::from("."));
+        agent.set_source_path(PathBuf::from("/opt/source"));
+        assert_eq!(agent.source_path, PathBuf::from("/opt/source"));
+    }
+
+    #[test]
+    fn test_sast_system_prompt_fallback() {
+        // Use an empty prompts config to trigger fallback
+        let agent = SastAgent::new(PathBuf::from("."));
+        let prompt = agent.system_prompt();
+        // system_prompt always returns something (from prompts.toml or fallback)
+        assert!(!prompt.is_empty(), "system prompt should not be empty");
+    }
 }

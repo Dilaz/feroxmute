@@ -387,4 +387,68 @@ mod tests {
             "Report agent should have complete_task tool"
         );
     }
+
+    #[test]
+    fn test_handle_add_recommendation_with_report() {
+        let mut agent = ReportAgent::default();
+        // Give the agent a report
+        let metadata = crate::reports::ReportMetadata::new(
+            "example.com",
+            "test-session",
+            chrono::Utc::now(),
+            chrono::Utc::now(),
+        );
+        agent.generated_report = Some(Report::new(metadata));
+
+        let args = serde_json::json!({
+            "recommendation": "Update TLS to 1.3",
+            "priority": "high"
+        });
+        let result = agent.handle_add_recommendation(&args);
+        assert!(result.contains("[HIGH]"));
+        assert!(result.contains("Update TLS to 1.3"));
+
+        // Verify it was stored
+        let report = agent.generated_report.as_ref().unwrap();
+        assert!(
+            report
+                .summary
+                .key_findings
+                .iter()
+                .any(|f| f.contains("[HIGH] Update TLS to 1.3"))
+        );
+    }
+
+    #[test]
+    fn test_handle_add_recommendation_no_report() {
+        let mut agent = ReportAgent::default();
+        let args = serde_json::json!({"recommendation": "test"});
+        let result = agent.handle_add_recommendation(&args);
+        assert_eq!(result, "No report generated yet");
+    }
+
+    #[test]
+    fn test_handle_add_recommendation_default_priority() {
+        let mut agent = ReportAgent::default();
+        let metadata = crate::reports::ReportMetadata::new(
+            "example.com",
+            "test-session",
+            chrono::Utc::now(),
+            chrono::Utc::now(),
+        );
+        agent.generated_report = Some(Report::new(metadata));
+
+        let args = serde_json::json!({"recommendation": "Fix XSS"});
+        let result = agent.handle_add_recommendation(&args);
+        assert!(
+            result.contains("[MEDIUM]"),
+            "should default to MEDIUM priority"
+        );
+    }
+
+    #[test]
+    fn test_markdown_preview_none_without_report() {
+        let agent = ReportAgent::default();
+        assert!(agent.markdown_preview().is_none());
+    }
 }
