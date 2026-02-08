@@ -770,7 +770,10 @@ mod tests {
         let toml = state.generate_toml().unwrap();
         // Verify exact key=value lines (not substring matches)
         assert!(toml.lines().any(|l| l.trim() == "name = \"anthropic\""));
-        assert!(toml.lines().any(|l| l.trim() == "api_key = \"sk-test-123\""));
+        assert!(
+            toml.lines()
+                .any(|l| l.trim() == "api_key = \"sk-test-123\"")
+        );
         assert!(toml.lines().any(|l| l.trim() == "discover = true"));
         assert!(toml.lines().any(|l| l.trim() == "portscan = false"));
         assert!(toml.lines().any(|l| l.trim() == "no_exploit = true"));
