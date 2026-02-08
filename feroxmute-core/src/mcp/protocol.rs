@@ -181,4 +181,67 @@ mod tests {
         let result = McpToolResult::error("failed");
         assert_eq!(result.is_error, Some(true));
     }
+
+    #[test]
+    fn test_mcp_content_text_wire_format() {
+        let content = McpContent::Text {
+            text: "hello".to_string(),
+        };
+        let json = serde_json::to_value(&content).unwrap();
+        assert_eq!(json["type"], "text");
+        assert_eq!(json["text"], "hello");
+    }
+
+    #[test]
+    fn test_mcp_content_roundtrip() {
+        let original = McpContent::Text {
+            text: "roundtrip".to_string(),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: McpContent = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            McpContent::Text { text } => assert_eq!(text, "roundtrip"),
+        }
+    }
+
+    #[test]
+    fn test_response_skip_serializing_none() {
+        let success = JsonRpcResponse::success(Some(1.into()), serde_json::json!("ok"));
+        let json = serde_json::to_value(&success).unwrap();
+        assert!(json.get("result").is_some());
+        assert!(
+            json.get("error").is_none(),
+            "error should not be serialized when None"
+        );
+
+        let error = JsonRpcResponse::error(Some(1.into()), error_codes::INTERNAL_ERROR, "fail");
+        let json = serde_json::to_value(&error).unwrap();
+        assert!(json.get("error").is_some());
+        assert!(
+            json.get("result").is_none(),
+            "result should not be serialized when None"
+        );
+    }
+
+    #[test]
+    fn test_mcp_tool_result_text_content() {
+        let result = McpToolResult::text("output");
+        let content = result.content.unwrap();
+        assert_eq!(content.len(), 1);
+        match &content[0] {
+            McpContent::Text { text } => assert_eq!(text, "output"),
+        }
+    }
+
+    #[test]
+    fn test_jsonrpc_request_roundtrip() {
+        let req = JsonRpcRequest::new("tools/call")
+            .with_id(42)
+            .with_params(serde_json::json!({"name": "echo"}));
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: JsonRpcRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.method, "tools/call");
+        assert_eq!(deserialized.id, Some(serde_json::json!(42)));
+        assert!(deserialized.params.is_some());
+    }
 }

@@ -222,4 +222,45 @@ mod tests {
         assert_eq!(request.max_tokens, Some(1000));
         assert_eq!(request.temperature, Some(0.5));
     }
+
+    #[test]
+    fn test_completion_request_defaults() {
+        let request = CompletionRequest::new(vec![Message::user("hi")]);
+        assert_eq!(request.max_tokens, Some(4096));
+        assert_eq!(request.temperature, Some(0.7));
+        assert!(request.tools.is_empty());
+        assert!(request.system.is_none());
+    }
+
+    #[test]
+    fn test_role_serde_lowercase() {
+        let json = serde_json::to_string(&Role::User).unwrap();
+        assert_eq!(json, "\"user\"");
+        let roundtrip: Role = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtrip, Role::User);
+
+        let json = serde_json::to_string(&Role::Assistant).unwrap();
+        assert_eq!(json, "\"assistant\"");
+    }
+
+    #[test]
+    fn test_message_serde_roundtrip() {
+        let msg = Message::user("hi");
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: Message = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.role, Role::User);
+        assert_eq!(deserialized.content, "hi");
+    }
+
+    #[test]
+    fn test_completion_request_with_tools() {
+        let tool = ToolDefinition {
+            name: "shell".to_string(),
+            description: "Run shell".to_string(),
+            parameters: serde_json::json!({}),
+        };
+        let request = CompletionRequest::new(vec![Message::user("test")]).with_tools(vec![tool]);
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools[0].name, "shell");
+    }
 }
