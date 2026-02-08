@@ -436,6 +436,66 @@ impl ExecResult {
 mod tests {
     use super::*;
 
+    #[test]
+    fn test_exec_result_success_zero() {
+        let result = ExecResult {
+            stdout: "ok".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+        assert!(result.success());
+    }
+
+    #[test]
+    fn test_exec_result_success_nonzero() {
+        let result = ExecResult {
+            stdout: String::new(),
+            stderr: "error".to_string(),
+            exit_code: 1,
+        };
+        assert!(!result.success());
+    }
+
+    #[test]
+    fn test_exec_result_output_stdout_only() {
+        let result = ExecResult {
+            stdout: "hello".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+        };
+        assert_eq!(result.output(), "hello");
+    }
+
+    #[test]
+    fn test_exec_result_output_combined() {
+        let result = ExecResult {
+            stdout: "out".to_string(),
+            stderr: "err".to_string(),
+            exit_code: 0,
+        };
+        assert_eq!(result.output(), "out\nerr");
+    }
+
+    #[test]
+    fn test_container_config_default() {
+        let config = ContainerConfig::default();
+        assert_eq!(config.image, "feroxmute-kali");
+        assert_eq!(config.workdir, "/feroxmute");
+        assert!(config.volumes.is_empty());
+    }
+
+    #[test]
+    fn test_container_config_with_source_mount() {
+        let config = ContainerConfig::default().with_source_mount("/tmp");
+        assert_eq!(config.volumes.len(), 1);
+        let (host, container) = &config.volumes[0];
+        assert_eq!(host, "/tmp");
+        assert!(
+            container.ends_with(":ro"),
+            "source mount should be read-only"
+        );
+    }
+
     // Integration tests require Docker - skip in CI unless Docker is available
     #[tokio::test]
     #[ignore = "requires Docker"]

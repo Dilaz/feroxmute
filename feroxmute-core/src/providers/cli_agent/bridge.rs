@@ -1121,6 +1121,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_response_collector_add_and_take() {
+        let mut collector = ResponseCollector::default();
+        collector.add_content("s1", "hello ".to_string());
+        collector.add_content("s1", "world".to_string());
+        assert_eq!(collector.take_content("s1"), "hello world");
+        // Second take returns empty (content was consumed)
+        assert_eq!(collector.take_content("s1"), "");
+    }
+
+    #[test]
+    fn test_response_collector_multiple_sessions() {
+        let mut collector = ResponseCollector::default();
+        collector.add_content("s1", "alpha".to_string());
+        collector.add_content("s2", "beta".to_string());
+        assert_eq!(collector.take_content("s1"), "alpha");
+        assert_eq!(collector.take_content("s2"), "beta");
+    }
+
+    #[test]
+    fn test_response_collector_take_nonexistent() {
+        let mut collector = ResponseCollector::default();
+        assert_eq!(collector.take_content("nope"), "");
+    }
+
+    #[test]
+    fn test_extract_content_text_valid() {
+        let obj = serde_json::json!({"content": {"text": "hi"}});
+        assert_eq!(extract_content_text(&obj), Some("hi"));
+    }
+
+    #[test]
+    fn test_extract_content_text_missing_content() {
+        let obj = serde_json::json!({"other": "x"});
+        assert_eq!(extract_content_text(&obj), None);
+    }
+
+    #[test]
+    fn test_extract_content_text_missing_text() {
+        let obj = serde_json::json!({"content": {"image": "x"}});
+        assert_eq!(extract_content_text(&obj), None);
+    }
+
+    #[test]
     fn test_bridge_binary_not_found() {
         let config = CliAgentConfig::new(CliAgentType::ClaudeCode)
             .with_binary_path("/nonexistent/path/claude-code-acp");
