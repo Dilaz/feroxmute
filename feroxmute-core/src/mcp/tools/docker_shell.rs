@@ -164,9 +164,10 @@ impl McpTool for McpDockerShellTool {
 mod tests {
     use super::*;
 
+    /// Verifies expected schema shape for DockerShellTool.
+    /// Note: Cannot construct the tool without Docker, so this tests the schema inline.
     #[test]
-    fn test_input_schema() {
-        // Create a minimal mock - just test schema generation
+    fn test_input_schema_verifies_expected_shape() {
         let schema = serde_json::json!({
             "type": "object",
             "properties": {
@@ -178,6 +179,20 @@ mod tests {
             "required": ["command"]
         });
         assert!(schema["properties"]["command"].is_object());
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&serde_json::json!("command")));
+    }
+
+    #[test]
+    fn test_args_missing_command_fails() {
+        let json = serde_json::json!({
+            "timeout_secs": 60
+        });
+        let result: std::result::Result<DockerShellArgs, _> = serde_json::from_value(json);
+        assert!(
+            result.is_err(),
+            "should fail without required 'command' field"
+        );
     }
 
     #[test]
