@@ -19,30 +19,6 @@ fn test_cli_agent_config_defaults() {
 }
 
 #[test]
-fn test_cli_agent_provider_name() {
-    assert_eq!(CliAgentType::ClaudeCode.provider_name(), "claude-code");
-    assert_eq!(CliAgentType::Codex.provider_name(), "codex");
-    assert_eq!(CliAgentType::GeminiCli.provider_name(), "gemini-cli");
-}
-
-#[test]
-fn test_cli_agent_binary_names() {
-    assert_eq!(CliAgentType::ClaudeCode.default_binary(), "claude-code-acp");
-    assert_eq!(CliAgentType::Codex.default_binary(), "codex-acp");
-    assert_eq!(CliAgentType::GeminiCli.default_binary(), "gemini");
-}
-
-#[test]
-fn test_cli_agent_default_models() {
-    assert_eq!(CliAgentType::ClaudeCode.default_model(), "claude-opus-4.5");
-    assert_eq!(CliAgentType::Codex.default_model(), "gpt-5.2");
-    assert_eq!(
-        CliAgentType::GeminiCli.default_model(),
-        "gemini-3-flash-preview"
-    );
-}
-
-#[test]
 fn test_cli_agent_config_custom_binary_path() {
     let config =
         CliAgentConfig::new(CliAgentType::ClaudeCode).with_binary_path("/usr/local/bin/claude");

@@ -260,8 +260,10 @@ mod tests {
         assert_eq!(args.timeout, Some(60));
     }
 
+    /// Verifies expected schema shape for RunScriptTool.
+    /// Note: Cannot construct tool without Docker, so schema is tested inline.
     #[test]
-    fn test_input_schema_structure() {
+    fn test_input_schema_expected_shape() {
         let schema = serde_json::json!({
             "type": "object",
             "properties": {
@@ -276,6 +278,17 @@ mod tests {
         assert!(schema["properties"]["language"]["enum"].is_array());
         let required = schema["required"].as_array().expect("should have required");
         assert_eq!(required.len(), 3);
+    }
+
+    #[test]
+    fn test_args_missing_required_fields() {
+        // Missing language and reason
+        let json = serde_json::json!({"script": "echo hi"});
+        let result: std::result::Result<RunScriptArgs, _> = serde_json::from_value(json);
+        assert!(
+            result.is_err(),
+            "should fail without required 'language' and 'reason' fields"
+        );
     }
 
     #[test]

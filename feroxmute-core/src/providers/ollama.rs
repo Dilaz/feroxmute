@@ -383,4 +383,15 @@ mod tests {
             unsafe { std::env::set_var("OLLAMA_API_BASE_URL", url) };
         }
     }
+
+    #[test]
+    fn test_estimate_tokens_simple() {
+        // "hello world" = 11 chars -> 11/4 = 2.75 -> ceil = 3
+        assert_eq!(estimate_tokens("hello world"), 3);
+    }
+
+    #[test]
+    fn test_estimate_tokens_empty() {
+        assert_eq!(estimate_tokens(""), 0);
+    }
 }

@@ -115,4 +115,26 @@ mod tests {
         assert_eq!(config.binary_path, PathBuf::from("/usr/local/bin/claude"));
         assert_eq!(config.model, "claude-sonnet-4");
     }
+
+    #[test]
+    fn test_cli_agent_type_serde_kebab_case() {
+        for variant in [
+            CliAgentType::ClaudeCode,
+            CliAgentType::Codex,
+            CliAgentType::GeminiCli,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let roundtrip: CliAgentType = serde_json::from_str(&json).unwrap();
+            assert_eq!(roundtrip, variant);
+        }
+        // Verify kebab-case format
+        assert_eq!(
+            serde_json::to_string(&CliAgentType::ClaudeCode).unwrap(),
+            "\"claude-code\""
+        );
+        assert_eq!(
+            serde_json::to_string(&CliAgentType::GeminiCli).unwrap(),
+            "\"gemini-cli\""
+        );
+    }
 }

@@ -118,4 +118,47 @@ mod tests {
 
         assert!(!collection.has_linked_source("https://example.com"));
     }
+
+    #[test]
+    fn test_link_source_to_web_success() {
+        let mut collection = TargetCollection::new();
+
+        let web = Target::parse("https://example.com").expect("should parse URL");
+        collection.add_target(web);
+
+        // Use temp dir as source path
+        let tmp = std::env::temp_dir();
+        let source = Target::parse(tmp.to_str().unwrap()).expect("should parse source path");
+        collection.add_target(source);
+
+        assert_eq!(collection.standalone_sources.len(), 1);
+        assert!(!collection.has_linked_source("https://example.com"));
+
+        let linked = collection.link_source_to_web(tmp.to_str().unwrap(), "https://example.com");
+        assert!(linked);
+        assert!(collection.has_linked_source("https://example.com"));
+        assert!(collection.standalone_sources.is_empty());
+    }
+
+    #[test]
+    fn test_link_source_nonexistent_source() {
+        let mut collection = TargetCollection::new();
+        let web = Target::parse("https://example.com").expect("should parse URL");
+        collection.add_target(web);
+
+        let result = collection.link_source_to_web("/nonexistent/path", "https://example.com");
+        assert!(!result, "should return false for nonexistent source");
+    }
+
+    #[test]
+    fn test_link_source_nonexistent_web() {
+        let mut collection = TargetCollection::new();
+        let tmp = std::env::temp_dir();
+        let source = Target::parse(tmp.to_str().unwrap()).expect("should parse source path");
+        collection.add_target(source);
+
+        let result =
+            collection.link_source_to_web(tmp.to_str().unwrap(), "https://nonexistent.com");
+        assert!(!result, "should return false for nonexistent web target");
+    }
 }

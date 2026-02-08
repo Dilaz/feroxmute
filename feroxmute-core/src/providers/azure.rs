@@ -358,4 +358,17 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_azure_with_api_key() {
+        let provider = AzureProvider::with_api_key(
+            "test-key",
+            "https://test.openai.azure.com",
+            "gpt-4o",
+            MetricsTracker::new(),
+        );
+        assert!(provider.is_ok());
+        let provider = provider.unwrap();
+        assert_eq!(provider.name(), "azure");
+    }
 }
