@@ -540,4 +540,64 @@ mod tests {
         let cmds = extract_commands("while true; do nmap localhost; done");
         assert_eq!(cmds, vec!["nmap"]);
     }
+
+    #[test]
+    fn test_sanitize_output_removes_control_chars() {
+        let input = "hello\x00world\x1b[31mred\x1b[0m";
+        let sanitized = sanitize_output(input);
+        assert!(!sanitized.contains('\x00'));
+        assert!(!sanitized.contains('\x1b'));
+        assert!(sanitized.contains("hello"));
+        assert!(sanitized.contains("world"));
+    }
+
+    #[test]
+    fn test_sanitize_output_keeps_printable_and_whitespace() {
+        let input = "line1\nline2\ttab";
+        assert_eq!(sanitize_output(input), "line1\nline2\ttab");
+    }
+
+    #[test]
+    fn test_sanitize_output_keeps_non_ascii_utf8() {
+        let input = "日本語";
+        assert_eq!(sanitize_output(input), "日本語");
+    }
+
+    #[test]
+    fn test_sanitize_output_empty() {
+        assert_eq!(sanitize_output(""), "");
+    }
+
+    #[test]
+    fn test_prepare_output_short_not_truncated() {
+        let input = "short output";
+        let (output, truncated) = prepare_output(input);
+        assert_eq!(output, "short output");
+        assert!(!truncated);
+    }
+
+    #[test]
+    fn test_prepare_output_long_truncated() {
+        let input = "a".repeat(MAX_OUTPUT_LENGTH + 1000);
+        let (output, truncated) = prepare_output(&input);
+        assert!(truncated);
+        assert!(output.len() < input.len());
+    }
+
+    #[test]
+    fn test_prepare_output_utf8_safe_boundary() {
+        // Create a string with multi-byte chars right around the boundary
+        let mut input = "a".repeat(MAX_OUTPUT_LENGTH - 2);
+        input.push('é'); // 2-byte char at boundary
+        input.push_str(&"b".repeat(1000));
+        let (_, truncated) = prepare_output(&input);
+        assert!(truncated);
+    }
+
+    #[test]
+    fn test_prepare_output_truncation_suffix() {
+        let input = "x".repeat(MAX_OUTPUT_LENGTH + 500);
+        let (output, _) = prepare_output(&input);
+        assert!(output.contains("[output truncated"));
+    }
 }
