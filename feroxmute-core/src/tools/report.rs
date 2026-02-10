@@ -53,6 +53,108 @@ pub struct ReportContext {
 }
 
 // ============================================================================
+// DeduplicateFindingsTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct DeduplicateFindingsArgs {}
+
+#[derive(Debug, Serialize)]
+pub struct DeduplicateFindingsOutput {
+    pub success: bool,
+    pub message: String,
+    pub original_count: usize,
+    pub deduplicated_count: usize,
+}
+
+pub struct DeduplicateFindingsTool {
+    context: Arc<ReportContext>,
+}
+
+impl DeduplicateFindingsTool {
+    pub fn new(context: Arc<ReportContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for DeduplicateFindingsTool {
+    const NAME: &'static str = "deduplicate_findings";
+
+    type Error = ReportToolError;
+    type Args = DeduplicateFindingsArgs;
+    type Output = DeduplicateFindingsOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "deduplicate_findings".to_string(),
+            description: "Deduplicate findings by merging semantically similar vulnerabilities. Call this BEFORE generate_report to reduce duplicate entries.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        }
+    }
+
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        self.context.events.send_tool_call();
+        self.context
+            .events
+            .send_feed("report", "Deduplicating findings...", false);
+
+        let db_path = match &self.context.session_db_path {
+            Some(p) => p,
+            None => {
+                return Ok(DeduplicateFindingsOutput {
+                    success: true,
+                    message: "No session database available for deduplication".to_string(),
+                    original_count: 0,
+                    deduplicated_count: 0,
+                });
+            }
+        };
+
+        let conn = rusqlite::Connection::open(db_path)
+            .map_err(|e| ReportToolError::Generation(format!("Failed to open database: {}", e)))?;
+
+        let vulns = crate::state::Vulnerability::all(&conn).map_err(|e| {
+            ReportToolError::Generation(format!("Failed to load vulnerabilities: {}", e))
+        })?;
+
+        if vulns.is_empty() {
+            return Ok(DeduplicateFindingsOutput {
+                success: true,
+                message: "No findings to deduplicate".to_string(),
+                original_count: 0,
+                deduplicated_count: 0,
+            });
+        }
+
+        let original_count = vulns.len();
+        let deduped = crate::reports::deduplicate_vulnerabilities(vulns);
+        let deduped_count = deduped.len();
+
+        // Store in context for generate_report to use
+        let mut cache = self.context.deduplicated_findings.lock().await;
+        *cache = Some(deduped);
+
+        let message = format!(
+            "Deduplicated {} findings into {} unique vulnerabilities",
+            original_count, deduped_count
+        );
+
+        self.context.events.send_feed("report", &message, false);
+
+        Ok(DeduplicateFindingsOutput {
+            success: true,
+            message,
+            original_count,
+            deduplicated_count: deduped_count,
+        })
+    }
+}
+
+// ============================================================================
 // GenerateReportTool
 // ============================================================================
 
