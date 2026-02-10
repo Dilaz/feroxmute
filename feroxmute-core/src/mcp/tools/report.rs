@@ -207,6 +207,64 @@ impl McpGenerateReportTool {
             },
         }
     }
+
+    /// Build report from pre-deduplicated vulnerabilities
+    async fn build_report_from_vulns(
+        &self,
+        vulns: Vec<crate::state::Vulnerability>,
+        end_time: chrono::DateTime<Utc>,
+    ) -> Report {
+        let findings: Vec<Finding> = vulns.into_iter().map(Finding::from).collect();
+        let finding_count = findings.len();
+
+        let mut severity_counts = SeverityCounts::default();
+        for f in &findings {
+            match f.severity.to_lowercase().as_str() {
+                "critical" => severity_counts.critical += 1,
+                "high" => severity_counts.high += 1,
+                "medium" => severity_counts.medium += 1,
+                "low" => severity_counts.low += 1,
+                _ => severity_counts.info += 1,
+            }
+        }
+
+        let risk_rating = RiskRating::from_counts(
+            severity_counts.critical,
+            severity_counts.high,
+            severity_counts.medium,
+        );
+
+        let metrics = self.context.metrics.snapshot();
+
+        Report {
+            metadata: ReportMetadata::new(
+                &self.context.target,
+                &self.context.session_id,
+                self.context.start_time,
+                end_time,
+            ),
+            summary: ReportSummary {
+                total_vulnerabilities: finding_count as u32,
+                by_severity: severity_counts,
+                by_status: StatusCounts::default(),
+                risk_rating,
+                key_findings: Vec::new(),
+                executive_summary: format!(
+                    "Security assessment of {} completed with {} findings.",
+                    self.context.target, finding_count
+                ),
+            },
+            findings,
+            metrics: ReportMetrics {
+                tool_calls: metrics.tool_calls,
+                input_tokens: metrics.tokens.input,
+                output_tokens: metrics.tokens.output,
+                cache_read_tokens: metrics.tokens.cached,
+                hosts_discovered: 0,
+                ports_discovered: 0,
+            },
+        }
+    }
 }
 
 #[async_trait]
@@ -248,35 +306,42 @@ impl McpTool for McpGenerateReportTool {
 
         let end_time = Utc::now();
 
-        // Try loading findings from the database first (authoritative source),
-        // falling back to the in-memory Vec for backwards compatibility
-        let mut report = if let Some(ref db_path) = self.context.session_db_path {
-            match rusqlite::Connection::open(db_path) {
-                Ok(conn) => match generate_report(
-                    &conn,
-                    &self.context.target,
-                    &self.context.session_id,
-                    self.context.start_time,
-                    end_time,
-                    &self.context.metrics,
-                ) {
-                    Ok(r) => r,
+        // Check if deduplicated findings are available (from deduplicate_findings tool)
+        let mut report = {
+            let dedup_cache = self.context.deduplicated_findings.lock().await;
+            if let Some(ref deduped) = *dedup_cache {
+                // Use pre-deduplicated findings
+                self.build_report_from_vulns(deduped.clone(), end_time)
+                    .await
+            } else if let Some(ref db_path) = self.context.session_db_path {
+                // Fall back to database with existing exact-match dedup
+                match rusqlite::Connection::open(db_path) {
+                    Ok(conn) => match generate_report(
+                        &conn,
+                        &self.context.target,
+                        &self.context.session_id,
+                        self.context.start_time,
+                        end_time,
+                        &self.context.metrics,
+                    ) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::warn!(
+                                "Failed to generate report from database: {e}, falling back to in-memory"
+                            );
+                            self.build_report_from_memory(end_time).await
+                        }
+                    },
                     Err(e) => {
                         tracing::warn!(
-                            "Failed to generate report from database: {e}, falling back to in-memory findings"
+                            "Failed to open session database: {e}, falling back to in-memory"
                         );
                         self.build_report_from_memory(end_time).await
                     }
-                },
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to open session database: {e}, falling back to in-memory findings"
-                    );
-                    self.build_report_from_memory(end_time).await
                 }
+            } else {
+                self.build_report_from_memory(end_time).await
             }
-        } else {
-            self.build_report_from_memory(end_time).await
         };
 
         // Override summary fields with LLM-provided content
