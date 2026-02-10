@@ -48,6 +48,8 @@ pub struct ReportContext {
     pub reports_dir: std::path::PathBuf,
     /// Path to session database for loading vulnerabilities
     pub session_db_path: Option<std::path::PathBuf>,
+    /// Deduplicated findings cache, populated by deduplicate_findings tool
+    pub deduplicated_findings: Arc<Mutex<Option<Vec<crate::state::Vulnerability>>>>,
 }
 
 // ============================================================================
