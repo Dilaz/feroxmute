@@ -19,8 +19,8 @@ pub use orchestrator::{
 };
 pub use playbook::{PLAYBOOK_CATEGORIES, get_playbook, list_categories};
 pub use report::{
-    AddRecommendationTool, ExportHtmlTool, ExportJsonTool, ExportMarkdownTool, ExportPdfTool,
-    GenerateReportTool, ReportContext,
+    AddRecommendationTool, DeduplicateFindingsTool, ExportHtmlTool, ExportJsonTool,
+    ExportMarkdownTool, ExportPdfTool, GenerateReportTool, ReportContext,
 };
 pub use script::{RunScriptTool, ScriptError};
 pub use shell::DockerShellTool;

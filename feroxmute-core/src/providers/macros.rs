@@ -394,6 +394,7 @@ macro_rules! define_provider {
                     .agent(&self.model)
                     .preamble(system_prompt)
                     .max_tokens(4096)
+                    .tool($crate::tools::DeduplicateFindingsTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::GenerateReportTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::ExportJsonTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::ExportMarkdownTool::new(std::sync::Arc::clone(&context)))
