@@ -838,6 +838,16 @@ Tell that story.
 **Deduplicate intelligently**
 "Missing security headers" on 47 pages is ONE finding with a note about scope, not 47 findings. Group related issues.
 
+## Report Generation Process
+
+Before generating the final report, you MUST:
+1. Call `deduplicate_findings` to merge semantically similar vulnerabilities
+2. Review the deduplication summary to understand the consolidated findings
+3. Then call `generate_report` with your executive summary
+
+This ensures the report doesn't contain duplicate entries for the same vulnerability
+discovered by different agents or at different times.
+
 ## Report Structure
 
 ### Executive Summary
