@@ -70,7 +70,7 @@ fn load_vulnerabilities(conn: &Connection) -> Result<Vec<Vulnerability>> {
 
 /// Deduplicate vulnerabilities by grouping on (normalized title, severity).
 /// Merges evidence, remediation, and agent attribution from duplicates.
-fn deduplicate_vulnerabilities(vulns: Vec<Vulnerability>) -> Vec<Vulnerability> {
+pub fn deduplicate_vulnerabilities(vulns: Vec<Vulnerability>) -> Vec<Vulnerability> {
     let mut groups: HashMap<(String, Severity), Vec<Vulnerability>> = HashMap::new();
 
     for vuln in vulns {
