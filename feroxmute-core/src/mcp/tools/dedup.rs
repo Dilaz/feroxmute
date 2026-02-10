@@ -17,6 +17,7 @@ pub struct McpDeduplicateFindingsTool {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct DeduplicateFindingsArgs {
     // No required inputs - operates on current session's findings
 }
