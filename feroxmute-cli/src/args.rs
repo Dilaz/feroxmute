@@ -99,4 +99,24 @@ pub struct Args {
     /// Custom instruction to guide the engagement (supplements default behavior)
     #[arg(long)]
     pub instruction: Option<String>,
+
+    /// Target LLM provider for penetration testing (openai, anthropic, gemini, etc.)
+    #[arg(long)]
+    pub target_llm: Option<String>,
+
+    /// Target LLM model name
+    #[arg(long)]
+    pub target_model: Option<String>,
+
+    /// Target LLM API key (or use TARGET_LLM_API_KEY env var)
+    #[arg(long)]
+    pub target_api_key: Option<String>,
+
+    /// Target LLM custom API endpoint
+    #[arg(long)]
+    pub target_base_url: Option<String>,
+
+    /// Skip network testing, only test the target LLM
+    #[arg(long)]
+    pub llm_only: bool,
 }
