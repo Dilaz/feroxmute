@@ -12,7 +12,8 @@ use tokio::sync::Mutex;
 
 use crate::reports::{
     Finding, Report, ReportMetadata, ReportMetrics, ReportSummary, RiskRating, SeverityCounts,
-    StatusCounts, export_html, export_json, export_markdown, export_pdf, generate_report,
+    StatusCounts, UNCLASSIFIED_CWE, export_html, export_json, export_markdown, export_pdf,
+    generate_report,
 };
 use crate::state::MetricsTracker;
 use crate::tools::EventSender;
@@ -231,7 +232,7 @@ impl GenerateReportTool {
                     title,
                     severity,
                     affected: self.context.target.clone(),
-                    cwe: "Unclassified".to_string(),
+                    cwe: UNCLASSIFIED_CWE.to_string(),
                     description,
                     evidence: None,
                     reproduction_steps: None,

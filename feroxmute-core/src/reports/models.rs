@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::state::Vulnerability;
 
+/// Default CWE value when no CWE identifier is available
+pub const UNCLASSIFIED_CWE: &str = "Unclassified";
+
 /// Overall risk rating for the engagement
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -185,7 +188,7 @@ impl From<Vulnerability> for Finding {
             affected: vuln
                 .asset
                 .unwrap_or_else(|| vuln.host_id.unwrap_or_default()),
-            cwe: vuln.cwe.unwrap_or_else(|| "Unclassified".to_string()),
+            cwe: vuln.cwe.unwrap_or_else(|| UNCLASSIFIED_CWE.to_string()),
             description: vuln.description.unwrap_or_default(),
             evidence: vuln.evidence,
             reproduction_steps: None,

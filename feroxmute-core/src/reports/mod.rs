@@ -9,5 +9,5 @@ pub use generator::{
 };
 pub use models::{
     Finding, Report, ReportMetadata, ReportMetrics, ReportSummary, RiskRating, SeverityCounts,
-    StatusCounts,
+    StatusCounts, UNCLASSIFIED_CWE,
 };
