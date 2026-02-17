@@ -260,6 +260,49 @@ async fn main() -> Result<()> {
         )
     })?;
 
+    // Build target LLM config from CLI flags (if provided)
+    if let Some(ref target_llm_name) = args.target_llm {
+        let target_config = ProviderConfig {
+            name: match target_llm_name.to_lowercase().as_str() {
+                "anthropic" => ProviderName::Anthropic,
+                "openai" => ProviderName::OpenAi,
+                "gemini" => ProviderName::Gemini,
+                "cohere" => ProviderName::Cohere,
+                "xai" => ProviderName::Xai,
+                "deepseek" => ProviderName::DeepSeek,
+                "azure" => ProviderName::Azure,
+                "perplexity" => ProviderName::Perplexity,
+                "ollama" => ProviderName::Ollama,
+                "litellm" => ProviderName::LiteLlm,
+                _ => ProviderName::OpenAi,
+            },
+            model: args
+                .target_model
+                .clone()
+                .unwrap_or_else(|| "gpt-4".to_string()),
+            api_key: args
+                .target_api_key
+                .clone()
+                .or_else(|| std::env::var("TARGET_LLM_API_KEY").ok()),
+            base_url: args.target_base_url.clone(),
+        };
+        config.target_llm = Some(target_config);
+    }
+
+    // Create target LLM provider if configured
+    let target_provider: Option<std::sync::Arc<dyn feroxmute_core::providers::LlmProvider>> =
+        if let Some(ref target_llm_config) = config.target_llm {
+            match create_provider(target_llm_config, MetricsTracker::new(), None) {
+                Ok(tp) => Some(tp),
+                Err(e) => {
+                    tracing::warn!("Failed to create target LLM provider: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
     // Check Docker connectivity - fail fast
     let docker = bollard::Docker::connect_with_local_defaults().map_err(|_| {
         anyhow!("Cannot connect to Docker.\n\nHint: Is Docker running? Try 'docker ps'")
@@ -609,6 +652,7 @@ async fn main() -> Result<()> {
                 limitations,
                 instruction,
                 session_for_agent,
+                target_provider,
             )
             .await
         });
