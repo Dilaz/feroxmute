@@ -738,6 +738,7 @@ pub fn generate_markdown(report: &Report) -> String {
                 finding.severity
             ));
             md.push_str(&format!("**Affected:** {}\n\n", finding.affected));
+            md.push_str(&format!("**CWE:** {}\n\n", finding.cwe));
             md.push_str(&format!("**Description:**\n{}\n\n", finding.description));
 
             if let Some(ref evidence) = finding.evidence {
@@ -897,6 +898,42 @@ mod tests {
     fn test_deduplicate_empty() {
         let deduped = deduplicate_vulnerabilities(vec![]);
         assert!(deduped.is_empty());
+    }
+
+    #[test]
+    fn test_markdown_shows_cwe_field() {
+        let metadata = ReportMetadata::new("example.com", "test-session", Utc::now(), Utc::now());
+        let mut report = Report::new(metadata);
+
+        report.add_finding(Finding {
+            title: "SQL Injection".to_string(),
+            severity: "Critical".to_string(),
+            affected: "/api/login".to_string(),
+            cwe: "CWE-89".to_string(),
+            description: "SQL injection vulnerability".to_string(),
+            evidence: None,
+            reproduction_steps: None,
+            impact: None,
+            remediation: None,
+            references: Vec::new(),
+        });
+
+        report.add_finding(Finding {
+            title: "Info Disclosure".to_string(),
+            severity: "Low".to_string(),
+            affected: "/api/debug".to_string(),
+            cwe: "Unclassified".to_string(),
+            description: "Debug endpoint exposed".to_string(),
+            evidence: None,
+            reproduction_steps: None,
+            impact: None,
+            remediation: None,
+            references: Vec::new(),
+        });
+
+        let markdown = generate_markdown(&report);
+        assert!(markdown.contains("**CWE:** CWE-89"));
+        assert!(markdown.contains("**CWE:** Unclassified"));
     }
 
     #[test]
