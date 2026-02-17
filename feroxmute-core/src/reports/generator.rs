@@ -214,6 +214,7 @@ fn generate_html(report: &Report) -> String {
             r#"<div class="finding {class}">
     <h3>[{severity}] {title}</h3>
     <p><strong>Affected:</strong> {affected}</p>
+    <p><strong>CWE:</strong> {cwe}</p>
     <p>{description}</p>
     {evidence}
     {remediation}
@@ -223,6 +224,7 @@ fn generate_html(report: &Report) -> String {
             severity = finding.severity.to_uppercase(),
             title = html_escape(&finding.title),
             affected = html_escape(&finding.affected),
+            cwe = html_escape(&finding.cwe),
             description = html_escape(&finding.description),
             evidence = finding
                 .evidence
@@ -934,6 +936,28 @@ mod tests {
         let markdown = generate_markdown(&report);
         assert!(markdown.contains("**CWE:** CWE-89"));
         assert!(markdown.contains("**CWE:** Unclassified"));
+    }
+
+    #[test]
+    fn test_html_shows_cwe_field() {
+        let metadata = ReportMetadata::new("example.com", "test-session", Utc::now(), Utc::now());
+        let mut report = Report::new(metadata);
+
+        report.add_finding(Finding {
+            title: "XSS".to_string(),
+            severity: "High".to_string(),
+            affected: "/search".to_string(),
+            cwe: "CWE-79".to_string(),
+            description: "Reflected XSS".to_string(),
+            evidence: None,
+            reproduction_steps: None,
+            impact: None,
+            remediation: None,
+            references: Vec::new(),
+        });
+
+        let html = generate_html(&report);
+        assert!(html.contains("<strong>CWE:</strong> CWE-79"));
     }
 
     #[test]
