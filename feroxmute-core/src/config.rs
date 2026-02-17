@@ -176,6 +176,9 @@ pub struct EngagementConfig {
     pub auth: AuthConfig,
     #[serde(default)]
     pub output: OutputConfig,
+    /// Target LLM configuration for LLM penetration testing
+    #[serde(default)]
+    pub target_llm: Option<ProviderConfig>,
 }
 
 impl EngagementConfig {
@@ -236,6 +239,16 @@ impl EngagementConfig {
             let var_name = &key[2..key.len() - 1];
             if let Ok(value) = std::env::var(var_name) {
                 self.provider.api_key = Some(value);
+            }
+        }
+        if let Some(ref mut target) = self.target_llm
+            && let Some(ref key) = target.api_key
+            && key.starts_with("${")
+            && key.ends_with("}")
+        {
+            let var_name = &key[2..key.len() - 1];
+            if let Ok(value) = std::env::var(var_name) {
+                target.api_key = Some(value);
             }
         }
     }
@@ -353,5 +366,57 @@ api_key = "sk-ant-test123"
         assert!(path.is_some());
         let path = path.expect("global config path should exist");
         assert!(path.ends_with(".feroxmute/config.toml"));
+    }
+
+    #[test]
+    fn test_parse_target_llm_config() {
+        let toml = r#"
+[provider]
+name = "anthropic"
+model = "claude-sonnet-4-20250514"
+
+[target_llm]
+name = "openai"
+model = "gpt-4"
+base_url = "https://custom.endpoint.com/v1"
+"#;
+        let config = EngagementConfig::parse(toml).expect("valid target_llm config should parse");
+        assert!(config.target_llm.is_some());
+        let target = config.target_llm.unwrap();
+        assert_eq!(target.name, ProviderName::OpenAi);
+        assert_eq!(target.model, "gpt-4");
+        assert_eq!(
+            target.base_url.as_deref(),
+            Some("https://custom.endpoint.com/v1")
+        );
+    }
+
+    #[test]
+    fn test_target_llm_optional() {
+        let toml = r#"
+[provider]
+name = "anthropic"
+model = "claude-sonnet-4-20250514"
+"#;
+        let config = EngagementConfig::parse(toml).expect("config without target_llm should parse");
+        assert!(config.target_llm.is_none());
+    }
+
+    #[test]
+    fn test_target_llm_env_expansion() {
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::set_var("TEST_TARGET_LLM_KEY", "sk-test-key-123") };
+        let toml = r#"
+[target_llm]
+name = "openai"
+model = "gpt-4"
+api_key = "${TEST_TARGET_LLM_KEY}"
+"#;
+        let mut config = EngagementConfig::parse(toml).expect("should parse");
+        config.expand_env_vars();
+        let target = config.target_llm.unwrap();
+        assert_eq!(target.api_key.as_deref(), Some("sk-test-key-123"));
+        // SAFETY: Tests run single-threaded
+        unsafe { std::env::remove_var("TEST_TARGET_LLM_KEY") };
     }
 }
