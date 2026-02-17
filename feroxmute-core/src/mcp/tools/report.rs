@@ -147,7 +147,7 @@ impl McpGenerateReportTool {
                     title,
                     severity,
                     affected: self.context.target.clone(),
-                    cwe: "Unclassified".to_string(),
+                    cwe: crate::reports::UNCLASSIFIED_CWE.to_string(),
                     description,
                     evidence: None,
                     reproduction_steps: None,
