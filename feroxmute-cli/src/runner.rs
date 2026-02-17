@@ -235,6 +235,7 @@ pub async fn run_orchestrator(
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
     session: Arc<feroxmute_core::state::Session>,
+    target_provider: Option<Arc<dyn LlmProvider>>,
 ) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -269,7 +270,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session)) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider) => {
             match result {
                 Ok(output) => {
                     // Check if engagement was properly completed via complete_engagement tool
@@ -371,6 +372,7 @@ async fn run_orchestrator_with_tools(
     instruction: Option<String>,
     engagement_completed: Arc<std::sync::atomic::AtomicBool>,
     session: Arc<feroxmute_core::state::Session>,
+    target_provider: Option<Arc<dyn LlmProvider>>,
 ) -> Result<String> {
     // Create TuiEventSender first so it can be shared
     let events: Arc<dyn feroxmute_core::tools::EventSender> =
@@ -407,10 +409,11 @@ async fn run_orchestrator_with_tools(
         session_db_path: Some(session.path.join("session.db")),
         session_id: session.id.clone(),
         reports_dir: session.reports_dir(),
-        target_provider: None,
+        target_provider,
     });
 
     let has_source_target = source_path.is_some();
+    let has_target_llm = context.target_provider.is_some();
 
     // Check if resuming and prepend context
     let resume_prefix = if session.is_resuming().unwrap_or(false) {
@@ -440,6 +443,24 @@ async fn run_orchestrator_with_tools(
         ""
     };
 
+    let llm_pentest_section = if has_target_llm {
+        "\n\n## Target LLM Configured - IMPORTANT\n\
+        A target LLM has been configured for penetration testing. You MUST spawn an llm_pentest agent \
+        to test the target LLM for OWASP LLM Top 10 vulnerabilities. The llm_pentest agent has access \
+        to Garak, Promptfoo, PyRIT, and direct API probing tools."
+    } else {
+        ""
+    };
+
+    // Build extra agent types string
+    let mut extra_types = String::new();
+    if has_source_target {
+        extra_types.push_str(", sast");
+    }
+    if has_target_llm {
+        extra_types.push_str(", llm_pentest");
+    }
+
     let workflow = if has_source_target {
         "WORKFLOW: spawn_agent(sast) AND spawn_agent(recon) IN PARALLEL -> wait_for_any (repeat until both done) -> spawn scanner (informed by both sast and recon findings) -> wait_for_any -> spawn report -> wait_for_agent -> complete_engagement."
     } else {
@@ -447,7 +468,7 @@ async fn run_orchestrator_with_tools(
     };
 
     let user_prompt = format!(
-        "{}Target: {}\n\n{}\n\n{}{}\n\n\
+        "{}Target: {}\n\n{}\n\n{}{}{}\n\n\
         Available agent types: recon, scanner{}, report.\n\n\
         {}\n\n\
         CRITICAL: After EVERY spawn_agent call, you MUST call wait_for_any() to get results. Never stop without waiting for spawned agents.\n\n\
@@ -457,7 +478,8 @@ async fn run_orchestrator_with_tools(
         limitations.to_prompt_section(),
         engagement_task,
         source_section,
-        if has_source_target { ", sast" } else { "" },
+        llm_pentest_section,
+        extra_types,
         workflow,
         if has_source_target {
             "START NOW: Spawn both 'sast' and 'recon' agents immediately (two spawn_agent calls), then wait_for_any()."
