@@ -2,6 +2,7 @@
 
 pub mod executor;
 pub mod llm_pentest_context;
+pub mod llm_probe;
 pub mod memory;
 pub mod orchestrator;
 pub mod playbook;
@@ -12,6 +13,7 @@ pub mod shell;
 
 pub use executor::{ToolDef, ToolExecution, ToolExecutor, ToolRegistry};
 pub use llm_pentest_context::LlmPentestContext;
+pub use llm_probe::{LlmProbeError, LlmProbeTool};
 pub use memory::{
     MemoryAddTool, MemoryContext, MemoryGetTool, MemoryListTool, MemoryRemoveTool, MemoryToolError,
 };
