@@ -21,6 +21,7 @@ pub struct Prompts {
     pub exploit: AgentPrompt,
     pub report: AgentPrompt,
     pub sast: AgentPrompt,
+    pub llm_pentest: AgentPrompt,
 }
 
 impl Prompts {
@@ -52,6 +53,7 @@ impl Prompts {
             "exploit" => Some(&self.exploit.prompt),
             "report" => Some(&self.report.prompt),
             "sast" => Some(&self.sast.prompt),
+            "llm_pentest" => Some(&self.llm_pentest.prompt),
             _ => None,
         }
     }
@@ -154,6 +156,17 @@ mod tests {
         };
         let result = process_conditionals(template, &ctx);
         assert_eq!(result, "DISC ");
+    }
+
+    #[test]
+    fn test_llm_pentest_prompt_exists() {
+        let prompts = Prompts::default_prompts();
+        let prompt = prompts.get("llm_pentest");
+        assert!(prompt.is_some(), "llm_pentest prompt should exist");
+        assert!(
+            prompt.unwrap().contains("OWASP"),
+            "should reference OWASP LLM Top 10"
+        );
     }
 
     #[test]

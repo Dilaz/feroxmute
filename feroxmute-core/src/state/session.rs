@@ -455,6 +455,7 @@ mod tests {
             auth: Default::default(),
             provider: Default::default(),
             output: Default::default(),
+            target_llm: None,
         }
     }
 
@@ -721,6 +722,7 @@ mod tests {
             auth: Default::default(),
             provider: Default::default(),
             output: Default::default(),
+            target_llm: None,
         };
 
         let session =
