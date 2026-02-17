@@ -3,6 +3,7 @@
 pub mod executor;
 pub mod llm_pentest_context;
 pub mod llm_probe;
+pub mod llm_scanners;
 pub mod memory;
 pub mod orchestrator;
 pub mod playbook;
@@ -14,6 +15,7 @@ pub mod shell;
 pub use executor::{ToolDef, ToolExecution, ToolExecutor, ToolRegistry};
 pub use llm_pentest_context::LlmPentestContext;
 pub use llm_probe::{LlmProbeError, LlmProbeTool};
+pub use llm_scanners::{GarakScanTool, LlmScannerError, PromptfooScanTool, PyritAttackTool};
 pub use memory::{
     MemoryAddTool, MemoryContext, MemoryGetTool, MemoryListTool, MemoryRemoveTool, MemoryToolError,
 };
