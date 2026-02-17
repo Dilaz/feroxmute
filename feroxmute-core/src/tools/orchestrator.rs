@@ -222,6 +222,8 @@ pub struct OrchestratorContext {
     pub session_id: String,
     /// Path to reports directory for saving report files
     pub reports_dir: std::path::PathBuf,
+    /// Target LLM provider for LLM penetration testing (if configured)
+    pub target_provider: Option<Arc<dyn LlmProvider>>,
 }
 
 // ============================================================================
@@ -236,6 +238,7 @@ fn agent_required_categories(agent_type: &str) -> Vec<ToolCategory> {
         "scanner" => vec![WebScan, NetworkScan],
         "exploit" => vec![WebExploit, NetworkExploit],
         "sast" => vec![Sast],
+        "llm_pentest" => vec![LlmPentest],
         "report" => vec![Report],
         _ => vec![],
     }
@@ -281,7 +284,7 @@ impl Tool for SpawnAgentTool {
                 "properties": {
                     "agent_type": {
                         "type": "string",
-                        "enum": ["recon", "scanner", "sast", "report"],
+                        "enum": ["recon", "scanner", "sast", "llm_pentest", "report"],
                         "description": "Type of agent to spawn"
                     },
                     "name": {
@@ -370,6 +373,7 @@ impl Tool for SpawnAgentTool {
             "sast" => Some(EngagementPhase::StaticAnalysis),
             "recon" => Some(EngagementPhase::Reconnaissance),
             "scanner" => Some(EngagementPhase::Scanning),
+            "llm_pentest" => Some(EngagementPhase::LlmPentest),
             "report" => Some(EngagementPhase::Reporting),
             _ => None,
         };
@@ -418,6 +422,74 @@ impl Tool for SpawnAgentTool {
                 let output = match tokio::time::timeout(
                     Duration::from_secs(AGENT_TIMEOUT_SECS),
                     provider.complete_with_report(&full_prompt, &target, report_context),
+                )
+                .await
+                {
+                    Ok(Ok(out)) => out,
+                    Ok(Err(e)) => format!("Error: {}", e),
+                    Err(_) => format!(
+                        "Error: Agent timed out after {} seconds",
+                        AGENT_TIMEOUT_SECS
+                    ),
+                };
+
+                let success = !output.starts_with("Error:");
+
+                let _ = result_tx
+                    .send(AgentResult {
+                        name: agent_name.clone(),
+                        agent_type,
+                        success,
+                        output,
+                        duration: start.elapsed(),
+                    })
+                    .await;
+            })
+        } else if agent_type == "llm_pentest" {
+            // LLM pentest agents use specialized LLM testing tools
+            let target_provider_arc = self.context.target_provider.clone();
+            tokio::spawn(async move {
+                let start = std::time::Instant::now();
+
+                let target_provider_arc = match target_provider_arc {
+                    Some(tp) => tp,
+                    None => {
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success: false,
+                                output: "Error: No target LLM configured. Use --target-llm to specify the target.".to_string(),
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                        return;
+                    }
+                };
+
+                let llm_context = std::sync::Arc::new(crate::tools::LlmPentestContext {
+                    target_provider: std::sync::Arc::clone(&target_provider_arc),
+                    container: std::sync::Arc::clone(&container),
+                    events: std::sync::Arc::clone(&events),
+                    agent_name: agent_name.clone(),
+                    target_model: target_provider_arc.name().to_string(),
+                    target_api_key: std::env::var("TARGET_LLM_API_KEY").unwrap_or_default(),
+                    target_base_url: std::env::var("TARGET_LLM_BASE_URL").ok(),
+                    target_provider_name: target_provider_arc.name().to_string(),
+                });
+
+                let output = match tokio::time::timeout(
+                    Duration::from_secs(AGENT_TIMEOUT_SECS),
+                    provider.complete_with_llm_pentest(
+                        &full_prompt,
+                        &target,
+                        llm_context,
+                        container,
+                        events,
+                        &agent_name,
+                        limitations,
+                        memory,
+                    ),
                 )
                 .await
                 {

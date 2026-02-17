@@ -407,6 +407,7 @@ async fn run_orchestrator_with_tools(
         session_db_path: Some(session.path.join("session.db")),
         session_id: session.id.clone(),
         reports_dir: session.reports_dir(),
+        target_provider: None,
     });
 
     let has_source_target = source_path.is_some();

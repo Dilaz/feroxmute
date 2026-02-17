@@ -22,6 +22,8 @@ pub enum EngagementPhase {
     Reconnaissance,
     /// Vulnerability scanning
     Scanning,
+    /// LLM penetration testing
+    LlmPentest,
     /// Exploitation (if authorized)
     Exploitation,
     /// Report generation
@@ -37,7 +39,8 @@ impl EngagementPhase {
             Self::Setup => Some(Self::StaticAnalysis),
             Self::StaticAnalysis => Some(Self::Reconnaissance),
             Self::Reconnaissance => Some(Self::Scanning),
-            Self::Scanning => Some(Self::Exploitation),
+            Self::Scanning => Some(Self::LlmPentest),
+            Self::LlmPentest => Some(Self::Exploitation),
             Self::Exploitation => Some(Self::Reporting),
             Self::Reporting => Some(Self::Complete),
             Self::Complete => None,
@@ -56,7 +59,8 @@ impl EngagementPhase {
             }
             Self::StaticAnalysis => Some(Self::Reconnaissance),
             Self::Reconnaissance => Some(Self::Scanning),
-            Self::Scanning => Some(Self::Exploitation),
+            Self::Scanning => Some(Self::LlmPentest),
+            Self::LlmPentest => Some(Self::Exploitation),
             Self::Exploitation => Some(Self::Reporting),
             Self::Reporting => Some(Self::Complete),
             Self::Complete => None,
