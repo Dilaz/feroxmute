@@ -10,6 +10,12 @@ use thiserror::Error;
 
 use super::llm_pentest_context::LlmPentestContext;
 
+/// Shell-escape a value for safe use inside single quotes.
+/// Replaces `'` with `'\''` (end quote, escaped quote, start quote).
+fn shell_escape(value: &str) -> String {
+    value.replace('\'', "'\\''")
+}
+
 #[derive(Debug, Error)]
 pub enum LlmScannerError {
     #[error("Scanner failed: {0}")]
@@ -59,9 +65,12 @@ impl GarakScanTool {
             _ => "rest",
         };
 
-        cmd.push_str(&format!(" --model_type {}", target_type));
-        cmd.push_str(&format!(" --model_name {}", self.context.target_model));
-        cmd.push_str(&format!(" --probes {}", args.probes));
+        cmd.push_str(&format!(" --model_type '{}'", shell_escape(target_type)));
+        cmd.push_str(&format!(
+            " --model_name '{}'",
+            shell_escape(&self.context.target_model)
+        ));
+        cmd.push_str(&format!(" --probes '{}'", shell_escape(&args.probes)));
 
         // JSON report output
         cmd.push_str(" --report_prefix /tmp/garak_report");
@@ -73,13 +82,19 @@ impl GarakScanTool {
         let mut env_parts = vec![
             format!(
                 "export TARGET_LLM_API_KEY='{}';",
-                self.context.target_api_key
+                shell_escape(&self.context.target_api_key)
             ),
-            format!("export TARGET_LLM_MODEL='{}';", self.context.target_model),
+            format!(
+                "export TARGET_LLM_MODEL='{}';",
+                shell_escape(&self.context.target_model)
+            ),
         ];
 
         if let Some(ref url) = self.context.target_base_url {
-            env_parts.push(format!("export TARGET_LLM_BASE_URL='{}';", url));
+            env_parts.push(format!(
+                "export TARGET_LLM_BASE_URL='{}';",
+                shell_escape(url)
+            ));
         }
 
         // Provider-specific env vars that garak expects
@@ -87,16 +102,16 @@ impl GarakScanTool {
             "openai" | "azure" => {
                 env_parts.push(format!(
                     "export OPENAI_API_KEY='{}';",
-                    self.context.target_api_key
+                    shell_escape(&self.context.target_api_key)
                 ));
                 if let Some(ref url) = self.context.target_base_url {
-                    env_parts.push(format!("export OPENAI_API_BASE='{}';", url));
+                    env_parts.push(format!("export OPENAI_API_BASE='{}';", shell_escape(url)));
                 }
             }
             "anthropic" => {
                 env_parts.push(format!(
                     "export ANTHROPIC_API_KEY='{}';",
-                    self.context.target_api_key
+                    shell_escape(&self.context.target_api_key)
                 ));
             }
             _ => {}
@@ -209,23 +224,23 @@ impl PromptfooScanTool {
     fn build_env_prefix(&self) -> String {
         let mut env_parts = vec![format!(
             "export TARGET_LLM_API_KEY='{}';",
-            self.context.target_api_key,
+            shell_escape(&self.context.target_api_key),
         )];
 
         match self.context.target_provider_name.as_str() {
             "openai" | "azure" => {
                 env_parts.push(format!(
                     "export OPENAI_API_KEY='{}';",
-                    self.context.target_api_key
+                    shell_escape(&self.context.target_api_key)
                 ));
                 if let Some(ref url) = self.context.target_base_url {
-                    env_parts.push(format!("export OPENAI_API_BASE='{}';", url));
+                    env_parts.push(format!("export OPENAI_API_BASE='{}';", shell_escape(url)));
                 }
             }
             "anthropic" => {
                 env_parts.push(format!(
                     "export ANTHROPIC_API_KEY='{}';",
-                    self.context.target_api_key
+                    shell_escape(&self.context.target_api_key)
                 ));
             }
             _ => {}
@@ -342,26 +357,32 @@ impl PyritAttackTool {
         let mut env_parts = vec![
             format!(
                 "export TARGET_LLM_API_KEY='{}';",
-                self.context.target_api_key
+                shell_escape(&self.context.target_api_key)
             ),
-            format!("export TARGET_LLM_MODEL='{}';", self.context.target_model),
+            format!(
+                "export TARGET_LLM_MODEL='{}';",
+                shell_escape(&self.context.target_model)
+            ),
         ];
 
         if let Some(ref url) = self.context.target_base_url {
-            env_parts.push(format!("export TARGET_LLM_BASE_URL='{}';", url));
+            env_parts.push(format!(
+                "export TARGET_LLM_BASE_URL='{}';",
+                shell_escape(url)
+            ));
         }
 
         match self.context.target_provider_name.as_str() {
             "openai" | "azure" => {
                 env_parts.push(format!(
                     "export OPENAI_API_KEY='{}';",
-                    self.context.target_api_key
+                    shell_escape(&self.context.target_api_key)
                 ));
             }
             "anthropic" => {
                 env_parts.push(format!(
                     "export ANTHROPIC_API_KEY='{}';",
-                    self.context.target_api_key
+                    shell_escape(&self.context.target_api_key)
                 ));
             }
             _ => {}
@@ -449,6 +470,25 @@ impl Tool for PyritAttackTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_shell_escape_no_quotes() {
+        assert_eq!(shell_escape("hello"), "hello");
+    }
+
+    #[test]
+    fn test_shell_escape_with_single_quote() {
+        assert_eq!(shell_escape("it's"), "it'\\''s");
+    }
+
+    #[test]
+    fn test_shell_escape_injection_attempt() {
+        let input = "'; touch /tmp/pwned; #";
+        let escaped = shell_escape(input);
+        // The single quote is escaped, breaking the injection
+        assert_eq!(escaped, "'\\''; touch /tmp/pwned; #");
+        // When wrapped in single quotes: ''\''...' the injection is neutralized
+    }
 
     #[test]
     fn test_garak_tool_name() {

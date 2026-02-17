@@ -236,6 +236,7 @@ pub async fn run_orchestrator(
     instruction: Option<String>,
     session: Arc<feroxmute_core::state::Session>,
     target_provider: Option<Arc<dyn LlmProvider>>,
+    target_llm_config: Option<feroxmute_core::config::ProviderConfig>,
 ) -> Result<()> {
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -270,7 +271,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider) => {
+        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider, target_llm_config) => {
             match result {
                 Ok(output) => {
                     // Check if engagement was properly completed via complete_engagement tool
@@ -373,6 +374,7 @@ async fn run_orchestrator_with_tools(
     engagement_completed: Arc<std::sync::atomic::AtomicBool>,
     session: Arc<feroxmute_core::state::Session>,
     target_provider: Option<Arc<dyn LlmProvider>>,
+    target_llm_config: Option<feroxmute_core::config::ProviderConfig>,
 ) -> Result<String> {
     // Create TuiEventSender first so it can be shared
     let events: Arc<dyn feroxmute_core::tools::EventSender> =
@@ -410,6 +412,7 @@ async fn run_orchestrator_with_tools(
         session_id: session.id.clone(),
         reports_dir: session.reports_dir(),
         target_provider,
+        target_llm_config,
     });
 
     let has_source_target = source_path.is_some();
