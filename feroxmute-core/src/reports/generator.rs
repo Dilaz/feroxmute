@@ -564,6 +564,15 @@ fn generate_pdf(report: &Report) -> Result<Vec<u8>> {
                 y,
                 &format!("   Affected: {}", truncate(&finding.affected, 55)),
             ));
+            y -= line_height;
+
+            ops.extend(text_ops(
+                &font,
+                9.0,
+                x,
+                y,
+                &format!("   CWE: {}", truncate(&finding.cwe, 55)),
+            ));
             y -= line_height + 2.0;
         }
     }
