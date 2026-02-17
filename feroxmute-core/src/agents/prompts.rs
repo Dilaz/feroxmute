@@ -121,6 +121,7 @@ fn process_conditional(template: &str, flag_name: &str, flag_value: bool) -> Str
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
