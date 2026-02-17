@@ -9,7 +9,7 @@ use crate::Result;
 use crate::docker::ContainerManager;
 use crate::limitations::EngagementLimitations;
 use crate::state::MetricsTracker;
-use crate::tools::{OrchestratorContext, ReportContext};
+use crate::tools::{LlmPentestContext, OrchestratorContext, ReportContext};
 
 /// A message in a conversation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,6 +186,24 @@ pub trait LlmProvider: Send + Sync {
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Report tools not supported by this provider".to_string(),
+        ))
+    }
+
+    /// Complete with LLM penetration testing tools
+    /// Uses rig's built-in tool loop with LLM-specific attack tools
+    async fn complete_with_llm_pentest(
+        &self,
+        _system_prompt: &str,
+        _user_prompt: &str,
+        _context: Arc<LlmPentestContext>,
+        _container: Arc<ContainerManager>,
+        _events: Arc<dyn crate::tools::EventSender>,
+        _agent_name: &str,
+        _limitations: Arc<EngagementLimitations>,
+        _memory: Arc<crate::tools::MemoryContext>,
+    ) -> Result<String> {
+        Err(crate::Error::Provider(
+            "LLM pentest tools not supported by this provider".to_string(),
         ))
     }
 
