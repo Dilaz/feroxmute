@@ -640,6 +640,7 @@ async fn main() -> Result<()> {
         });
 
         let instruction = args.instruction.clone();
+        let target_llm_config = config.target_llm.clone();
         let session_for_agent = Arc::clone(&session);
         let agent_handle = local.spawn_local(async move {
             runner::run_orchestrator(
@@ -653,6 +654,7 @@ async fn main() -> Result<()> {
                 instruction,
                 session_for_agent,
                 target_provider,
+                target_llm_config,
             )
             .await
         });

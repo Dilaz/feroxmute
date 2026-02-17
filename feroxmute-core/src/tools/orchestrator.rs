@@ -224,6 +224,8 @@ pub struct OrchestratorContext {
     pub reports_dir: std::path::PathBuf,
     /// Target LLM provider for LLM penetration testing (if configured)
     pub target_provider: Option<Arc<dyn LlmProvider>>,
+    /// Target LLM configuration (model, api_key, base_url) for populating LlmPentestContext
+    pub target_llm_config: Option<crate::config::ProviderConfig>,
 }
 
 // ============================================================================
@@ -448,6 +450,7 @@ impl Tool for SpawnAgentTool {
         } else if agent_type == "llm_pentest" {
             // LLM pentest agents use specialized LLM testing tools
             let target_provider_arc = self.context.target_provider.clone();
+            let target_llm_config = self.context.target_llm_config.clone();
             tokio::spawn(async move {
                 let start = std::time::Instant::now();
 
@@ -467,15 +470,27 @@ impl Tool for SpawnAgentTool {
                     }
                 };
 
+                // Use ProviderConfig for correct model/credentials
+                let target_config =
+                    target_llm_config.unwrap_or_else(|| crate::config::ProviderConfig {
+                        name: crate::config::ProviderName::OpenAi,
+                        model: target_provider_arc.name().to_string(),
+                        api_key: None,
+                        base_url: None,
+                    });
+
                 let llm_context = std::sync::Arc::new(crate::tools::LlmPentestContext {
                     target_provider: std::sync::Arc::clone(&target_provider_arc),
                     container: std::sync::Arc::clone(&container),
                     events: std::sync::Arc::clone(&events),
                     agent_name: agent_name.clone(),
-                    target_model: target_provider_arc.name().to_string(),
-                    target_api_key: std::env::var("TARGET_LLM_API_KEY").unwrap_or_default(),
-                    target_base_url: std::env::var("TARGET_LLM_BASE_URL").ok(),
-                    target_provider_name: target_provider_arc.name().to_string(),
+                    target_model: target_config.model.clone(),
+                    target_api_key: target_config.api_key.clone().unwrap_or_default(),
+                    target_base_url: target_config.base_url.clone(),
+                    target_provider_name: serde_json::to_string(&target_config.name)
+                        .unwrap_or_default()
+                        .trim_matches('"')
+                        .to_string(),
                 });
 
                 let output = match tokio::time::timeout(
