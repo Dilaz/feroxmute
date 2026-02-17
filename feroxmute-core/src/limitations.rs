@@ -25,6 +25,8 @@ pub enum ToolCategory {
     Sast,
     /// Report generation (always allowed)
     Report,
+    /// LLM penetration testing (garak, promptfoo, pyrit)
+    LlmPentest,
     /// Basic shell utilities (always allowed)
     Utility,
 }
@@ -76,6 +78,11 @@ impl ToolRegistry {
         tools.insert("gitleaks", Sast);
         tools.insert("grype", Sast);
         tools.insert("ast-grep", Sast);
+
+        // LLM penetration testing
+        tools.insert("garak", LlmPentest);
+        tools.insert("promptfoo", LlmPentest);
+        tools.insert("pyrit", LlmPentest);
 
         // Basic shell utilities (always allowed)
         tools.insert("curl", Utility);
@@ -153,6 +160,8 @@ pub struct EngagementLimitations {
     pub passive: bool,
     /// SAST only mode (overrides other flags)
     pub sast_only: bool,
+    /// LLM-only mode (skip network testing)
+    pub llm_only: bool,
     /// Restrict testing to specific ports
     pub target_ports: Option<Vec<u16>>,
     /// Maximum requests per second
@@ -200,6 +209,7 @@ impl EngagementLimitations {
             exploit: !no_exploit,
             passive,
             sast_only,
+            llm_only: false,
             target_ports: None,
             rate_limit: None,
         }
@@ -225,6 +235,7 @@ impl EngagementLimitations {
         // Always allowed
         allowed.insert(Report);
         allowed.insert(Utility);
+        allowed.insert(LlmPentest);
 
         if self.sast_only {
             allowed.insert(Sast);
@@ -445,5 +456,16 @@ mod tests {
         };
         let section = limits.to_prompt_section();
         assert!(section.contains("No restrictions"));
+    }
+
+    #[test]
+    fn test_llm_pentest_tools_categorized() {
+        let registry = ToolRegistry::new();
+        assert_eq!(registry.categorize("garak"), Some(ToolCategory::LlmPentest));
+        assert_eq!(
+            registry.categorize("promptfoo"),
+            Some(ToolCategory::LlmPentest)
+        );
+        assert_eq!(registry.categorize("pyrit"), Some(ToolCategory::LlmPentest));
     }
 }

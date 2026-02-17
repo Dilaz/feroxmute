@@ -15,6 +15,7 @@ fn test_config() -> EngagementConfig {
         auth: Default::default(),
         provider: Default::default(),
         output: Default::default(),
+        target_llm: None,
     }
 }
 
