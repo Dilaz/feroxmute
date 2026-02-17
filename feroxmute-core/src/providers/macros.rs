@@ -445,6 +445,123 @@ macro_rules! define_provider {
 
                 Ok(response.output)
             }
+
+            async fn complete_with_llm_pentest(
+                &self,
+                system_prompt: &str,
+                user_prompt: &str,
+                context: std::sync::Arc<$crate::tools::LlmPentestContext>,
+                container: std::sync::Arc<$crate::docker::ContainerManager>,
+                events: std::sync::Arc<dyn $crate::tools::EventSender>,
+                agent_name: &str,
+                limitations: std::sync::Arc<$crate::limitations::EngagementLimitations>,
+                memory: std::sync::Arc<$crate::tools::MemoryContext>,
+            ) -> $crate::Result<String> {
+                use rig::client::CompletionClient;
+                use rig::completion::Prompt;
+
+                let events_clone = std::sync::Arc::clone(&events);
+
+                // Continuation configuration
+                const MAX_CONTINUATIONS: usize = 3;
+                let mut continuation_count = 0;
+                let mut accumulated_output = String::new();
+                let mut current_prompt = user_prompt.to_string();
+
+                loop {
+                    events_clone.send_status(
+                        agent_name,
+                        "llm_pentest",
+                        $crate::agents::AgentStatus::Streaming,
+                        None,
+                    );
+
+                    let agent = self
+                        .client
+                        .agent(&self.model)
+                        .preamble(system_prompt)
+                        .max_tokens(4096)
+                        .tool($crate::tools::LlmProbeTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::GarakScanTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::PromptfooScanTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::PyritAttackTool::new(std::sync::Arc::clone(&context)))
+                        .tool($crate::tools::DockerShellTool::new(
+                            std::sync::Arc::clone(&container),
+                            std::sync::Arc::clone(&events),
+                            agent_name.to_string(),
+                            std::sync::Arc::clone(&limitations),
+                        ))
+                        .tool($crate::tools::RunScriptTool::new(
+                            std::sync::Arc::clone(&container),
+                            std::sync::Arc::clone(&events),
+                            agent_name.to_string(),
+                        ))
+                        .tool($crate::tools::MemoryAddTool::new(std::sync::Arc::clone(&memory)))
+                        .tool($crate::tools::MemoryGetTool::new(std::sync::Arc::clone(&memory)))
+                        .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&memory)))
+                        .build();
+
+                    const LLM_TIMEOUT_SECS: u64 = 600;
+                    let result = tokio::time::timeout(
+                        std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
+                        agent.prompt(&current_prompt).extended_details().max_turns(50)
+                    ).await;
+
+                    let response = match result {
+                        Ok(Ok(r)) => r,
+                        Ok(Err(e)) => {
+                            events_clone.send_feed(agent_name, &format!("LLM request failed: {}", e), true);
+                            events_clone.send_status(agent_name, "llm_pentest", $crate::agents::AgentStatus::Failed, None);
+                            return Err($crate::Error::Provider(format!("LLM pentest completion failed: {}", e)));
+                        }
+                        Err(_) => {
+                            events_clone.send_feed(agent_name, "LLM request timed out after 10 minutes", true);
+                            events_clone.send_status(agent_name, "llm_pentest", $crate::agents::AgentStatus::Failed, None);
+                            return Err($crate::Error::Provider("LLM pentest request timed out after 10 minutes".into()));
+                        }
+                    };
+
+                    let pricing = $crate::pricing::PricingConfig::load();
+                    let cost = pricing.calculate_cost(
+                        $provider_name,
+                        &self.model,
+                        response.total_usage.input_tokens,
+                        response.total_usage.output_tokens,
+                    );
+                    events_clone.send_metrics(
+                        response.total_usage.input_tokens,
+                        response.total_usage.output_tokens,
+                        0,
+                        cost,
+                        0,
+                    );
+
+                    accumulated_output.push_str(&response.output);
+                    accumulated_output.push('\n');
+
+                    let looks_incomplete = response.output.len() < 500
+                        && !response.output.contains("=== LLM PENTEST SUMMARY ===")
+                        && continuation_count < MAX_CONTINUATIONS;
+
+                    if looks_incomplete {
+                        continuation_count += 1;
+                        events_clone.send_feed(
+                            agent_name,
+                            &format!("Agent output looks incomplete. Continuing... ({}/{})", continuation_count, MAX_CONTINUATIONS),
+                            false,
+                        );
+                        current_prompt = format!(
+                            "You stopped too early. Continue your LLM penetration testing task.\n\nPrevious output:\n{}\n\n---\n\nKeep testing until you have covered all OWASP LLM Top 10 categories.",
+                            response.output.chars().take(1500).collect::<String>()
+                        );
+                        continue;
+                    }
+
+                    events_clone.send_status(agent_name, "llm_pentest", $crate::agents::AgentStatus::Completed, None);
+
+                    return Ok(accumulated_output);
+                }
+            }
         }
     };
 
