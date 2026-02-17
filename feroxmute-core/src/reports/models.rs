@@ -161,6 +161,8 @@ pub struct Finding {
     pub severity: String,
     /// Affected endpoint/resource
     pub affected: String,
+    /// CWE identifier (e.g., "CWE-89") or "Unclassified"
+    pub cwe: String,
     /// Description
     pub description: String,
     /// Evidence/proof
@@ -183,12 +185,13 @@ impl From<Vulnerability> for Finding {
             affected: vuln
                 .asset
                 .unwrap_or_else(|| vuln.host_id.unwrap_or_default()),
+            cwe: vuln.cwe.unwrap_or_else(|| "Unclassified".to_string()),
             description: vuln.description.unwrap_or_default(),
             evidence: vuln.evidence,
             reproduction_steps: None,
             impact: None,
             remediation: vuln.remediation,
-            references: vuln.cwe.map(|c| vec![c]).unwrap_or_default(),
+            references: Vec::new(),
         }
     }
 }
@@ -284,6 +287,7 @@ mod tests {
             title: "SQL Injection".to_string(),
             severity: "Critical".to_string(),
             affected: "/api/login".to_string(),
+            cwe: "Unclassified".to_string(),
             description: "SQL injection vulnerability".to_string(),
             evidence: None,
             reproduction_steps: None,
@@ -296,6 +300,7 @@ mod tests {
             title: "XSS".to_string(),
             severity: "High".to_string(),
             affected: "/search".to_string(),
+            cwe: "Unclassified".to_string(),
             description: "Cross-site scripting".to_string(),
             evidence: None,
             reproduction_steps: None,
@@ -308,5 +313,57 @@ mod tests {
         assert_eq!(report.summary.by_severity.critical, 1);
         assert_eq!(report.summary.by_severity.high, 1);
         assert_eq!(report.summary.risk_rating, RiskRating::Critical);
+    }
+
+    #[test]
+    fn test_finding_from_vulnerability_with_cwe() {
+        use crate::state::{Severity, VulnStatus, Vulnerability};
+        let vuln = Vulnerability {
+            id: "VULN-test".to_string(),
+            host_id: None,
+            vuln_type: "sqli".to_string(),
+            severity: Severity::Critical,
+            title: "SQL Injection".to_string(),
+            description: Some("Test".to_string()),
+            evidence: None,
+            status: VulnStatus::Potential,
+            cwe: Some("CWE-89".to_string()),
+            cvss: None,
+            asset: Some("/api/login".to_string()),
+            remediation: None,
+            discovered_by: "scanner".to_string(),
+            verified_by: None,
+            discovered_at: Utc::now(),
+            verified_at: None,
+        };
+        let finding = Finding::from(vuln);
+        assert_eq!(finding.cwe, "CWE-89");
+        // CWE should NOT be in references anymore
+        assert!(finding.references.is_empty());
+    }
+
+    #[test]
+    fn test_finding_from_vulnerability_without_cwe() {
+        use crate::state::{Severity, VulnStatus, Vulnerability};
+        let vuln = Vulnerability {
+            id: "VULN-test2".to_string(),
+            host_id: None,
+            vuln_type: "xss".to_string(),
+            severity: Severity::High,
+            title: "XSS".to_string(),
+            description: None,
+            evidence: None,
+            status: VulnStatus::Potential,
+            cwe: None,
+            cvss: None,
+            asset: None,
+            remediation: None,
+            discovered_by: "scanner".to_string(),
+            verified_by: None,
+            discovered_at: Utc::now(),
+            verified_at: None,
+        };
+        let finding = Finding::from(vuln);
+        assert_eq!(finding.cwe, "Unclassified");
     }
 }

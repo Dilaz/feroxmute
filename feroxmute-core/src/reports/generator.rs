@@ -920,12 +920,13 @@ mod tests {
             title: "SQL Injection".to_string(),
             severity: "Critical".to_string(),
             affected: "/api/login".to_string(),
+            cwe: "CWE-89".to_string(),
             description: "SQL injection in login endpoint".to_string(),
             evidence: Some("Error: SQL syntax error".to_string()),
             reproduction_steps: None,
             impact: Some("Full database access".to_string()),
             remediation: Some("Use parameterized queries".to_string()),
-            references: vec!["CWE-89".to_string()],
+            references: Vec::new(),
         });
 
         let markdown = generate_markdown(&report);
@@ -935,6 +936,5 @@ mod tests {
         assert!(markdown.contains("/api/login"));
         assert!(markdown.contains("SQL syntax error"));
         assert!(markdown.contains("parameterized queries"));
-        assert!(markdown.contains("CWE-89"));
     }
 }

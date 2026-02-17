@@ -231,6 +231,7 @@ impl GenerateReportTool {
                     title,
                     severity,
                     affected: self.context.target.clone(),
+                    cwe: "Unclassified".to_string(),
                     description,
                     evidence: None,
                     reproduction_steps: None,
