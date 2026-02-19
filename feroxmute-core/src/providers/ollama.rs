@@ -369,19 +369,10 @@ mod tests {
 
     #[test]
     fn test_provider_from_env_requires_env_var() {
-        // Temporarily unset env var
-        let original = std::env::var("OLLAMA_API_BASE_URL").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("OLLAMA_API_BASE_URL") };
-
-        let result = OllamaProvider::from_env("llama3.2", MetricsTracker::new());
-        assert!(result.is_err());
-
-        // Restore
-        if let Some(url) = original {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("OLLAMA_API_BASE_URL", url) };
-        }
+        temp_env::with_var("OLLAMA_API_BASE_URL", None::<&str>, || {
+            let result = OllamaProvider::from_env("llama3.2", MetricsTracker::new());
+            assert!(result.is_err());
+        });
     }
 
     #[test]
