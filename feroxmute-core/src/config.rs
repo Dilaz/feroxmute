@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Authentication type for target
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +38,52 @@ pub enum ProviderName {
     Codex,
     #[serde(rename = "gemini-cli")]
     GeminiCli,
+}
+
+impl std::fmt::Display for ProviderName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Anthropic => "anthropic",
+            Self::OpenAi => "openai",
+            Self::Cohere => "cohere",
+            Self::LiteLlm => "litellm",
+            Self::Perplexity => "perplexity",
+            Self::Gemini => "gemini",
+            Self::Xai => "xai",
+            Self::DeepSeek => "deepseek",
+            Self::Azure => "azure",
+            Self::Mira => "mira",
+            Self::Ollama => "ollama",
+            Self::ClaudeCode => "claude-code",
+            Self::Codex => "codex",
+            Self::GeminiCli => "gemini-cli",
+        };
+        f.write_str(s)
+    }
+}
+
+impl FromStr for ProviderName {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "anthropic" => Ok(Self::Anthropic),
+            "openai" => Ok(Self::OpenAi),
+            "cohere" => Ok(Self::Cohere),
+            "litellm" => Ok(Self::LiteLlm),
+            "perplexity" => Ok(Self::Perplexity),
+            "gemini" => Ok(Self::Gemini),
+            "xai" => Ok(Self::Xai),
+            "deepseek" => Ok(Self::DeepSeek),
+            "azure" => Ok(Self::Azure),
+            "mira" => Ok(Self::Mira),
+            "ollama" => Ok(Self::Ollama),
+            "claude-code" => Ok(Self::ClaudeCode),
+            "codex" => Ok(Self::Codex),
+            "gemini-cli" => Ok(Self::GeminiCli),
+            _ => Err(format!("unknown provider: {s}")),
+        }
+    }
 }
 
 /// Target configuration (optional in config file - use CLI --target instead)
@@ -418,5 +465,75 @@ api_key = "${TEST_TARGET_LLM_KEY}"
         assert_eq!(target.api_key.as_deref(), Some("sk-test-key-123"));
         // SAFETY: Tests run single-threaded
         unsafe { std::env::remove_var("TEST_TARGET_LLM_KEY") };
+    }
+
+    #[test]
+    fn test_provider_name_display() {
+        assert_eq!(ProviderName::Anthropic.to_string(), "anthropic");
+        assert_eq!(ProviderName::OpenAi.to_string(), "openai");
+        assert_eq!(ProviderName::Xai.to_string(), "xai");
+        assert_eq!(ProviderName::ClaudeCode.to_string(), "claude-code");
+        assert_eq!(ProviderName::GeminiCli.to_string(), "gemini-cli");
+        assert_eq!(ProviderName::LiteLlm.to_string(), "litellm");
+        assert_eq!(ProviderName::DeepSeek.to_string(), "deepseek");
+        assert_eq!(ProviderName::Cohere.to_string(), "cohere");
+        assert_eq!(ProviderName::Gemini.to_string(), "gemini");
+        assert_eq!(ProviderName::Azure.to_string(), "azure");
+        assert_eq!(ProviderName::Mira.to_string(), "mira");
+        assert_eq!(ProviderName::Perplexity.to_string(), "perplexity");
+        assert_eq!(ProviderName::Ollama.to_string(), "ollama");
+        assert_eq!(ProviderName::Codex.to_string(), "codex");
+    }
+
+    #[test]
+    fn test_provider_name_fromstr_roundtrip() {
+        let all_variants = [
+            ProviderName::Anthropic,
+            ProviderName::OpenAi,
+            ProviderName::Cohere,
+            ProviderName::LiteLlm,
+            ProviderName::Perplexity,
+            ProviderName::Gemini,
+            ProviderName::Xai,
+            ProviderName::DeepSeek,
+            ProviderName::Azure,
+            ProviderName::Mira,
+            ProviderName::Ollama,
+            ProviderName::ClaudeCode,
+            ProviderName::Codex,
+            ProviderName::GeminiCli,
+        ];
+        for variant in &all_variants {
+            let s = variant.to_string();
+            let parsed: ProviderName = s.parse().unwrap();
+            assert_eq!(&parsed, variant, "round-trip failed for {s}");
+        }
+    }
+
+    #[test]
+    fn test_provider_name_fromstr_case_insensitive() {
+        assert_eq!(
+            "ANTHROPIC".parse::<ProviderName>().unwrap(),
+            ProviderName::Anthropic
+        );
+        assert_eq!(
+            "OpenAI".parse::<ProviderName>().unwrap(),
+            ProviderName::OpenAi
+        );
+        assert_eq!(
+            "Claude-Code".parse::<ProviderName>().unwrap(),
+            ProviderName::ClaudeCode
+        );
+        assert_eq!(
+            "GEMINI-CLI".parse::<ProviderName>().unwrap(),
+            ProviderName::GeminiCli
+        );
+    }
+
+    #[test]
+    fn test_provider_name_fromstr_unknown() {
+        assert!("unknown".parse::<ProviderName>().is_err());
+        assert!("".parse::<ProviderName>().is_err());
+        assert!("not-a-provider".parse::<ProviderName>().is_err());
     }
 }

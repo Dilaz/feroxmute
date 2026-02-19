@@ -550,23 +550,7 @@ impl WizardState {
 
     /// Generate TOML content
     fn generate_toml(&self) -> anyhow::Result<String> {
-        let provider_name = match self.data.provider {
-            ProviderName::Anthropic => "anthropic",
-            ProviderName::OpenAi => "openai",
-            ProviderName::Gemini => "gemini",
-            ProviderName::Xai => "xai",
-            ProviderName::DeepSeek => "deepseek",
-            ProviderName::Perplexity => "perplexity",
-            ProviderName::Cohere => "cohere",
-            ProviderName::Azure => "azure",
-            ProviderName::Mira => "mira",
-            ProviderName::LiteLlm => "litellm",
-            ProviderName::Ollama => "ollama",
-            // CLI agent providers
-            ProviderName::ClaudeCode => "claude-code",
-            ProviderName::Codex => "codex",
-            ProviderName::GeminiCli => "gemini-cli",
-        };
+        let provider_name = self.data.provider.to_string();
 
         #[allow(clippy::unnecessary_lazy_evaluations)]
         let model = self
@@ -601,7 +585,7 @@ impl WizardState {
         toml.push_str("[provider]\n");
         toml.push_str(&format!(
             "name = \"{}\"\n",
-            escape_toml_string(provider_name)
+            escape_toml_string(&provider_name)
         ));
         toml.push_str(&format!(
             "api_key = \"{}\"\n",
