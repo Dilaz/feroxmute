@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::str::FromStr;
+use strum::{Display, EnumString};
 
 /// Authentication type for target
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,8 +16,9 @@ pub enum AuthType {
 }
 
 /// LLM provider selection
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Display, EnumString)]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum ProviderName {
     #[default]
     Anthropic,
@@ -34,56 +35,12 @@ pub enum ProviderName {
     Ollama,
     // CLI agent providers
     #[serde(rename = "claude-code")]
+    #[strum(serialize = "claude-code")]
     ClaudeCode,
     Codex,
     #[serde(rename = "gemini-cli")]
+    #[strum(serialize = "gemini-cli")]
     GeminiCli,
-}
-
-impl std::fmt::Display for ProviderName {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            Self::Anthropic => "anthropic",
-            Self::OpenAi => "openai",
-            Self::Cohere => "cohere",
-            Self::LiteLlm => "litellm",
-            Self::Perplexity => "perplexity",
-            Self::Gemini => "gemini",
-            Self::Xai => "xai",
-            Self::DeepSeek => "deepseek",
-            Self::Azure => "azure",
-            Self::Mira => "mira",
-            Self::Ollama => "ollama",
-            Self::ClaudeCode => "claude-code",
-            Self::Codex => "codex",
-            Self::GeminiCli => "gemini-cli",
-        };
-        f.write_str(s)
-    }
-}
-
-impl FromStr for ProviderName {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "anthropic" => Ok(Self::Anthropic),
-            "openai" => Ok(Self::OpenAi),
-            "cohere" => Ok(Self::Cohere),
-            "litellm" => Ok(Self::LiteLlm),
-            "perplexity" => Ok(Self::Perplexity),
-            "gemini" => Ok(Self::Gemini),
-            "xai" => Ok(Self::Xai),
-            "deepseek" => Ok(Self::DeepSeek),
-            "azure" => Ok(Self::Azure),
-            "mira" => Ok(Self::Mira),
-            "ollama" => Ok(Self::Ollama),
-            "claude-code" => Ok(Self::ClaudeCode),
-            "codex" => Ok(Self::Codex),
-            "gemini-cli" => Ok(Self::GeminiCli),
-            _ => Err(format!("unknown provider: {s}")),
-        }
-    }
 }
 
 /// Target configuration (optional in config file - use CLI --target instead)
