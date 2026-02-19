@@ -205,6 +205,72 @@ pub fn render_provider(frame: &mut Frame, state: &WizardState) {
     render_footer(frame, footer_area, true);
 }
 
+/// Render the model selection screen
+pub fn render_model_selection(frame: &mut Frame, state: &WizardState) {
+    use super::state::models_for_provider;
+
+    let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
+
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("Step 1b: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            "Select Model",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    frame.render_widget(title, title_area);
+
+    let models = models_for_provider(&state.data.provider);
+
+    if state.entering_custom_model {
+        // Custom text input mode
+        let info_area = Rect {
+            x: content_area.x + 2,
+            y: content_area.y,
+            width: content_area.width.saturating_sub(4),
+            height: 2,
+        };
+        let info = Paragraph::new(Line::from(vec![Span::styled(
+            "Enter a custom model name (Esc to go back to list)",
+            Style::default().fg(Color::DarkGray),
+        )]));
+        frame.render_widget(info, info_area);
+
+        let input_area = Rect {
+            x: content_area.x + 2,
+            y: content_area.y + 3,
+            width: content_area.width.saturating_sub(4),
+            height: 3,
+        };
+
+        let input = TextInput::new(&state.text_input, state.cursor_position)
+            .placeholder("model-name")
+            .masked(false)
+            .focused(true)
+            .label("Model");
+        input.render(frame, input_area);
+    } else {
+        // List selection mode — build labels with "Custom..." appended
+        let mut labels: Vec<String> = models.iter().map(|m| m.1.to_string()).collect();
+        labels.push("Custom model name...".to_string());
+        let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+
+        let list = SelectList::new(&label_refs, state.selected_index)
+            .focused(true)
+            .label("Model");
+
+        let list_area = Rect {
+            x: content_area.x + 2,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(4),
+            height: (labels.len() as u16 + 2).min(content_area.height.saturating_sub(2)),
+        };
+        list.render(frame, list_area);
+    }
+
+    render_footer(frame, footer_area, true);
+}
+
 /// Render the API key input screen
 pub fn render_api_key(frame: &mut Frame, state: &WizardState) {
     let (title_area, content_area, footer_area) = screen_layout(frame, "Feroxmute Setup");
