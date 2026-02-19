@@ -157,7 +157,7 @@ FEROXMUTE_SCRIPT_EOF_{}",
         );
 
         self.container
-            .exec(vec!["sh", "-c", &write_cmd], None)
+            .exec(vec!["sh", "-c", &write_cmd], None, None)
             .await
             .map_err(|e| ScriptError::Docker(e.to_string()))?;
 
@@ -173,14 +173,14 @@ FEROXMUTE_SCRIPT_EOF_{}",
 
         let result = self
             .container
-            .exec(vec!["sh", "-c", &exec_cmd], None)
+            .exec(vec!["sh", "-c", &exec_cmd], None, None)
             .await
             .map_err(|e| ScriptError::Docker(e.to_string()))?;
 
         // Cleanup temp file (ignore errors)
         let _ = self
             .container
-            .exec(vec!["rm", "-f", &script_path], None)
+            .exec(vec!["rm", "-f", &script_path], None, None)
             .await;
 
         // Check for timeout (exit code 124 from timeout command)

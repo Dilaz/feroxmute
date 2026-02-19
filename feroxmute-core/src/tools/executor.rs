@@ -128,7 +128,7 @@ impl ToolExecutor {
         );
 
         // Execute in container
-        let result = self.container.exec(cmd, workdir).await?;
+        let result = self.container.exec(cmd, workdir, None).await?;
 
         // Record completion
         execution.complete(&result);
@@ -158,7 +158,7 @@ impl ToolExecutor {
             cmd.iter().skip(1).map(|s| s.to_string()).collect(),
         );
 
-        let result = self.container.exec(cmd, workdir).await?;
+        let result = self.container.exec(cmd, workdir, None).await?;
         execution.complete(&result);
 
         self.metrics.record_tool_call();

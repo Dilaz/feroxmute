@@ -146,7 +146,7 @@ impl Tool for DockerShellTool {
 
         let result = self
             .container
-            .exec(vec!["sh", "-c", &wrapped_cmd], None)
+            .exec(vec!["sh", "-c", &wrapped_cmd], None, None)
             .await
             .map_err(|e| ShellError::Docker(e.to_string()))?;
 

@@ -138,7 +138,7 @@ FEROXMUTE_SCRIPT_EOF_{}",
 
         if let Err(e) = self
             .container
-            .exec(vec!["sh", "-c", &write_cmd], None)
+            .exec(vec!["sh", "-c", &write_cmd], None, None)
             .await
         {
             return Ok(McpToolResult::error(format!(
@@ -156,13 +156,17 @@ FEROXMUTE_SCRIPT_EOF_{}",
             ),
         };
 
-        let result = match self.container.exec(vec!["sh", "-c", &exec_cmd], None).await {
+        let result = match self
+            .container
+            .exec(vec!["sh", "-c", &exec_cmd], None, None)
+            .await
+        {
             Ok(r) => r,
             Err(e) => {
                 // Cleanup temp file (best-effort)
                 let _ = self
                     .container
-                    .exec(vec!["rm", "-f", &script_path], None)
+                    .exec(vec!["rm", "-f", &script_path], None, None)
                     .await;
                 return Ok(McpToolResult::error(format!(
                     "Script execution failed: {}",
@@ -174,7 +178,7 @@ FEROXMUTE_SCRIPT_EOF_{}",
         // Cleanup temp file (best-effort)
         let _ = self
             .container
-            .exec(vec!["rm", "-f", &script_path], None)
+            .exec(vec!["rm", "-f", &script_path], None, None)
             .await;
 
         // Check for timeout (exit code 124 from timeout command)

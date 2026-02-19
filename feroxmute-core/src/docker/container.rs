@@ -275,7 +275,17 @@ impl ContainerManager {
     }
 
     /// Execute a command in the container
-    pub async fn exec(&self, cmd: Vec<&str>, workdir: Option<&str>) -> Result<ExecResult> {
+    ///
+    /// Optional `env` parameter allows passing additional environment variables
+    /// (in `KEY=value` format) that are merged with the base PATH/GOPATH vars.
+    /// This is preferred over shell `export` prefixes because bollard sets env
+    /// vars directly via the Docker API, bypassing shell interpretation.
+    pub async fn exec(
+        &self,
+        cmd: Vec<&str>,
+        workdir: Option<&str>,
+        env: Option<Vec<String>>,
+    ) -> Result<ExecResult> {
         let container_id = self.container_id.as_ref().ok_or_else(|| {
             Error::Docker(bollard::errors::Error::DockerResponseServerError {
                 status_code: 500,
@@ -290,10 +300,7 @@ impl ContainerManager {
             working_dir: workdir.map(|s| s.to_string()),
             attach_stdout: Some(true),
             attach_stderr: Some(true),
-            env: Some(vec![
-                "PATH=/root/.pdtm/go/bin:/root/go/bin:/root/.local/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
-                "GOPATH=/root/go".to_string(),
-            ]),
+            env: Some(build_exec_env(env)),
             ..Default::default()
         };
 
@@ -407,6 +414,18 @@ impl ContainerManager {
     }
 }
 
+/// Build the environment variable list for Docker exec, merging base vars with extras.
+fn build_exec_env(extra: Option<Vec<String>>) -> Vec<String> {
+    let mut all_env = vec![
+        "PATH=/root/.pdtm/go/bin:/root/go/bin:/root/.local/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
+        "GOPATH=/root/go".to_string(),
+    ];
+    if let Some(extra) = extra {
+        all_env.extend(extra);
+    }
+    all_env
+}
+
 /// Result of executing a command
 #[derive(Debug, Clone)]
 pub struct ExecResult {
@@ -494,6 +513,31 @@ mod tests {
             container.ends_with(":ro"),
             "source mount should be read-only"
         );
+    }
+
+    #[test]
+    fn test_build_exec_env_none() {
+        let env = build_exec_env(None);
+        assert_eq!(env.len(), 2);
+        assert!(env[0].starts_with("PATH="));
+        assert!(env[1].starts_with("GOPATH="));
+    }
+
+    #[test]
+    fn test_build_exec_env_empty() {
+        let env = build_exec_env(Some(vec![]));
+        assert_eq!(env.len(), 2);
+    }
+
+    #[test]
+    fn test_build_exec_env_with_extras() {
+        let env = build_exec_env(Some(vec![
+            "API_KEY=secret123".to_string(),
+            "MODEL=gpt-4".to_string(),
+        ]));
+        assert_eq!(env.len(), 4);
+        assert_eq!(env[2], "API_KEY=secret123");
+        assert_eq!(env[3], "MODEL=gpt-4");
     }
 
     // Integration tests require Docker - skip in CI unless Docker is available

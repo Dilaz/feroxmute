@@ -133,7 +133,7 @@ impl McpTool for McpDockerShellTool {
         let _ = args.timeout_secs;
         let result = self
             .container
-            .exec(vec!["sh", "-c", &wrapped_cmd], None)
+            .exec(vec!["sh", "-c", &wrapped_cmd], None, None)
             .await;
 
         match result {

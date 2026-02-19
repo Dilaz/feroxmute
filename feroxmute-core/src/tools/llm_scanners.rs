@@ -52,9 +52,6 @@ impl GarakScanTool {
     fn build_command(&self, args: &GarakScanArgs) -> String {
         let mut cmd = String::new();
 
-        // Prepend env vars for garak
-        cmd.push_str(&self.build_env_prefix());
-
         cmd.push_str("python3 -m garak");
 
         // Map provider name to garak target type
@@ -78,46 +75,31 @@ impl GarakScanTool {
         cmd
     }
 
-    fn build_env_prefix(&self) -> String {
-        let mut env_parts = vec![
-            format!(
-                "export TARGET_LLM_API_KEY='{}';",
-                shell_escape(&self.context.target_api_key)
-            ),
-            format!(
-                "export TARGET_LLM_MODEL='{}';",
-                shell_escape(&self.context.target_model)
-            ),
+    fn build_env_vars(&self) -> Vec<String> {
+        let mut vars = vec![
+            format!("TARGET_LLM_API_KEY={}", self.context.target_api_key),
+            format!("TARGET_LLM_MODEL={}", self.context.target_model),
         ];
 
         if let Some(ref url) = self.context.target_base_url {
-            env_parts.push(format!(
-                "export TARGET_LLM_BASE_URL='{}';",
-                shell_escape(url)
-            ));
+            vars.push(format!("TARGET_LLM_BASE_URL={url}"));
         }
 
         // Provider-specific env vars that garak expects
         match self.context.target_provider_name.as_str() {
             "openai" | "azure" => {
-                env_parts.push(format!(
-                    "export OPENAI_API_KEY='{}';",
-                    shell_escape(&self.context.target_api_key)
-                ));
+                vars.push(format!("OPENAI_API_KEY={}", self.context.target_api_key));
                 if let Some(ref url) = self.context.target_base_url {
-                    env_parts.push(format!("export OPENAI_API_BASE='{}';", shell_escape(url)));
+                    vars.push(format!("OPENAI_API_BASE={url}"));
                 }
             }
             "anthropic" => {
-                env_parts.push(format!(
-                    "export ANTHROPIC_API_KEY='{}';",
-                    shell_escape(&self.context.target_api_key)
-                ));
+                vars.push(format!("ANTHROPIC_API_KEY={}", self.context.target_api_key));
             }
             _ => {}
         }
 
-        env_parts.join(" ")
+        vars
     }
 }
 
@@ -164,12 +146,13 @@ impl Tool for GarakScanTool {
         self.context.events.send_tool_call();
 
         let cmd = self.build_command(&args);
+        let env_vars = self.build_env_vars();
 
         // Execute in Docker container
         match self
             .context
             .container
-            .exec(vec!["bash", "-c", &cmd], None)
+            .exec(vec!["bash", "-c", &cmd], None, Some(env_vars))
             .await
         {
             Ok(result) => {
@@ -221,32 +204,26 @@ impl PromptfooScanTool {
         Self { context }
     }
 
-    fn build_env_prefix(&self) -> String {
-        let mut env_parts = vec![format!(
-            "export TARGET_LLM_API_KEY='{}';",
-            shell_escape(&self.context.target_api_key),
+    fn build_env_vars(&self) -> Vec<String> {
+        let mut vars = vec![format!(
+            "TARGET_LLM_API_KEY={}",
+            self.context.target_api_key,
         )];
 
         match self.context.target_provider_name.as_str() {
             "openai" | "azure" => {
-                env_parts.push(format!(
-                    "export OPENAI_API_KEY='{}';",
-                    shell_escape(&self.context.target_api_key)
-                ));
+                vars.push(format!("OPENAI_API_KEY={}", self.context.target_api_key));
                 if let Some(ref url) = self.context.target_base_url {
-                    env_parts.push(format!("export OPENAI_API_BASE='{}';", shell_escape(url)));
+                    vars.push(format!("OPENAI_API_BASE={url}"));
                 }
             }
             "anthropic" => {
-                env_parts.push(format!(
-                    "export ANTHROPIC_API_KEY='{}';",
-                    shell_escape(&self.context.target_api_key)
-                ));
+                vars.push(format!("ANTHROPIC_API_KEY={}", self.context.target_api_key));
             }
             _ => {}
         }
 
-        env_parts.join(" ")
+        vars
     }
 }
 
@@ -291,17 +268,17 @@ impl Tool for PromptfooScanTool {
 
         // Write config to temp file, then run promptfoo
         let escaped_yaml = args.config_yaml.replace('\'', "'\\''");
-        let env_prefix = self.build_env_prefix();
+        let env_vars = self.build_env_vars();
         let cmd = format!(
-            "{} echo '{}' > /tmp/promptfoo_config.yaml && \
+            "echo '{}' > /tmp/promptfoo_config.yaml && \
              promptfoo eval -c /tmp/promptfoo_config.yaml --no-cache 2>&1",
-            env_prefix, escaped_yaml
+            escaped_yaml
         );
 
         match self
             .context
             .container
-            .exec(vec!["bash", "-c", &cmd], None)
+            .exec(vec!["bash", "-c", &cmd], None, Some(env_vars))
             .await
         {
             Ok(result) => {
@@ -353,42 +330,27 @@ impl PyritAttackTool {
         Self { context }
     }
 
-    fn build_env_prefix(&self) -> String {
-        let mut env_parts = vec![
-            format!(
-                "export TARGET_LLM_API_KEY='{}';",
-                shell_escape(&self.context.target_api_key)
-            ),
-            format!(
-                "export TARGET_LLM_MODEL='{}';",
-                shell_escape(&self.context.target_model)
-            ),
+    fn build_env_vars(&self) -> Vec<String> {
+        let mut vars = vec![
+            format!("TARGET_LLM_API_KEY={}", self.context.target_api_key),
+            format!("TARGET_LLM_MODEL={}", self.context.target_model),
         ];
 
         if let Some(ref url) = self.context.target_base_url {
-            env_parts.push(format!(
-                "export TARGET_LLM_BASE_URL='{}';",
-                shell_escape(url)
-            ));
+            vars.push(format!("TARGET_LLM_BASE_URL={url}"));
         }
 
         match self.context.target_provider_name.as_str() {
             "openai" | "azure" => {
-                env_parts.push(format!(
-                    "export OPENAI_API_KEY='{}';",
-                    shell_escape(&self.context.target_api_key)
-                ));
+                vars.push(format!("OPENAI_API_KEY={}", self.context.target_api_key));
             }
             "anthropic" => {
-                env_parts.push(format!(
-                    "export ANTHROPIC_API_KEY='{}';",
-                    shell_escape(&self.context.target_api_key)
-                ));
+                vars.push(format!("ANTHROPIC_API_KEY={}", self.context.target_api_key));
             }
             _ => {}
         }
 
-        env_parts.join(" ")
+        vars
     }
 }
 
@@ -433,16 +395,16 @@ impl Tool for PyritAttackTool {
 
         // Write script to temp file, then execute
         let escaped_script = args.script.replace('\'', "'\\''");
-        let env_prefix = self.build_env_prefix();
+        let env_vars = self.build_env_vars();
         let cmd = format!(
-            "{} echo '{}' > /tmp/pyrit_attack.py && python3 /tmp/pyrit_attack.py 2>&1",
-            env_prefix, escaped_script
+            "echo '{}' > /tmp/pyrit_attack.py && python3 /tmp/pyrit_attack.py 2>&1",
+            escaped_script
         );
 
         match self
             .context
             .container
-            .exec(vec!["bash", "-c", &cmd], None)
+            .exec(vec!["bash", "-c", &cmd], None, Some(env_vars))
             .await
         {
             Ok(result) => {
