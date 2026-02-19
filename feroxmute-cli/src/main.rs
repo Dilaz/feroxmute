@@ -203,23 +203,7 @@ async fn main() -> Result<()> {
     let provider_name = args
         .provider
         .as_ref()
-        .map(|p| match p.to_lowercase().as_str() {
-            "anthropic" => ProviderName::Anthropic,
-            "openai" => ProviderName::OpenAi,
-            "litellm" => ProviderName::LiteLlm,
-            "cohere" => ProviderName::Cohere,
-            "gemini" => ProviderName::Gemini,
-            "xai" => ProviderName::Xai,
-            "deepseek" => ProviderName::DeepSeek,
-            "azure" => ProviderName::Azure,
-            "perplexity" => ProviderName::Perplexity,
-            "mira" => ProviderName::Mira,
-            "ollama" => ProviderName::Ollama,
-            "claude-code" => ProviderName::ClaudeCode,
-            "codex" => ProviderName::Codex,
-            "gemini-cli" => ProviderName::GeminiCli,
-            _ => ProviderName::Anthropic,
-        })
+        .and_then(|p| p.parse().ok())
         .unwrap_or_else(|| config.provider.name.clone());
 
     let provider_config = ProviderConfig {
@@ -263,19 +247,7 @@ async fn main() -> Result<()> {
     // Build target LLM config from CLI flags (if provided)
     if let Some(ref target_llm_name) = args.target_llm {
         let target_config = ProviderConfig {
-            name: match target_llm_name.to_lowercase().as_str() {
-                "anthropic" => ProviderName::Anthropic,
-                "openai" => ProviderName::OpenAi,
-                "gemini" => ProviderName::Gemini,
-                "cohere" => ProviderName::Cohere,
-                "xai" => ProviderName::Xai,
-                "deepseek" => ProviderName::DeepSeek,
-                "azure" => ProviderName::Azure,
-                "perplexity" => ProviderName::Perplexity,
-                "ollama" => ProviderName::Ollama,
-                "litellm" => ProviderName::LiteLlm,
-                _ => ProviderName::OpenAi,
-            },
+            name: target_llm_name.parse().unwrap_or(ProviderName::OpenAi),
             model: args
                 .target_model
                 .clone()

@@ -487,10 +487,7 @@ impl Tool for SpawnAgentTool {
                     target_model: target_config.model.clone(),
                     target_api_key: target_config.api_key.clone().unwrap_or_default(),
                     target_base_url: target_config.base_url.clone(),
-                    target_provider_name: serde_json::to_string(&target_config.name)
-                        .unwrap_or_default()
-                        .trim_matches('"')
-                        .to_string(),
+                    target_provider_name: target_config.name.to_string(),
                 });
 
                 let output = match tokio::time::timeout(
