@@ -188,168 +188,112 @@ mod tests {
 
     #[test]
     fn test_create_anthropic_requires_api_key() {
-        // Ensure API key is not set
-        let original = std::env::var("ANTHROPIC_API_KEY").ok();
-        // SAFETY: Tests run single-threaded with --test-threads=1 or serially
-        unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
-
-        let config = ProviderConfig {
-            name: ProviderName::Anthropic,
-            model: "claude-3-sonnet".to_string(),
-            api_key: None,
-            base_url: None,
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_err());
-
-        // Restore
-        if let Some(key) = original {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("ANTHROPIC_API_KEY", key) };
-        }
+        temp_env::with_var("ANTHROPIC_API_KEY", None::<&str>, || {
+            let config = ProviderConfig {
+                name: ProviderName::Anthropic,
+                model: "claude-3-sonnet".to_string(),
+                api_key: None,
+                base_url: None,
+            };
+            let result = create_provider(&config, MetricsTracker::new(), None);
+            assert!(result.is_err());
+        });
     }
 
     #[test]
     fn test_create_openai_requires_api_key() {
-        let original = std::env::var("OPENAI_API_KEY").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("OPENAI_API_KEY") };
-
-        let config = ProviderConfig {
-            name: ProviderName::OpenAi,
-            model: "gpt-4o".to_string(),
-            api_key: None,
-            base_url: None,
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_err());
-
-        if let Some(key) = original {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("OPENAI_API_KEY", key) };
-        }
+        temp_env::with_var("OPENAI_API_KEY", None::<&str>, || {
+            let config = ProviderConfig {
+                name: ProviderName::OpenAi,
+                model: "gpt-4o".to_string(),
+                api_key: None,
+                base_url: None,
+            };
+            let result = create_provider(&config, MetricsTracker::new(), None);
+            assert!(result.is_err());
+        });
     }
 
     #[test]
     fn test_cohere_requires_api_key() {
-        let original = std::env::var("COHERE_API_KEY").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("COHERE_API_KEY") };
-
-        let config = ProviderConfig {
-            name: ProviderName::Cohere,
-            model: "command-r-plus".to_string(),
-            api_key: None,
-            base_url: None,
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_err());
-
-        if let Some(key) = original {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("COHERE_API_KEY", key) };
-        }
+        temp_env::with_var("COHERE_API_KEY", None::<&str>, || {
+            let config = ProviderConfig {
+                name: ProviderName::Cohere,
+                model: "command-r-plus".to_string(),
+                api_key: None,
+                base_url: None,
+            };
+            let result = create_provider(&config, MetricsTracker::new(), None);
+            assert!(result.is_err());
+        });
     }
 
     #[test]
     fn test_azure_requires_endpoint() {
-        let original_key = std::env::var("AZURE_OPENAI_API_KEY").ok();
-        let original_endpoint = std::env::var("AZURE_OPENAI_ENDPOINT").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("AZURE_OPENAI_ENDPOINT") };
-
-        let config = ProviderConfig {
-            name: ProviderName::Azure,
-            model: "gpt-4o".to_string(),
-            api_key: Some("test-key".to_string()),
-            base_url: None,
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_err());
-        if let Err(err) = result {
-            assert!(err.to_string().contains("base_url"));
-        }
-
-        if let Some(key) = original_key {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("AZURE_OPENAI_API_KEY", key) };
-        }
-        if let Some(endpoint) = original_endpoint {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("AZURE_OPENAI_ENDPOINT", endpoint) };
-        }
+        temp_env::with_vars(
+            [
+                ("AZURE_OPENAI_API_KEY", None::<&str>),
+                ("AZURE_OPENAI_ENDPOINT", None),
+            ],
+            || {
+                let config = ProviderConfig {
+                    name: ProviderName::Azure,
+                    model: "gpt-4o".to_string(),
+                    api_key: Some("test-key".to_string()),
+                    base_url: None,
+                };
+                let result = create_provider(&config, MetricsTracker::new(), None);
+                assert!(result.is_err());
+                if let Err(err) = result {
+                    assert!(err.to_string().contains("base_url"));
+                }
+            },
+        );
     }
 
     #[test]
     fn test_anthropic_uses_config_api_key() {
-        let original = std::env::var("ANTHROPIC_API_KEY").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("ANTHROPIC_API_KEY") };
-
-        let config = ProviderConfig {
-            name: ProviderName::Anthropic,
-            model: "claude-3-sonnet".to_string(),
-            api_key: Some("test-key-from-config".to_string()),
-            base_url: None,
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_ok());
-
-        if let Some(key) = original {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("ANTHROPIC_API_KEY", key) };
-        }
+        temp_env::with_var("ANTHROPIC_API_KEY", None::<&str>, || {
+            let config = ProviderConfig {
+                name: ProviderName::Anthropic,
+                model: "claude-3-sonnet".to_string(),
+                api_key: Some("test-key-from-config".to_string()),
+                base_url: None,
+            };
+            let result = create_provider(&config, MetricsTracker::new(), None);
+            assert!(result.is_ok());
+        });
     }
 
     #[test]
     fn test_openai_uses_config_api_key() {
-        let original = std::env::var("OPENAI_API_KEY").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("OPENAI_API_KEY") };
-
-        let config = ProviderConfig {
-            name: ProviderName::OpenAi,
-            model: "gpt-4o".to_string(),
-            api_key: Some("test-key-from-config".to_string()),
-            base_url: None,
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_ok());
-
-        if let Some(key) = original {
-            // SAFETY: Tests run single-threaded
-            unsafe { std::env::set_var("OPENAI_API_KEY", key) };
-        }
+        temp_env::with_var("OPENAI_API_KEY", None::<&str>, || {
+            let config = ProviderConfig {
+                name: ProviderName::OpenAi,
+                model: "gpt-4o".to_string(),
+                api_key: Some("test-key-from-config".to_string()),
+                base_url: None,
+            };
+            let result = create_provider(&config, MetricsTracker::new(), None);
+            assert!(result.is_ok());
+        });
     }
 
     #[test]
     fn test_litellm_uses_config_api_key() {
-        let original_litellm = std::env::var("LITELLM_API_KEY").ok();
-        let original_openai = std::env::var("OPENAI_API_KEY").ok();
-        // SAFETY: Tests run single-threaded
-        unsafe {
-            std::env::remove_var("LITELLM_API_KEY");
-            std::env::remove_var("OPENAI_API_KEY");
-        }
-
-        let config = ProviderConfig {
-            name: ProviderName::LiteLlm,
-            model: "gpt-4o".to_string(),
-            api_key: Some("test-key-from-config".to_string()),
-            base_url: Some("http://localhost:4000".to_string()),
-        };
-        let result = create_provider(&config, MetricsTracker::new(), None);
-        assert!(result.is_ok());
-
-        // SAFETY: Tests run single-threaded
-        unsafe {
-            if let Some(key) = original_litellm {
-                std::env::set_var("LITELLM_API_KEY", key);
-            }
-            if let Some(key) = original_openai {
-                std::env::set_var("OPENAI_API_KEY", key);
-            }
-        }
+        temp_env::with_vars(
+            [("LITELLM_API_KEY", None::<&str>), ("OPENAI_API_KEY", None)],
+            || {
+                let config = ProviderConfig {
+                    name: ProviderName::LiteLlm,
+                    model: "gpt-4o".to_string(),
+                    api_key: Some("test-key-from-config".to_string()),
+                    base_url: Some("http://localhost:4000".to_string()),
+                };
+                let result = create_provider(&config, MetricsTracker::new(), None);
+                assert!(result.is_ok());
+            },
+        );
     }
 
     #[test]

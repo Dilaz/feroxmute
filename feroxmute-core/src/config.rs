@@ -374,9 +374,8 @@ export_html = true
 
     #[test]
     fn test_env_var_expansion() {
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::set_var("TEST_TOKEN", "expanded_value") };
-        let toml = r#"
+        temp_env::with_var("TEST_TOKEN", Some("expanded_value"), || {
+            let toml = r#"
 [target]
 host = "example.com"
 
@@ -384,11 +383,11 @@ host = "example.com"
 type = "bearer"
 token = "${TEST_TOKEN}"
 "#;
-        let mut config = EngagementConfig::parse(toml).expect("config with env var should parse");
-        config.expand_env_vars();
-        assert_eq!(config.auth.token, Some("expanded_value".to_string()));
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("TEST_TOKEN") };
+            let mut config =
+                EngagementConfig::parse(toml).expect("config with env var should parse");
+            config.expand_env_vars();
+            assert_eq!(config.auth.token, Some("expanded_value".to_string()));
+        });
     }
 
     #[test]
@@ -451,20 +450,18 @@ model = "claude-sonnet-4-20250514"
 
     #[test]
     fn test_target_llm_env_expansion() {
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::set_var("TEST_TARGET_LLM_KEY", "sk-test-key-123") };
-        let toml = r#"
+        temp_env::with_var("TEST_TARGET_LLM_KEY", Some("sk-test-key-123"), || {
+            let toml = r#"
 [target_llm]
 name = "openai"
 model = "gpt-4"
 api_key = "${TEST_TARGET_LLM_KEY}"
 "#;
-        let mut config = EngagementConfig::parse(toml).expect("should parse");
-        config.expand_env_vars();
-        let target = config.target_llm.unwrap();
-        assert_eq!(target.api_key.as_deref(), Some("sk-test-key-123"));
-        // SAFETY: Tests run single-threaded
-        unsafe { std::env::remove_var("TEST_TARGET_LLM_KEY") };
+            let mut config = EngagementConfig::parse(toml).expect("should parse");
+            config.expand_env_vars();
+            let target = config.target_llm.unwrap();
+            assert_eq!(target.api_key.as_deref(), Some("sk-test-key-123"));
+        });
     }
 
     #[test]
