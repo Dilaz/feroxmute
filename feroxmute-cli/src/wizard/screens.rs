@@ -251,9 +251,8 @@ pub fn render_model_selection(frame: &mut Frame, state: &WizardState) {
         input.render(frame, input_area);
     } else {
         // List selection mode — build labels with "Custom..." appended
-        let mut labels: Vec<String> = models.iter().map(|m| m.1.to_string()).collect();
-        labels.push("Custom model name...".to_string());
-        let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
+        let mut label_refs: Vec<&str> = models.iter().map(|m| m.1).collect();
+        label_refs.push("Custom model name...");
 
         let list = SelectList::new(&label_refs, state.selected_index)
             .focused(true)
@@ -263,7 +262,7 @@ pub fn render_model_selection(frame: &mut Frame, state: &WizardState) {
             x: content_area.x + 2,
             y: content_area.y + 1,
             width: content_area.width.saturating_sub(4),
-            height: (labels.len() as u16 + 2).min(content_area.height.saturating_sub(2)),
+            height: (label_refs.len() as u16 + 2).min(content_area.height.saturating_sub(2)),
         };
         list.render(frame, list_area);
     }

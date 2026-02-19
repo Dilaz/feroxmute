@@ -967,7 +967,6 @@ mod tests {
     #[test]
     fn test_models_for_provider_first_is_default() {
         // The first model for each provider should match generate_toml default
-        let state = test_wizard_state();
         let anthropic_models = models_for_provider(&ProviderName::Anthropic);
         let gemini_models = models_for_provider(&ProviderName::Gemini);
         let xai_models = models_for_provider(&ProviderName::Xai);
@@ -976,8 +975,6 @@ mod tests {
         assert_eq!(anthropic_models[0].0, "claude-sonnet-4-20250514");
         assert_eq!(gemini_models[0].0, "gemini-2.5-flash");
         assert_eq!(xai_models[0].0, "grok-3");
-        // Sanity check: state.generate_toml uses the same defaults
-        drop(state);
     }
 
     #[test]
