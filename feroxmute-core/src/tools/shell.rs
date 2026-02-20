@@ -29,6 +29,11 @@ pub struct ShellArgs {
 /// Ollama and other providers can fail with very large tool outputs
 const MAX_OUTPUT_LENGTH: usize = 8000;
 
+/// Head portion budget for truncated output (command banner, headers)
+const HEAD_BUDGET: usize = 2000;
+/// Tail portion budget for truncated output (results, summaries)
+const TAIL_BUDGET: usize = 6000;
+
 /// Output from the shell tool
 #[derive(Debug, Serialize)]
 pub struct ShellOutput {
@@ -204,28 +209,39 @@ fn sanitize_output(s: &str) -> String {
         .collect()
 }
 
-/// Truncate and sanitize output for safe JSON serialization
+/// Truncate and sanitize output for safe JSON serialization.
+///
+/// Uses head+tail truncation to preserve both the beginning (command banners,
+/// headers) and the end (results, summaries) of tool output. Security tools
+/// typically put key findings at the end, so preserving the tail is important.
 fn prepare_output(output: &str) -> (String, bool) {
     let sanitized = sanitize_output(output);
 
     if sanitized.len() <= MAX_OUTPUT_LENGTH {
-        (sanitized, false)
-    } else {
-        // Truncate at a safe boundary (avoid cutting UTF-8 characters)
-        let truncated = sanitized
-            .char_indices()
-            .take_while(|(i, _)| *i < MAX_OUTPUT_LENGTH)
-            .map(|(_, c)| c)
-            .collect::<String>();
-        (
-            format!(
-                "{}\n... [output truncated, {} bytes omitted]",
-                truncated,
-                sanitized.len() - truncated.len()
-            ),
-            true,
-        )
+        return (sanitized, false);
     }
+
+    // Head: first HEAD_BUDGET bytes (UTF-8 safe)
+    let head: String = sanitized
+        .char_indices()
+        .take_while(|(i, _)| *i < HEAD_BUDGET)
+        .map(|(_, c)| c)
+        .collect();
+
+    // Tail: last TAIL_BUDGET bytes (UTF-8 safe)
+    let tail_start = sanitized.len().saturating_sub(TAIL_BUDGET);
+    let tail_start = sanitized.ceil_char_boundary(tail_start);
+    let tail = &sanitized[tail_start..];
+
+    let omitted = sanitized.len() - head.len() - tail.len();
+
+    (
+        format!(
+            "{}\n\n... [{} bytes omitted] ...\n\n{}",
+            head, omitted, tail
+        ),
+        true,
+    )
 }
 
 /// Shell compound-command leaders whose entire segment is control-flow syntax
@@ -582,6 +598,10 @@ mod tests {
         let (output, truncated) = prepare_output(&input);
         assert!(truncated);
         assert!(output.len() < input.len());
+        // Head+tail: output should start with 'a's (head) and end with 'a's (tail)
+        assert!(output.starts_with("aaa"));
+        assert!(output.ends_with("aaa"));
+        assert!(output.contains("bytes omitted"));
     }
 
     #[test]
@@ -598,6 +618,47 @@ mod tests {
     fn test_prepare_output_truncation_suffix() {
         let input = "x".repeat(MAX_OUTPUT_LENGTH + 500);
         let (output, _) = prepare_output(&input);
-        assert!(output.contains("[output truncated"));
+        assert!(output.contains("bytes omitted"));
+    }
+
+    #[test]
+    fn test_prepare_output_head_tail_split() {
+        // Create input with distinct HEAD prefix and TAIL suffix
+        let head_marker = "HEAD_MARKER_START";
+        let tail_marker = "TAIL_MARKER_END";
+        let filler_len = MAX_OUTPUT_LENGTH + 5000;
+        let input = format!("{}{}{}", head_marker, "x".repeat(filler_len), tail_marker);
+        let (output, truncated) = prepare_output(&input);
+        assert!(truncated);
+        // Head portion should preserve the beginning
+        assert!(
+            output.starts_with(head_marker),
+            "Output should start with head marker"
+        );
+        // Tail portion should preserve the end
+        assert!(
+            output.ends_with(tail_marker),
+            "Output should end with tail marker"
+        );
+        // Should contain the omission notice
+        assert!(output.contains("bytes omitted"));
+    }
+
+    #[test]
+    fn test_prepare_output_head_tail_utf8_boundary() {
+        // Multi-byte chars around the tail boundary should not panic
+        // Use 3-byte CJK characters to stress boundary alignment
+        let head = "a".repeat(HEAD_BUDGET + 100);
+        // Fill middle with ASCII to push past MAX_OUTPUT_LENGTH
+        let middle = "m".repeat(MAX_OUTPUT_LENGTH);
+        // Put multi-byte chars right where the tail boundary would be
+        let tail_boundary_area = "日本語テスト".repeat(200); // 3-byte chars
+        let tail_end = "z".repeat(100);
+        let input = format!("{}{}{}{}", head, middle, tail_boundary_area, tail_end);
+        let (output, truncated) = prepare_output(&input);
+        assert!(truncated);
+        // Should not panic and should produce valid UTF-8
+        assert!(output.ends_with(&tail_end));
+        assert!(output.contains("bytes omitted"));
     }
 }
