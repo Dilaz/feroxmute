@@ -28,6 +28,17 @@ pub struct MemoryContext {
     pub agent_name: String,
 }
 
+impl MemoryContext {
+    /// Create a new context with a different agent name, sharing the DB connection and events
+    pub fn with_agent_name(self: &Arc<Self>, agent_name: String) -> Arc<Self> {
+        Arc::new(MemoryContext {
+            conn: Arc::clone(&self.conn),
+            events: Arc::clone(&self.events),
+            agent_name,
+        })
+    }
+}
+
 /// Query all memory entries and send update event
 async fn broadcast_memory_update(context: &MemoryContext) {
     let entries = {
@@ -576,6 +587,24 @@ mod tests {
             .await
             .expect("should get memory after removal");
         assert!(!result.found);
+    }
+
+    #[test]
+    fn test_with_agent_name_creates_new_context() {
+        let conn = Connection::open_in_memory().expect("should open in-memory db");
+        run_migrations(&conn).expect("migrations should succeed");
+        let original = Arc::new(MemoryContext {
+            conn: Arc::new(Mutex::new(conn)),
+            events: Arc::new(NoopEventSender),
+            agent_name: "orchestrator".to_string(),
+        });
+
+        let renamed = original.with_agent_name("recon-agent".to_string());
+
+        assert_eq!(renamed.agent_name, "recon-agent");
+        assert_eq!(original.agent_name, "orchestrator");
+        // Should share the same connection (Arc points to same data)
+        assert!(Arc::ptr_eq(&original.conn, &renamed.conn));
     }
 
     #[tokio::test]
