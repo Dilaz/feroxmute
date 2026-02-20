@@ -31,37 +31,33 @@ impl TuiEventSender {
 
 impl EventSender for TuiEventSender {
     fn send_feed(&self, agent: &str, message: &str, is_error: bool) {
-        let tx = self.tx.clone();
-        let agent = agent.to_string();
-        let message = message.to_string();
-        // Fire and forget - we don't want to block on sending
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Feed {
-                    agent,
-                    message,
-                    is_error,
-                    tool_output: None,
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Feed {
+                agent: agent.to_string(),
+                message: message.to_string(),
+                is_error,
+                tool_output: None,
+            })
+            .is_err()
+        {
+            tracing::warn!("TUI event channel full, dropping feed event for {}", agent);
+        }
     }
 
     fn send_feed_with_output(&self, agent: &str, message: &str, is_error: bool, output: &str) {
-        let tx = self.tx.clone();
-        let agent = agent.to_string();
-        let message = message.to_string();
-        let output = output.to_string();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Feed {
-                    agent,
-                    message,
-                    is_error,
-                    tool_output: Some(output),
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Feed {
+                agent: agent.to_string(),
+                message: message.to_string(),
+                is_error,
+                tool_output: Some(output.to_string()),
+            })
+            .is_err()
+        {
+            tracing::warn!("TUI event channel full, dropping feed event for {}", agent);
+        }
     }
 
     fn send_status(
@@ -71,19 +67,21 @@ impl EventSender for TuiEventSender {
         status: AgentStatus,
         current_tool: Option<String>,
     ) {
-        let tx = self.tx.clone();
-        let agent = agent.to_string();
-        let agent_type = agent_type.to_string();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Status {
-                    agent,
-                    agent_type,
-                    status,
-                    current_tool,
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Status {
+                agent: agent.to_string(),
+                agent_type: agent_type.to_string(),
+                status,
+                current_tool,
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                "TUI event channel full, dropping status event for {}",
+                agent
+            );
+        }
     }
 
     fn send_metrics(
@@ -94,22 +92,22 @@ impl EventSender for TuiEventSender {
         cost_usd: f64,
         tool_calls: u64,
     ) {
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Metrics {
-                    input,
-                    output,
-                    cache_read,
-                    cost_usd,
-                    tool_calls,
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Metrics {
+                input,
+                output,
+                cache_read,
+                cost_usd,
+                tool_calls,
+            })
+            .is_err()
+        {
+            tracing::warn!("TUI event channel full, dropping metrics event");
+        }
     }
 
     fn send_vulnerability(&self, severity: Severity, title: &str) {
-        let tx = self.tx.clone();
         let vuln_severity = match severity {
             Severity::Critical => VulnSeverity::Critical,
             Severity::High => VulnSeverity::High,
@@ -117,56 +115,66 @@ impl EventSender for TuiEventSender {
             Severity::Low => VulnSeverity::Low,
             Severity::Info => VulnSeverity::Info,
         };
-        let title = title.to_string();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Vulnerability {
-                    severity: vuln_severity,
-                    title,
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Vulnerability {
+                severity: vuln_severity,
+                title: title.to_string(),
+            })
+            .is_err()
+        {
+            tracing::warn!("TUI event channel full, dropping vulnerability event");
+        }
     }
 
     fn send_thinking(&self, agent: &str, content: Option<String>) {
-        let tx = self.tx.clone();
-        let agent = agent.to_string();
-        tokio::spawn(async move {
-            let _ = tx.send(AgentEvent::Thinking { agent, content }).await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Thinking {
+                agent: agent.to_string(),
+                content,
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                "TUI event channel full, dropping thinking event for {}",
+                agent
+            );
+        }
     }
 
     fn send_phase(&self, phase: EngagementPhase) {
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let _ = tx.send(AgentEvent::Phase { phase }).await;
-        });
+        if self.tx.try_send(AgentEvent::Phase { phase }).is_err() {
+            tracing::warn!("TUI event channel full, dropping phase event");
+        }
     }
 
     fn send_summary(&self, agent: &str, summary: &feroxmute_core::tools::AgentSummary) {
-        let tx = self.tx.clone();
-        let agent = agent.to_string();
         let success = summary.success;
         let summary_text = summary.summary.clone();
         let key_findings = summary.key_findings.clone();
         let next_steps = summary.next_steps.clone();
         let raw_output = summary.raw_output.clone();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::Summary {
-                    agent,
-                    success,
-                    summary: summary_text,
-                    key_findings,
-                    next_steps,
-                    raw_output,
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::Summary {
+                agent: agent.to_string(),
+                success,
+                summary: summary_text,
+                key_findings,
+                next_steps,
+                raw_output,
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                "TUI event channel full, dropping summary event for {}",
+                agent
+            );
+        }
     }
 
     fn send_memory_update(&self, entries: Vec<feroxmute_core::tools::MemoryEntryData>) {
-        let tx = self.tx.clone();
         // Convert core MemoryEntryData to TUI MemoryEntry
         let tui_entries: Vec<MemoryEntry> = entries
             .into_iter()
@@ -177,13 +185,15 @@ impl EventSender for TuiEventSender {
                 updated_at: e.updated_at,
             })
             .collect();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(AgentEvent::MemoryUpdated {
-                    entries: tui_entries,
-                })
-                .await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::MemoryUpdated {
+                entries: tui_entries,
+            })
+            .is_err()
+        {
+            tracing::warn!("TUI event channel full, dropping memory update event");
+        }
     }
 
     fn send_code_finding(
@@ -198,8 +208,6 @@ impl EventSender for TuiEventSender {
         cve_id: Option<&str>,
         package_name: Option<&str>,
     ) {
-        let tx = self.tx.clone();
-        let agent = agent.to_string();
         let finding = CodeFindingEvent {
             file_path: file_path.to_string(),
             line_number,
@@ -210,16 +218,25 @@ impl EventSender for TuiEventSender {
             cve_id: cve_id.map(String::from),
             package_name: package_name.map(String::from),
         };
-        tokio::spawn(async move {
-            let _ = tx.send(AgentEvent::CodeFinding { agent, finding }).await;
-        });
+        if self
+            .tx
+            .try_send(AgentEvent::CodeFinding {
+                agent: agent.to_string(),
+                finding,
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                "TUI event channel full, dropping code finding event for {}",
+                agent
+            );
+        }
     }
 
     fn send_tool_call(&self) {
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            let _ = tx.send(AgentEvent::ToolCall).await;
-        });
+        if self.tx.try_send(AgentEvent::ToolCall).is_err() {
+            tracing::warn!("TUI event channel full, dropping tool call event");
+        }
     }
 }
 
