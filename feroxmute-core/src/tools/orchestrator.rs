@@ -393,7 +393,7 @@ impl Tool for SpawnAgentTool {
         let events = Arc::clone(&self.context.events);
         let findings = Arc::clone(&self.context.findings);
         let limitations = Arc::clone(&self.context.limitations);
-        let memory = Arc::clone(&self.context.memory);
+        let memory = self.context.memory.with_agent_name(agent_name.clone());
 
         let session_id = self.context.session_id.clone();
 
