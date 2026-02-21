@@ -537,7 +537,9 @@ impl App {
 
     /// Scroll timeline up (show older entries)
     pub fn scroll_timeline_up(&mut self) {
-        self.timeline_scroll = self.timeline_scroll.saturating_add(1)
+        self.timeline_scroll = self
+            .timeline_scroll
+            .saturating_add(1)
             .min(self.timeline_events.len());
     }
 
