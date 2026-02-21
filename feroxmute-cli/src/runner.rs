@@ -18,6 +18,28 @@ use tokio_util::sync::CancellationToken;
 use crate::tui::channel::{CodeFindingEvent, MemoryEntry};
 use crate::tui::{AgentEvent, VulnSeverity};
 
+/// Abort all running agents and send Failed status to TUI for each.
+/// Called when the orchestrator exits without completing the engagement.
+async fn cleanup_agents(
+    maybe_context: &Option<Arc<OrchestratorContext>>,
+    tx: &mpsc::Sender<AgentEvent>,
+) {
+    if let Some(context) = maybe_context {
+        let aborted = {
+            let mut registry = context.registry.lock().await;
+            registry.abort_all()
+        };
+        for (name, agent_type) in &aborted {
+            let _ = tx.try_send(AgentEvent::Status {
+                agent: name.clone(),
+                agent_type: agent_type.clone(),
+                status: AgentStatus::Failed,
+                current_tool: None,
+            });
+        }
+    }
+}
+
 /// Event sender implementation that wraps the TUI channel
 struct TuiEventSender {
     tx: mpsc::Sender<AgentEvent>,
@@ -320,21 +342,7 @@ pub async fn run_orchestrator(
                             message: format!("Engagement ended prematurely - orchestrator stopped without completing the full workflow (recon → scanner → report → complete). Last output:\n{}", output),
                         }).await;
 
-                        // Cleanup: abort still-running agents
-                        if let Some(ref context) = maybe_context {
-                            let aborted = {
-                                let mut registry = context.registry.lock().await;
-                                registry.abort_all()
-                            };
-                            for (name, agent_type) in &aborted {
-                                let _ = tx.try_send(AgentEvent::Status {
-                                    agent: name.clone(),
-                                    agent_type: agent_type.clone(),
-                                    status: AgentStatus::Failed,
-                                    current_tool: None,
-                                });
-                            }
-                        }
+                        cleanup_agents(&maybe_context, &tx).await;
                     }
                 }
                 Err(e) => {
@@ -350,21 +358,7 @@ pub async fn run_orchestrator(
                         message: format!("Engagement failed: {}", e),
                     }).await;
 
-                    // Cleanup: abort still-running agents
-                    if let Some(ref context) = maybe_context {
-                        let aborted = {
-                            let mut registry = context.registry.lock().await;
-                            registry.abort_all()
-                        };
-                        for (name, agent_type) in &aborted {
-                            let _ = tx.try_send(AgentEvent::Status {
-                                agent: name.clone(),
-                                agent_type: agent_type.clone(),
-                                status: AgentStatus::Failed,
-                                current_tool: None,
-                            });
-                        }
-                    }
+                    cleanup_agents(&maybe_context, &tx).await;
                 }
             }
         }
