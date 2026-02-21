@@ -411,6 +411,9 @@ impl Tool for SpawnAgentTool {
         let cancel_token = CancellationToken::new();
         let agent_cancel = cancel_token.clone();
 
+        // Create instruction channel for mid-execution updates
+        let (instruction_tx, _instruction_rx) = tokio::sync::mpsc::channel::<String>(8);
+
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
             tokio::spawn(async move {
@@ -628,6 +631,7 @@ impl Tool for SpawnAgentTool {
             args.instructions.clone(),
             handle,
             cancel_token,
+            instruction_tx,
         );
 
         Ok(SpawnAgentOutput {
@@ -1250,6 +1254,100 @@ impl Tool for CancelAgentTool {
 
             Ok(CancelAgentOutput {
                 cancelled: false,
+                message: msg,
+            })
+        }
+    }
+}
+
+// ============================================================================
+// UpdateAgentTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateAgentArgs {
+    pub name: String,
+    pub instructions: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdateAgentOutput {
+    pub sent: bool,
+    pub message: String,
+}
+
+pub struct UpdateAgentTool {
+    context: Arc<OrchestratorContext>,
+}
+
+impl UpdateAgentTool {
+    pub fn new(context: Arc<OrchestratorContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for UpdateAgentTool {
+    const NAME: &'static str = "update_agent";
+
+    type Error = OrchestratorToolError;
+    type Args = UpdateAgentArgs;
+    type Output = UpdateAgentOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "update_agent".to_string(),
+            description:
+                "Send updated instructions to a running agent. The agent will receive these at its next tool-call boundary."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the agent to send instructions to"
+                    },
+                    "instructions": {
+                        "type": "string",
+                        "description": "Updated instructions for the agent"
+                    }
+                },
+                "required": ["name", "instructions"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
+        let registry = self.context.registry.lock().await;
+        let sent = registry.send_instructions(&args.name, &args.instructions);
+        drop(registry);
+
+        if sent {
+            let msg = format!(
+                "Updated instructions sent to agent '{}': {}",
+                args.name,
+                args.instructions.chars().take(100).collect::<String>()
+            );
+            self.context.events.send_feed("orchestrator", &msg, false);
+
+            Ok(UpdateAgentOutput {
+                sent: true,
+                message: format!(
+                    "Instructions sent to '{}'. Agent will receive them at next tool-call boundary.",
+                    args.name
+                ),
+            })
+        } else {
+            let msg = format!(
+                "Cannot update '{}': agent not found, already completed, or has no instruction channel",
+                args.name
+            );
+            self.context.events.send_feed("orchestrator", &msg, true);
+
+            Ok(UpdateAgentOutput {
+                sent: false,
                 message: msg,
             })
         }

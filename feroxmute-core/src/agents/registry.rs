@@ -27,6 +27,7 @@ pub struct SpawnedAgent {
     pub spawned_at: Instant,
     pub handle: Option<JoinHandle<()>>,
     pub cancel_token: Option<CancellationToken>,
+    pub instruction_tx: Option<mpsc::Sender<String>>,
 }
 
 /// Registry for managing spawned agents
@@ -82,11 +83,12 @@ impl AgentRegistry {
             spawned_at: Instant::now(),
             handle: Some(handle),
             cancel_token: None,
+            instruction_tx: None,
         };
         self.agents.insert(name, agent);
     }
 
-    /// Register a spawned agent with a cancellation token
+    /// Register a spawned agent with a cancellation token and instruction channel
     pub fn register_with_cancel(
         &mut self,
         name: String,
@@ -94,6 +96,7 @@ impl AgentRegistry {
         instructions: String,
         handle: JoinHandle<()>,
         cancel_token: CancellationToken,
+        instruction_tx: mpsc::Sender<String>,
     ) {
         let agent = SpawnedAgent {
             name: name.clone(),
@@ -103,8 +106,30 @@ impl AgentRegistry {
             spawned_at: Instant::now(),
             handle: Some(handle),
             cancel_token: Some(cancel_token),
+            instruction_tx: Some(instruction_tx),
         };
         self.agents.insert(name, agent);
+    }
+
+    /// Send updated instructions to a running agent.
+    /// Returns true if the message was sent successfully, false if the agent
+    /// is not found, already in a terminal state, or has no instruction channel.
+    pub fn send_instructions(&self, name: &str, instructions: &str) -> bool {
+        if let Some(agent) = self.agents.get(name) {
+            if matches!(
+                agent.status,
+                AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+            ) {
+                return false;
+            }
+            if let Some(tx) = &agent.instruction_tx {
+                tx.try_send(instructions.to_string()).is_ok()
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     /// Cancel a running agent by triggering its cancellation token.
@@ -447,6 +472,7 @@ mod tests {
     async fn test_cancel_agent() {
         let (mut registry, _waiter) = AgentRegistry::new();
         let token = tokio_util::sync::CancellationToken::new();
+        let (instruction_tx, _instruction_rx) = tokio::sync::mpsc::channel::<String>(8);
         let handle = tokio::spawn(async {});
         registry.register_with_cancel(
             "cancel-me".to_string(),
@@ -454,6 +480,7 @@ mod tests {
             "test".to_string(),
             handle,
             token.clone(),
+            instruction_tx,
         );
         assert!(registry.cancel_agent("cancel-me"));
         assert!(token.is_cancelled());
@@ -464,6 +491,7 @@ mod tests {
     async fn test_cancel_agent_already_completed() {
         let (mut registry, _waiter) = AgentRegistry::new();
         let token = tokio_util::sync::CancellationToken::new();
+        let (instruction_tx, _instruction_rx) = tokio::sync::mpsc::channel::<String>(8);
         let handle = tokio::spawn(async {});
         registry.register_with_cancel(
             "done-agent".to_string(),
@@ -471,6 +499,7 @@ mod tests {
             "test".to_string(),
             handle,
             token.clone(),
+            instruction_tx,
         );
         registry.mark_agent_result("done-agent", true);
         assert!(!registry.cancel_agent("done-agent"));
@@ -498,5 +527,69 @@ mod tests {
         registry.update_status("cancel-test", AgentStatus::Cancelled);
         assert_eq!(registry.running_count(), 0);
         assert_eq!(registry.is_agent_running("cancel-test"), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_send_instructions_to_agent() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let token = tokio_util::sync::CancellationToken::new();
+        let (instruction_tx, mut instruction_rx) = tokio::sync::mpsc::channel::<String>(8);
+        let handle = tokio::spawn(async {});
+        registry.register_with_cancel(
+            "update-me".to_string(),
+            "scanner".to_string(),
+            "original instructions".to_string(),
+            handle,
+            token,
+            instruction_tx,
+        );
+
+        let sent = registry.send_instructions("update-me", "new instructions");
+        assert!(sent);
+
+        let msg = instruction_rx.try_recv().unwrap();
+        assert_eq!(msg, "new instructions");
+    }
+
+    #[tokio::test]
+    async fn test_send_instructions_to_completed_agent() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let token = tokio_util::sync::CancellationToken::new();
+        let (instruction_tx, _instruction_rx) = tokio::sync::mpsc::channel::<String>(8);
+        let handle = tokio::spawn(async {});
+        registry.register_with_cancel(
+            "done-agent".to_string(),
+            "scanner".to_string(),
+            "test".to_string(),
+            handle,
+            token,
+            instruction_tx,
+        );
+        registry.mark_agent_result("done-agent", true);
+
+        let sent = registry.send_instructions("done-agent", "new instructions");
+        assert!(!sent);
+    }
+
+    #[tokio::test]
+    async fn test_send_instructions_to_nonexistent_agent() {
+        let (registry, _waiter) = AgentRegistry::new();
+        let sent = registry.send_instructions("nonexistent", "new instructions");
+        assert!(!sent);
+    }
+
+    #[tokio::test]
+    async fn test_send_instructions_without_channel() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let handle = tokio::spawn(async {});
+        registry.register(
+            "no-channel".to_string(),
+            "recon".to_string(),
+            "test".to_string(),
+            handle,
+        );
+
+        let sent = registry.send_instructions("no-channel", "new instructions");
+        assert!(!sent);
     }
 }

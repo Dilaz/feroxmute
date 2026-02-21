@@ -15,7 +15,7 @@ use crate::tools::{
     AddRecommendationTool, CancelAgentTool, CompleteEngagementTool, DockerShellTool, EventSender,
     ExportHtmlTool, ExportJsonTool, ExportMarkdownTool, ExportPdfTool, GenerateReportTool,
     ListAgentsTool, OrchestratorContext, RecordFindingTool, ReportContext, ReviewEventsTool,
-    RunScriptTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+    RunScriptTool, SpawnAgentTool, UpdateAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
 
@@ -246,6 +246,7 @@ impl LlmProvider for AzureProvider {
             .tool(WaitForAnyTool::new(Arc::clone(&context)))
             .tool(ListAgentsTool::new(Arc::clone(&context)))
             .tool(CancelAgentTool::new(Arc::clone(&context)))
+            .tool(UpdateAgentTool::new(Arc::clone(&context)))
             .tool(RecordFindingTool::new(Arc::clone(&context)))
             .tool(CompleteEngagementTool::new(Arc::clone(&context)))
             .tool(ReviewEventsTool::new(Arc::clone(&context)))

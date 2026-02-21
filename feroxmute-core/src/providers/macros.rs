@@ -330,6 +330,7 @@ macro_rules! define_provider {
                     .tool($crate::tools::WaitForAnyTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::ListAgentsTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::CancelAgentTool::new(std::sync::Arc::clone(&context)))
+                    .tool($crate::tools::UpdateAgentTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::RecordFindingTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::CompleteEngagementTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::ReviewEventsTool::new(std::sync::Arc::clone(&context)))
