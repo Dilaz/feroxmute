@@ -343,6 +343,10 @@ impl Tool for GenerateReportTool {
         // Check if deduplicated findings are cached (from deduplicate_findings tool)
         let cached = self.context.deduplicated_findings.lock().await.take();
 
+        // Build report from the best available data source, merging DB + in-memory findings.
+        // In the standard rig-based flow, subagents don't write to the DB — findings
+        // only exist in the in-memory Vec (populated by RecordFindingTool). The DB path
+        // is used by MCP/CLI-agent providers. We merge both to cover all cases.
         let mut report = if let Some(vulns) = cached {
             // Use pre-deduplicated findings from cache
             let metadata = ReportMetadata::new(
@@ -366,7 +370,7 @@ impl Tool for GenerateReportTool {
             }
             r
         } else if let Some(ref db_path) = self.context.session_db_path {
-            // Fall back to loading from database
+            // Try loading from database
             match rusqlite::Connection::open(db_path) {
                 Ok(conn) => match generate_report(
                     &conn,
@@ -376,7 +380,14 @@ impl Tool for GenerateReportTool {
                     end_time,
                     &self.context.metrics,
                 ) {
-                    Ok(r) => r,
+                    Ok(r) if !r.findings.is_empty() => r,
+                    Ok(_) => {
+                        // DB had no findings — fall through to in-memory
+                        tracing::info!(
+                            "No findings in database, using in-memory findings from orchestrator"
+                        );
+                        self.build_report_from_memory(end_time).await
+                    }
                     Err(e) => {
                         tracing::warn!(
                             "Failed to generate report from database: {e}, falling back to in-memory findings"
