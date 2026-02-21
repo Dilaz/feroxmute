@@ -441,6 +441,11 @@ async fn run_orchestrator_with_tools(
         agent_name: "orchestrator".to_string(),
     });
 
+    // Create the event bus for inter-agent communication
+    let event_bus = feroxmute_core::agents::AgentEventBus::new(256);
+    let event_bus_sender = event_bus.sender();
+    let event_bus = Arc::new(Mutex::new(event_bus));
+
     // Create the orchestrator context with all shared state
     let (registry, waiter) = AgentRegistry::new();
     let context = Arc::new(OrchestratorContext {
@@ -462,6 +467,8 @@ async fn run_orchestrator_with_tools(
         reports_dir: session.reports_dir(),
         target_provider,
         target_llm_config,
+        event_bus,
+        event_bus_sender,
     });
 
     let has_source_target = source_path.is_some();

@@ -44,7 +44,8 @@ use tokio_util::sync::CancellationToken;
 use chrono::Utc;
 
 use crate::agents::{
-    AgentRegistry, AgentResult, AgentResultWaiter, AgentStatus, EngagementPhase, Prompts,
+    AgentEventBus, AgentEventSender, AgentRegistry, AgentResult, AgentResultWaiter, AgentStatus,
+    EngagementPhase, Prompts,
 };
 use crate::docker::ContainerManager;
 use crate::limitations::{EngagementLimitations, ToolCategory};
@@ -226,6 +227,10 @@ pub struct OrchestratorContext {
     pub target_provider: Option<Arc<dyn LlmProvider>>,
     /// Target LLM configuration (model, api_key, base_url) for populating LlmPentestContext
     pub target_llm_config: Option<crate::config::ProviderConfig>,
+    /// Event bus for inter-agent communication (orchestrator drains events)
+    pub event_bus: Arc<Mutex<AgentEventBus>>,
+    /// Sender half of the event bus (cloned to each spawned agent)
+    pub event_bus_sender: AgentEventSender,
 }
 
 // ============================================================================
