@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use super::AgentStatus;
 
@@ -25,6 +26,7 @@ pub struct SpawnedAgent {
     pub status: AgentStatus,
     pub spawned_at: Instant,
     pub handle: Option<JoinHandle<()>>,
+    pub cancel_token: Option<CancellationToken>,
 }
 
 /// Registry for managing spawned agents
@@ -79,8 +81,51 @@ impl AgentRegistry {
             status: AgentStatus::Streaming,
             spawned_at: Instant::now(),
             handle: Some(handle),
+            cancel_token: None,
         };
         self.agents.insert(name, agent);
+    }
+
+    /// Register a spawned agent with a cancellation token
+    pub fn register_with_cancel(
+        &mut self,
+        name: String,
+        agent_type: String,
+        instructions: String,
+        handle: JoinHandle<()>,
+        cancel_token: CancellationToken,
+    ) {
+        let agent = SpawnedAgent {
+            name: name.clone(),
+            agent_type,
+            instructions,
+            status: AgentStatus::Streaming,
+            spawned_at: Instant::now(),
+            handle: Some(handle),
+            cancel_token: Some(cancel_token),
+        };
+        self.agents.insert(name, agent);
+    }
+
+    /// Cancel a running agent by triggering its cancellation token.
+    /// Returns true if the agent was running and cancellation was triggered,
+    /// false if the agent was not found or already in a terminal state.
+    pub fn cancel_agent(&mut self, name: &str) -> bool {
+        if let Some(agent) = self.agents.get_mut(name) {
+            if matches!(
+                agent.status,
+                AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+            ) {
+                return false;
+            }
+            if let Some(token) = &agent.cancel_token {
+                token.cancel();
+            }
+            agent.status = AgentStatus::Cancelled;
+            true
+        } else {
+            false
+        }
     }
 
     /// Check if an agent with the given name exists
@@ -396,6 +441,46 @@ mod tests {
         let (mut registry, _waiter) = AgentRegistry::new();
         let aborted = registry.abort_all();
         assert!(aborted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_agent() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let token = tokio_util::sync::CancellationToken::new();
+        let handle = tokio::spawn(async {});
+        registry.register_with_cancel(
+            "cancel-me".to_string(),
+            "recon".to_string(),
+            "test".to_string(),
+            handle,
+            token.clone(),
+        );
+        assert!(registry.cancel_agent("cancel-me"));
+        assert!(token.is_cancelled());
+        assert_eq!(registry.is_agent_running("cancel-me"), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_cancel_agent_already_completed() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let token = tokio_util::sync::CancellationToken::new();
+        let handle = tokio::spawn(async {});
+        registry.register_with_cancel(
+            "done-agent".to_string(),
+            "recon".to_string(),
+            "test".to_string(),
+            handle,
+            token.clone(),
+        );
+        registry.mark_agent_result("done-agent", true);
+        assert!(!registry.cancel_agent("done-agent"));
+        assert!(!token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn test_cancel_agent_not_found() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        assert!(!registry.cancel_agent("nonexistent"));
     }
 
     #[tokio::test]
