@@ -233,7 +233,7 @@ fn prepare_output(output: &str) -> (String, bool) {
     let tail_start = sanitized.ceil_char_boundary(tail_start);
     let tail = &sanitized[tail_start..];
 
-    let omitted = sanitized.len() - head.len() - tail.len();
+    let omitted = tail_start.saturating_sub(head.len());
 
     (
         format!(
