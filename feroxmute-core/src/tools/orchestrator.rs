@@ -408,6 +408,9 @@ impl Tool for SpawnAgentTool {
         let provider_metrics = provider.metrics().clone();
         let event_bus_sender = self.context.event_bus_sender.clone();
 
+        let cancel_token = CancellationToken::new();
+        let agent_cancel = cancel_token.clone();
+
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
             tokio::spawn(async move {
@@ -428,31 +431,45 @@ impl Tool for SpawnAgentTool {
                     provider: Some(Arc::clone(&provider)),
                 });
 
-                let output = match tokio::time::timeout(
-                    Duration::from_secs(AGENT_TIMEOUT_SECS),
-                    provider.complete_with_report(&full_prompt, &target, report_context),
-                )
-                .await
-                {
-                    Ok(Ok(out)) => out,
-                    Ok(Err(e)) => format!("Error: {}", e),
-                    Err(_) => format!(
-                        "Error: Agent timed out after {} seconds",
-                        AGENT_TIMEOUT_SECS
-                    ),
-                };
-
-                let success = !output.starts_with("Error:");
-
-                let _ = result_tx
-                    .send(AgentResult {
-                        name: agent_name.clone(),
-                        agent_type,
-                        success,
-                        output,
-                        duration: start.elapsed(),
-                    })
-                    .await;
+                tokio::select! {
+                    _ = agent_cancel.cancelled() => {
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success: false,
+                                output: "Agent cancelled by orchestrator".to_string(),
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                    }
+                    output = async {
+                        match tokio::time::timeout(
+                            Duration::from_secs(AGENT_TIMEOUT_SECS),
+                            provider.complete_with_report(&full_prompt, &target, report_context),
+                        )
+                        .await
+                        {
+                            Ok(Ok(out)) => out,
+                            Ok(Err(e)) => format!("Error: {}", e),
+                            Err(_) => format!(
+                                "Error: Agent timed out after {} seconds",
+                                AGENT_TIMEOUT_SECS
+                            ),
+                        }
+                    } => {
+                        let success = !output.starts_with("Error:");
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success,
+                                output,
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                    }
+                }
             })
         } else if agent_type == "llm_pentest" {
             // LLM pentest agents use specialized LLM testing tools
@@ -497,91 +514,120 @@ impl Tool for SpawnAgentTool {
                     target_provider_name: target_config.name.to_string(),
                 });
 
-                let output = match tokio::time::timeout(
-                    Duration::from_secs(AGENT_TIMEOUT_SECS),
-                    provider.complete_with_llm_pentest(
-                        &full_prompt,
-                        &target,
-                        llm_context,
-                        container,
-                        events,
-                        &agent_name,
-                        &agent_type,
-                        limitations,
-                        memory,
-                        event_bus_sender,
-                    ),
-                )
-                .await
-                {
-                    Ok(Ok(out)) => out,
-                    Ok(Err(e)) => format!("Error: {}", e),
-                    Err(_) => format!(
-                        "Error: Agent timed out after {} seconds",
-                        AGENT_TIMEOUT_SECS
-                    ),
-                };
-
-                let success = !output.starts_with("Error:");
-
-                let _ = result_tx
-                    .send(AgentResult {
-                        name: agent_name.clone(),
-                        agent_type,
-                        success,
-                        output,
-                        duration: start.elapsed(),
-                    })
-                    .await;
+                tokio::select! {
+                    _ = agent_cancel.cancelled() => {
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success: false,
+                                output: "Agent cancelled by orchestrator".to_string(),
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                    }
+                    output = async {
+                        match tokio::time::timeout(
+                            Duration::from_secs(AGENT_TIMEOUT_SECS),
+                            provider.complete_with_llm_pentest(
+                                &full_prompt,
+                                &target,
+                                llm_context,
+                                container,
+                                events,
+                                &agent_name,
+                                &agent_type,
+                                limitations,
+                                memory,
+                                event_bus_sender,
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(Ok(out)) => out,
+                            Ok(Err(e)) => format!("Error: {}", e),
+                            Err(_) => format!(
+                                "Error: Agent timed out after {} seconds",
+                                AGENT_TIMEOUT_SECS
+                            ),
+                        }
+                    } => {
+                        let success = !output.starts_with("Error:");
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success,
+                                output,
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                    }
+                }
             })
         } else {
             // Other agents use shell tool
             tokio::spawn(async move {
                 let start = std::time::Instant::now();
 
-                let output = match tokio::time::timeout(
-                    Duration::from_secs(AGENT_TIMEOUT_SECS),
-                    provider.complete_with_shell(
-                        &full_prompt,
-                        &target,
-                        container,
-                        events,
-                        &agent_name,
-                        &agent_type,
-                        limitations,
-                        memory,
-                        event_bus_sender,
-                    ),
-                )
-                .await
-                {
-                    Ok(Ok(out)) => out,
-                    Ok(Err(e)) => format!("Error: {}", e),
-                    Err(_) => format!(
-                        "Error: Agent timed out after {} seconds",
-                        AGENT_TIMEOUT_SECS
-                    ),
-                };
-
-                let success = !output.starts_with("Error:");
-
-                let _ = result_tx
-                    .send(AgentResult {
-                        name: agent_name.clone(),
-                        agent_type,
-                        success,
-                        output,
-                        duration: start.elapsed(),
-                    })
-                    .await;
+                tokio::select! {
+                    _ = agent_cancel.cancelled() => {
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success: false,
+                                output: "Agent cancelled by orchestrator".to_string(),
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                    }
+                    output = async {
+                        match tokio::time::timeout(
+                            Duration::from_secs(AGENT_TIMEOUT_SECS),
+                            provider.complete_with_shell(
+                                &full_prompt,
+                                &target,
+                                container,
+                                events,
+                                &agent_name,
+                                &agent_type,
+                                limitations,
+                                memory,
+                                event_bus_sender,
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(Ok(out)) => out,
+                            Ok(Err(e)) => format!("Error: {}", e),
+                            Err(_) => format!(
+                                "Error: Agent timed out after {} seconds",
+                                AGENT_TIMEOUT_SECS
+                            ),
+                        }
+                    } => {
+                        let success = !output.starts_with("Error:");
+                        let _ = result_tx
+                            .send(AgentResult {
+                                name: agent_name.clone(),
+                                agent_type,
+                                success,
+                                output,
+                                duration: start.elapsed(),
+                            })
+                            .await;
+                    }
+                }
             })
         };
 
-        registry.register(
+        registry.register_with_cancel(
             args.name.clone(),
             args.agent_type.clone(),
             args.instructions.clone(),
             handle,
+            cancel_token,
         );
 
         Ok(SpawnAgentOutput {
@@ -1105,6 +1151,108 @@ impl Tool for ReviewEventsTool {
             event_count,
             agents_running,
         })
+    }
+}
+
+// ============================================================================
+// CancelAgentTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct CancelAgentArgs {
+    pub name: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CancelAgentOutput {
+    pub cancelled: bool,
+    pub message: String,
+}
+
+pub struct CancelAgentTool {
+    context: Arc<OrchestratorContext>,
+}
+
+impl CancelAgentTool {
+    pub fn new(context: Arc<OrchestratorContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for CancelAgentTool {
+    const NAME: &'static str = "cancel_agent";
+
+    type Error = OrchestratorToolError;
+    type Args = CancelAgentArgs;
+    type Output = CancelAgentOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "cancel_agent".to_string(),
+            description:
+                "Cancel a running agent. Use when the agent's work is no longer needed or has been superseded."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the agent to cancel"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Optional reason for cancellation"
+                    }
+                },
+                "required": ["name"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
+        let reason = args.reason.as_deref().unwrap_or("no reason given");
+
+        let mut registry = self.context.registry.lock().await;
+
+        // Get agent type before cancelling (for status event)
+        let agent_type = registry
+            .list_agents()
+            .iter()
+            .find(|(name, _, _)| *name == args.name)
+            .map(|(_, t, _)| t.to_string())
+            .unwrap_or_default();
+
+        let cancelled = registry.cancel_agent(&args.name);
+        drop(registry);
+
+        if cancelled {
+            let msg = format!("Cancelled agent '{}': {}", args.name, reason);
+            self.context.events.send_feed("orchestrator", &msg, false);
+            self.context
+                .events
+                .send_status(&args.name, &agent_type, AgentStatus::Cancelled, None);
+
+            Ok(CancelAgentOutput {
+                cancelled: true,
+                message: msg,
+            })
+        } else {
+            let msg = format!(
+                "Cannot cancel '{}': agent not found or already in terminal state",
+                args.name
+            );
+            self.context.events.send_feed("orchestrator", &msg, true);
+
+            Ok(CancelAgentOutput {
+                cancelled: false,
+                message: msg,
+            })
+        }
     }
 }
 
