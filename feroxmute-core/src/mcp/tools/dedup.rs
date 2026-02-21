@@ -206,6 +206,7 @@ mod tests {
 
     fn setup_context(db_path: PathBuf, reports_dir: PathBuf) -> Arc<ReportContext> {
         Arc::new(ReportContext {
+            agent_name: "report".to_string(),
             events: Arc::new(NoopEventSender),
             target: "example.com".to_string(),
             session_id: "test-session".to_string(),
@@ -346,6 +347,7 @@ mod tests {
         std::fs::create_dir_all(&reports_dir).ok();
 
         let context = Arc::new(ReportContext {
+            agent_name: "report".to_string(),
             events: Arc::new(NoopEventSender),
             target: "example.com".to_string(),
             session_id: "test-session".to_string(),

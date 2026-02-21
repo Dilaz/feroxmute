@@ -422,6 +422,7 @@ impl Tool for SpawnAgentTool {
 
                 // Create report context with findings from orchestrator
                 let report_context = Arc::new(ReportContext {
+                    agent_name: agent_name.clone(),
                     events: Arc::clone(&events),
                     target: target.clone(),
                     session_id,
