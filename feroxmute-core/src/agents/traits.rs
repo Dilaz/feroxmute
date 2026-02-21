@@ -27,6 +27,8 @@ pub enum AgentStatus {
     Waiting,
     /// Agent encountered a transient error and is retrying
     Retrying,
+    /// Agent was cancelled by orchestrator
+    Cancelled,
     /// Agent completed successfully
     Completed,
     /// Agent encountered an error
