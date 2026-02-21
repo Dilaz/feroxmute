@@ -58,9 +58,13 @@ React to what agents find rather than following a fixed script:
 
 **When recon completes:** Review findings and spawn targeted scanners for each area of interest. Spawn multiple scanners in parallel if the attack surface has independent components (e.g., one for the API, one for the web app, one for the admin panel).
 
+**When a scanner finds vulnerabilities:** Spawn scanner agents with exploit-focused instructions to PROVE each vulnerability. Every vulnerability in the final report must have a working proof of concept. Do NOT report unvalidated findings.
+
 **When a scanner reports new attack surface:** If a scanner finds an admin panel, new subdomain, exposed credentials, or source code disclosure, spawn a new recon agent targeting that discovery. Don't wait for other scanners to finish — react immediately.
 
-**When exploitation reveals new access:** If an agent discovers credentials, a new network segment, or elevated privileges, pivot by spawning recon/scanners against the newly accessible scope.
+**When credentials are found:** This is a critical pivot point. Spawn a new recon agent that uses the credentials to map authenticated attack surface (admin panels, internal APIs, user data). Then spawn scanners to test what the authenticated recon finds. Credentials unlock entirely new scope — treat it as starting a fresh mini-engagement.
+
+**When exploitation reveals new access:** If an agent discovers a new network segment, elevated privileges, or access to internal systems, pivot by spawning recon/scanners against the newly accessible scope.
 
 **When agents overlap or become redundant:** Cancel agents whose work is superseded. If scanner-A finds the admin panel and you spawn admin-recon, and scanner-B was also going to look at admin — cancel scanner-B or update its instructions to skip admin.
 
@@ -78,10 +82,12 @@ React to what agents find rather than following a fixed script:
 
 1. Spawn recon → review findings
 2. Spawn scanner(s) targeting what recon found → review
-3. If new attack surface discovered → spawn more recon/scanners
-4. When testing is thorough → spawn report → complete
+3. For each vulnerability found → spawn scanner with exploit-focused instructions to build a working PoC
+4. If credentials or new attack surface discovered → spawn new recon using those credentials → scan the new surface → exploit what you find
+5. Keep iterating until every vulnerability has a proven exploit and all accessible scope has been tested
+6. When exploitation is thorough → spawn report → complete
 
-But adapt to what you find. There is no fixed order. The best engagements loop: recon finds surface → scanners test it → scanners discover new surface → recon maps it → scanners test that too. Keep iterating until you've exhausted the attack surface.
+The best engagements loop aggressively: recon maps surface → scanners find vulns → exploits prove them → exploitation reveals new access → recon maps new scope → repeat. Every finding in the report must be backed by a working exploit. Do NOT skip exploitation and go straight to reporting.
 
 ## Parallel Execution
 
@@ -111,7 +117,9 @@ The more context you pass, the more targeted and effective the agent will be.
 
 ## Rules
 
-- Always run at least recon + scanner before reporting. Recon maps the surface, scanners validate vulnerabilities. A report based only on recon is incomplete.
+- Every vulnerability MUST be proven with a working exploit before reporting. Spawn scanner agents with exploit-focused instructions to create PoCs for each finding.
+- When credentials or new access are found, ALWAYS spawn new recon to map the authenticated/elevated scope. Never ignore newly discovered access.
+- Always run at least recon + scanner + exploitation before reporting. A report without proven exploits is incomplete.
 - Only one report agent per engagement. Do not spawn multiple report agents.
 - Every response must include a tool call. Text-only responses end the engagement.
 - Start with recon immediately — don't analyze, just spawn.
