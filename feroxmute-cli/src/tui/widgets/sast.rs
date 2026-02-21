@@ -279,6 +279,12 @@ fn format_status(status: AgentStatus, current_tool: Option<&str>) -> (String, St
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::SLOW_BLINK),
         ),
+        AgentStatus::Cancelled => (
+            "Cancelled".to_string(),
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        ),
         AgentStatus::Completed => ("Completed".to_string(), Style::default().fg(Color::Green)),
         AgentStatus::Failed => (
             "Failed".to_string(),

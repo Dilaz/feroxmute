@@ -110,7 +110,12 @@ impl AgentRegistry {
     pub fn running_count(&self) -> usize {
         self.agents
             .values()
-            .filter(|a| !matches!(a.status, AgentStatus::Completed | AgentStatus::Failed))
+            .filter(|a| {
+                !matches!(
+                    a.status,
+                    AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+                )
+            })
             .count()
     }
 
@@ -123,9 +128,12 @@ impl AgentRegistry {
 
     /// Check if an agent is still running (not completed/failed)
     pub fn is_agent_running(&self, name: &str) -> Option<bool> {
-        self.agents
-            .get(name)
-            .map(|a| !matches!(a.status, AgentStatus::Completed | AgentStatus::Failed))
+        self.agents.get(name).map(|a| {
+            !matches!(
+                a.status,
+                AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+            )
+        })
     }
 
     /// Update an agent's status based on a result
@@ -143,7 +151,10 @@ impl AgentRegistry {
     pub fn abort_all(&mut self) -> Vec<(String, String)> {
         let mut aborted = Vec::new();
         for agent in self.agents.values_mut() {
-            if !matches!(agent.status, AgentStatus::Completed | AgentStatus::Failed) {
+            if !matches!(
+                agent.status,
+                AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+            ) {
                 if let Some(handle) = agent.handle.take() {
                     handle.abort();
                 }
@@ -385,5 +396,22 @@ mod tests {
         let (mut registry, _waiter) = AgentRegistry::new();
         let aborted = registry.abort_all();
         assert!(aborted.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancelled_is_terminal_state() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let handle = tokio::spawn(async {});
+        registry.register(
+            "cancel-test".to_string(),
+            "recon".to_string(),
+            "test".to_string(),
+            handle,
+        );
+        assert_eq!(registry.running_count(), 1);
+
+        registry.update_status("cancel-test", AgentStatus::Cancelled);
+        assert_eq!(registry.running_count(), 0);
+        assert_eq!(registry.is_agent_running("cancel-test"), Some(false));
     }
 }
