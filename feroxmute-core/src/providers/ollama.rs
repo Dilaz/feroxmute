@@ -186,11 +186,11 @@ impl LlmProvider for OllamaProvider {
                 ))
                 .build();
 
-            // max_turns enables tool loop with max 50 iterations
+            // max_turns enables tool loop with max 500 iterations
             let response = agent
                 .prompt(&current_prompt)
                 .extended_details()
-                .max_turns(50)
+                .max_turns(500)
                 .await
                 .map_err(|e| Error::Provider(format!("Shell completion failed: {}", e)))?;
 
@@ -261,10 +261,10 @@ impl LlmProvider for OllamaProvider {
             .tool(CompleteEngagementTool::new(Arc::clone(&context)))
             .build();
 
-        // Run with cancellation support (max_turns enables tool loop with max 50 iterations)
+        // Run with cancellation support (max_turns enables tool loop with max 500 iterations)
         // extended_details() gives us real token usage
         tokio::select! {
-            result = agent.prompt(user_prompt).extended_details().max_turns(50) => {
+            result = agent.prompt(user_prompt).extended_details().max_turns(500) => {
                 match result {
                     Ok(response) => {
                         // Use actual token counts if available, otherwise estimate
@@ -319,12 +319,12 @@ impl LlmProvider for OllamaProvider {
             .tool(AddRecommendationTool::new(Arc::clone(&context)))
             .build();
 
-        // max_turns enables tool loop with max 20 iterations
+        // max_turns enables tool loop with max 50 iterations
         // extended_details() gives us real token usage
         let response = agent
             .prompt(user_prompt)
             .extended_details()
-            .max_turns(20)
+            .max_turns(50)
             .await
             .map_err(|e| Error::Provider(format!("Report completion failed: {}", e)))?;
 

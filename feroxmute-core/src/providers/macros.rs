@@ -237,7 +237,7 @@ macro_rules! define_provider {
                     const LLM_TIMEOUT_SECS: u64 = 600; // 10 minutes
                     let result = tokio::time::timeout(
                         std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
-                        agent.prompt(&current_prompt).extended_details().max_turns(50)
+                        agent.prompt(&current_prompt).extended_details().max_turns(500)
                     ).await;
 
                     let response = match result {
@@ -339,7 +339,7 @@ macro_rules! define_provider {
 
                 // Use non-streaming max_turns with cancellation support
                 tokio::select! {
-                    result = agent.prompt(user_prompt).extended_details().max_turns(50) => {
+                    result = agent.prompt(user_prompt).extended_details().max_turns(500) => {
                         match result {
                             Ok(response) => {
                                 // Calculate cost
@@ -415,7 +415,7 @@ macro_rules! define_provider {
                 const LLM_TIMEOUT_SECS: u64 = 600; // 10 minutes
                 let result = tokio::time::timeout(
                     std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
-                    agent.prompt(user_prompt).extended_details().max_turns(20)
+                    agent.prompt(user_prompt).extended_details().max_turns(50)
                 ).await;
 
                 let response = match result {
@@ -520,7 +520,7 @@ macro_rules! define_provider {
                     const LLM_TIMEOUT_SECS: u64 = 600;
                     let result = tokio::time::timeout(
                         std::time::Duration::from_secs(LLM_TIMEOUT_SECS),
-                        agent.prompt(&current_prompt).extended_details().max_turns(50)
+                        agent.prompt(&current_prompt).extended_details().max_turns(500)
                     ).await;
 
                     let response = match result {
