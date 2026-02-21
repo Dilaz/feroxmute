@@ -31,6 +31,8 @@ pub enum ReportToolError {
 
 /// Shared context for report tools
 pub struct ReportContext {
+    /// Agent name for TUI events (e.g., "report-bodgeit-secur", not hardcoded "report")
+    pub agent_name: String,
     /// Event sender for UI updates
     pub events: Arc<dyn EventSender>,
     /// Target being assessed
@@ -103,7 +105,7 @@ impl Tool for DeduplicateFindingsTool {
         self.context.events.send_tool_call();
         self.context
             .events
-            .send_feed("report", "Deduplicating findings...", false);
+            .send_feed(&self.context.agent_name, "Deduplicating findings...", false);
 
         let db_path = match &self.context.session_db_path {
             Some(p) => p,
@@ -150,7 +152,9 @@ impl Tool for DeduplicateFindingsTool {
             original_count, deduped_count
         );
 
-        self.context.events.send_feed("report", &message, false);
+        self.context
+            .events
+            .send_feed(&self.context.agent_name, &message, false);
 
         Ok(DeduplicateFindingsOutput {
             success: true,
@@ -334,9 +338,11 @@ impl Tool for GenerateReportTool {
         // Notify TUI of tool invocation for counting
         self.context.events.send_tool_call();
 
-        self.context
-            .events
-            .send_feed("report", "Generating report from findings...", false);
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            "Generating report from findings...",
+            false,
+        );
 
         let end_time = Utc::now();
 
@@ -422,7 +428,7 @@ impl Tool for GenerateReportTool {
         *report_lock = Some(report);
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!(
                 "Report generated: {} findings, {} risk",
                 finding_count, risk_rating_str
@@ -515,14 +521,16 @@ impl Tool for ExportJsonTool {
         let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
-        self.context
-            .events
-            .send_feed("report", &format!("Exporting to JSON: {}", path_str), false);
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            &format!("Exporting to JSON: {}", path_str),
+            false,
+        );
 
         export_json(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!("JSON report exported to {}", path_str),
             false,
         );
@@ -609,7 +617,7 @@ impl Tool for ExportMarkdownTool {
         let path_str = path.display().to_string();
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!("Exporting to Markdown: {}", path_str),
             false,
         );
@@ -617,7 +625,7 @@ impl Tool for ExportMarkdownTool {
         export_markdown(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!("Markdown report exported to {}", path_str),
             false,
         );
@@ -703,14 +711,16 @@ impl Tool for ExportHtmlTool {
         let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
-        self.context
-            .events
-            .send_feed("report", &format!("Exporting to HTML: {}", path_str), false);
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            &format!("Exporting to HTML: {}", path_str),
+            false,
+        );
 
         export_html(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!("HTML report exported to {}", path_str),
             false,
         );
@@ -796,14 +806,16 @@ impl Tool for ExportPdfTool {
         let path = self.context.reports_dir.join(safe_name);
         let path_str = path.display().to_string();
 
-        self.context
-            .events
-            .send_feed("report", &format!("Exporting to PDF: {}", path_str), false);
+        self.context.events.send_feed(
+            &self.context.agent_name,
+            &format!("Exporting to PDF: {}", path_str),
+            false,
+        );
 
         export_pdf(report, &path).map_err(|e| ReportToolError::Export(e.to_string()))?;
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!("PDF report exported to {}", path_str),
             false,
         );
@@ -889,7 +901,7 @@ impl Tool for AddRecommendationTool {
         report.summary.key_findings.push(formatted.clone());
 
         self.context.events.send_feed(
-            "report",
+            &self.context.agent_name,
             &format!("Added recommendation: {}", args.recommendation),
             false,
         );

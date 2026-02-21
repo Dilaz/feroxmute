@@ -208,6 +208,7 @@ impl McpTool for McpSpawnAgentTool {
                 let start = std::time::Instant::now();
 
                 let report_context = Arc::new(ReportContext {
+                    agent_name: agent_name.clone(),
                     events: Arc::clone(&events),
                     target: target.clone(),
                     session_id,

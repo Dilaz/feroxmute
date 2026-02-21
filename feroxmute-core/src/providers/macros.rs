@@ -391,10 +391,11 @@ macro_rules! define_provider {
                 use rig::completion::Prompt;
 
                 let events = std::sync::Arc::clone(&context.events);
+                let agent_name = context.agent_name.clone();
 
                 // Set status to indicate agent is working
                 events.send_status(
-                    "report",
+                    &agent_name,
                     "report",
                     $crate::agents::AgentStatus::Streaming,
                     None,
@@ -424,13 +425,13 @@ macro_rules! define_provider {
                 let response = match result {
                     Ok(Ok(r)) => r,
                     Ok(Err(e)) => {
-                        events.send_feed("report", &format!("LLM request failed: {}", e), true);
-                        events.send_status("report", "report", $crate::agents::AgentStatus::Failed, None);
+                        events.send_feed(&agent_name, &format!("LLM request failed: {}", e), true);
+                        events.send_status(&agent_name, "report", $crate::agents::AgentStatus::Failed, None);
                         return Err($crate::Error::Provider(format!("Report completion failed: {}", e)));
                     }
                     Err(_) => {
-                        events.send_feed("report", "LLM request timed out after 10 minutes", true);
-                        events.send_status("report", "report", $crate::agents::AgentStatus::Failed, None);
+                        events.send_feed(&agent_name, "LLM request timed out after 10 minutes", true);
+                        events.send_status(&agent_name, "report", $crate::agents::AgentStatus::Failed, None);
                         return Err($crate::Error::Provider("LLM request timed out after 10 minutes".into()));
                     }
                 };
@@ -452,7 +453,7 @@ macro_rules! define_provider {
                 );
 
                 // Set completed status
-                events.send_status("report", "report", $crate::agents::AgentStatus::Completed, None);
+                events.send_status(&agent_name, "report", $crate::agents::AgentStatus::Completed, None);
 
                 Ok(response.output)
             }

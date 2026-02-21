@@ -775,6 +775,7 @@ mod tests {
 
     fn setup_context(reports_dir: PathBuf) -> Arc<ReportContext> {
         Arc::new(ReportContext {
+            agent_name: "report".to_string(),
             events: Arc::new(NoopEventSender),
             target: "example.com".to_string(),
             session_id: "test-session-001".to_string(),
@@ -1018,6 +1019,7 @@ mod tests {
 
         // Create context WITH session_db_path set (empty in-memory findings)
         let context = Arc::new(ReportContext {
+            agent_name: "report".to_string(),
             events: Arc::new(NoopEventSender),
             target: "example.com".to_string(),
             session_id: "test-db-session".to_string(),

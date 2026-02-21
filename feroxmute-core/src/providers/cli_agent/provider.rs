@@ -279,6 +279,7 @@ impl LlmProvider for CliAgentProvider {
 
         // Also register report tools so the orchestrator can delegate report generation
         let report_context = Arc::new(ReportContext {
+            agent_name: "report".to_string(),
             events: Arc::clone(&context.events),
             target: context.target.clone(),
             session_id: context.session_id.clone(),
