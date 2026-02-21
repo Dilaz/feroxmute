@@ -96,9 +96,11 @@ impl McpTool for McpDeduplicateFindingsTool {
 
         let original_count = vulns.len();
 
-        // For now, use the existing exact-match deduplication as placeholder
-        // The LLM-based deduplication will be added later
-        let deduped = crate::reports::deduplicate_vulnerabilities(vulns);
+        let deduped = if let Some(ref provider) = self.context.provider {
+            crate::reports::llm_deduplicate_vulnerabilities(vulns, provider.as_ref()).await
+        } else {
+            crate::reports::deduplicate_vulnerabilities(vulns)
+        };
         let deduped_count = deduped.len();
 
         // Store in context for generate_report to use
@@ -214,6 +216,7 @@ mod tests {
             reports_dir,
             session_db_path: Some(db_path),
             deduplicated_findings: Arc::new(Mutex::new(None)),
+            provider: None,
         })
     }
 
@@ -353,6 +356,7 @@ mod tests {
             reports_dir,
             session_db_path: None, // No database
             deduplicated_findings: Arc::new(Mutex::new(None)),
+            provider: None,
         });
 
         let tool = McpDeduplicateFindingsTool::new(context);

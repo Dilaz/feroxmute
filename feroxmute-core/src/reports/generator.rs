@@ -169,6 +169,155 @@ fn merge_vulnerability_group(mut group: Vec<Vulnerability>) -> Vulnerability {
     merged
 }
 
+/// Use an LLM to identify semantically duplicate vulnerabilities, then merge them.
+///
+/// This is a two-pass approach:
+/// 1. Basic exact-match dedup (cheap, catches obvious duplicates)
+/// 2. LLM semantic dedup (catches "SQL Injection" vs "SQL Injection in /login")
+///
+/// The LLM receives a numbered list of findings and returns JSON indicating
+/// which findings should be merged together.
+pub async fn llm_deduplicate_vulnerabilities(
+    vulns: Vec<Vulnerability>,
+    provider: &dyn crate::providers::LlmProvider,
+) -> Vec<Vulnerability> {
+    // Pass 1: exact-match dedup (free)
+    let basic_deduped = deduplicate_vulnerabilities(vulns);
+
+    // Skip LLM call if there's nothing to compare
+    if basic_deduped.len() <= 1 {
+        return basic_deduped;
+    }
+
+    // Build a compact list for the LLM
+    let mut finding_list = String::new();
+    for (i, vuln) in basic_deduped.iter().enumerate() {
+        finding_list.push_str(&format!(
+            "{}. [{}] {} (id: {})\n",
+            i + 1,
+            vuln.severity,
+            vuln.title,
+            vuln.id
+        ));
+        if let Some(ref desc) = vuln.description {
+            let short = if desc.len() > 120 {
+                format!("{}...", &desc[..desc.floor_char_boundary(120)])
+            } else {
+                desc.clone()
+            };
+            finding_list.push_str(&format!("   Description: {}\n", short));
+        }
+        if let Some(ref asset) = vuln.asset {
+            finding_list.push_str(&format!("   Asset: {}\n", asset));
+        }
+    }
+
+    let prompt = format!(
+        r#"You are deduplicating vulnerability findings from a penetration test. Multiple agents may have discovered the same vulnerability and recorded it with different titles, descriptions, or levels of detail.
+
+Here are the current findings after basic deduplication:
+
+{finding_list}
+Identify groups of findings that describe the SAME underlying vulnerability (even if titles differ). Only group findings that are truly the same issue — different vulnerabilities on the same endpoint are NOT duplicates.
+
+Respond with JSON only. For each group of duplicates, list the ID to keep (the one with the best title/description) and the IDs to merge into it. Only include groups with actual duplicates — do not list findings that have no duplicates.
+
+Example response format:
+{{"groups": [{{"keep": "VULN-ABC", "merge": ["VULN-DEF"]}}, {{"keep": "VULN-GHI", "merge": ["VULN-JKL", "VULN-MNO"]}}]}}
+
+If there are NO duplicates, respond with: {{"groups": []}}"#
+    );
+
+    let request = crate::providers::CompletionRequest::new(vec![
+        crate::providers::Message::user(&prompt),
+    ])
+    .with_system("You identify duplicate vulnerability findings. Respond with valid JSON only, no markdown formatting.")
+    .with_max_tokens(1024);
+
+    let response = match provider.complete(request).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("LLM dedup failed, using basic dedup: {e}");
+            return basic_deduped;
+        }
+    };
+
+    let content = match response.content {
+        Some(c) => c,
+        None => return basic_deduped,
+    };
+
+    // Parse the LLM response
+    let cleaned = content
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    #[derive(serde::Deserialize)]
+    struct MergeGroup {
+        keep: String,
+        merge: Vec<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct MergeResponse {
+        groups: Vec<MergeGroup>,
+    }
+
+    let merge_response: MergeResponse = match serde_json::from_str(cleaned) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Failed to parse LLM dedup response: {e}");
+            return basic_deduped;
+        }
+    };
+
+    if merge_response.groups.is_empty() {
+        return basic_deduped;
+    }
+
+    // Build a map of vulns by ID for efficient lookup
+    let mut vulns_by_id: HashMap<String, Vulnerability> = basic_deduped
+        .into_iter()
+        .map(|v| (v.id.clone(), v))
+        .collect();
+
+    // Apply merges
+    for group in merge_response.groups {
+        // Collect the group members (keep + merge targets)
+        let mut members = Vec::new();
+        if let Some(keep) = vulns_by_id.remove(&group.keep) {
+            members.push(keep);
+        }
+        for merge_id in &group.merge {
+            if let Some(dupe) = vulns_by_id.remove(merge_id) {
+                members.push(dupe);
+            }
+        }
+        if members.len() > 1 {
+            let merged = merge_vulnerability_group(members);
+            vulns_by_id.insert(merged.id.clone(), merged);
+        } else if let Some(single) = members.into_iter().next() {
+            // Only found one of the listed IDs — put it back
+            vulns_by_id.insert(single.id.clone(), single);
+        }
+    }
+
+    // Collect remaining vulns and sort by severity
+    let mut result: Vec<Vulnerability> = vulns_by_id.into_values().collect();
+    result.sort_by_key(|v| match v.severity {
+        Severity::Critical => 0,
+        Severity::High => 1,
+        Severity::Medium => 2,
+        Severity::Low => 3,
+        Severity::Info => 4,
+    });
+
+    result
+}
+
 /// Export report to JSON file
 pub fn export_json(report: &Report, path: impl AsRef<Path>) -> Result<()> {
     let json = serde_json::to_string_pretty(report)?;

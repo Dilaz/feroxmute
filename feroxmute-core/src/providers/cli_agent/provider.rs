@@ -17,11 +17,11 @@ use crate::limitations::EngagementLimitations;
 use crate::mcp::McpServer;
 use crate::mcp::http::HttpMcpServer;
 use crate::mcp::tools::{
-    FindingContext, McpAddRecommendationTool, McpCompleteEngagementTool, McpDockerShellTool,
-    McpExportHtmlTool, McpExportJsonTool, McpExportMarkdownTool, McpExportPdfTool,
-    McpGenerateReportTool, McpListAgentsTool, McpMemoryAddTool, McpMemoryGetTool,
-    McpMemoryListTool, McpRecordFindingTool, McpRunScriptTool, McpSpawnAgentTool,
-    McpWaitForAgentTool, McpWaitForAnyTool,
+    FindingContext, McpAddRecommendationTool, McpCompleteEngagementTool,
+    McpDeduplicateFindingsTool, McpDockerShellTool, McpExportHtmlTool, McpExportJsonTool,
+    McpExportMarkdownTool, McpExportPdfTool, McpGenerateReportTool, McpListAgentsTool,
+    McpMemoryAddTool, McpMemoryGetTool, McpMemoryListTool, McpRecordFindingTool, McpRunScriptTool,
+    McpSpawnAgentTool, McpWaitForAgentTool, McpWaitForAnyTool,
 };
 use crate::providers::traits::{CompletionRequest, CompletionResponse, LlmProvider};
 use crate::state::MetricsTracker;
@@ -139,6 +139,11 @@ impl CliAgentProvider {
 
     /// Register report tools on the given MCP server.
     async fn register_report_tools(mcp_server: &McpServer, context: Arc<ReportContext>) {
+        mcp_server
+            .register_tool(Arc::new(McpDeduplicateFindingsTool::new(Arc::clone(
+                &context,
+            ))))
+            .await;
         mcp_server
             .register_tool(Arc::new(McpGenerateReportTool::new(Arc::clone(&context))))
             .await;
@@ -282,6 +287,7 @@ impl LlmProvider for CliAgentProvider {
             reports_dir: context.reports_dir.clone(),
             session_db_path: context.session_db_path.clone(),
             deduplicated_findings: Arc::new(Mutex::new(None)),
+            provider: None,
         });
         Self::register_report_tools(&mcp_server, report_context).await;
 
