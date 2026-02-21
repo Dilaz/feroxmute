@@ -14,8 +14,8 @@ use crate::state::MetricsTracker;
 use crate::tools::{
     AddRecommendationTool, CompleteEngagementTool, DockerShellTool, EventSender, ExportHtmlTool,
     ExportJsonTool, ExportMarkdownTool, ExportPdfTool, GenerateReportTool, ListAgentsTool,
-    OrchestratorContext, RecordFindingTool, ReportContext, RunScriptTool, SpawnAgentTool,
-    WaitForAgentTool, WaitForAnyTool,
+    OrchestratorContext, RecordFindingTool, ReportContext, ReviewEventsTool, RunScriptTool,
+    SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 use crate::{Error, Result};
 
@@ -247,6 +247,7 @@ impl LlmProvider for AzureProvider {
             .tool(ListAgentsTool::new(Arc::clone(&context)))
             .tool(RecordFindingTool::new(Arc::clone(&context)))
             .tool(CompleteEngagementTool::new(Arc::clone(&context)))
+            .tool(ReviewEventsTool::new(Arc::clone(&context)))
             .build();
 
         // max_turns enables tool loop with max 500 iterations

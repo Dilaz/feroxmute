@@ -947,6 +947,168 @@ impl Tool for WaitForAnyTool {
 }
 
 // ============================================================================
+// ReviewEventsTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ReviewEventsArgs {
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewEventsOutput {
+    pub events: Vec<ReviewEventEntry>,
+    pub event_count: usize,
+    pub agents_running: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewEventEntry {
+    pub agent_name: String,
+    pub agent_type: String,
+    pub timestamp: String,
+    pub event_type: String,
+    pub summary: String,
+}
+
+pub struct ReviewEventsTool {
+    context: Arc<OrchestratorContext>,
+}
+
+impl ReviewEventsTool {
+    pub fn new(context: Arc<OrchestratorContext>) -> Self {
+        Self { context }
+    }
+}
+
+impl Tool for ReviewEventsTool {
+    const NAME: &'static str = "review_events";
+
+    type Error = OrchestratorToolError;
+    type Args = ReviewEventsArgs;
+    type Output = ReviewEventsOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "review_events".to_string(),
+            description: "Review events from running agents. Returns findings, milestones, completions, and failures. Blocks until at least one event is available (default 60s timeout). Use this to stay informed about agent progress and decide next actions.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "Maximum seconds to wait for events (default: 60)"
+                    }
+                }
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        // Notify TUI of tool invocation for counting
+        self.context.events.send_tool_call();
+
+        let timeout_secs = args.timeout_seconds.unwrap_or(60);
+
+        self.context.events.send_feed(
+            "orchestrator",
+            &format!("Reviewing agent events (timeout: {}s)...", timeout_secs),
+            false,
+        );
+
+        // Update orchestrator status to Waiting while blocked
+        self.context
+            .events
+            .send_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
+
+        // Drain events from the event bus
+        let raw_events = {
+            let mut bus = self.context.event_bus.lock().await;
+            bus.drain_or_wait(Duration::from_secs(timeout_secs)).await
+        };
+
+        // Get running agent count
+        let agents_running = {
+            let registry = self.context.registry.lock().await;
+            registry.running_count()
+        };
+
+        // Map raw events to ReviewEventEntry structs
+        let entries: Vec<ReviewEventEntry> = raw_events
+            .iter()
+            .map(|e| {
+                use crate::agents::EventKind;
+                let (event_type, summary) = match &e.event {
+                    EventKind::FindingRecorded { severity, title } => {
+                        ("finding".to_string(), format!("[{}] {}", severity, title))
+                    }
+                    EventKind::MilestoneReached { milestone, details } => (
+                        "milestone".to_string(),
+                        format!("{}: {}", milestone, details),
+                    ),
+                    EventKind::AgentCompleted {
+                        success,
+                        summary,
+                        key_findings,
+                        next_steps,
+                    } => (
+                        "completed".to_string(),
+                        format!(
+                            "success={}, summary={}, findings=[{}], next_steps=[{}]",
+                            success,
+                            summary,
+                            key_findings.join(", "),
+                            next_steps.join(", ")
+                        ),
+                    ),
+                    EventKind::AgentFailed { error } => ("failed".to_string(), error.clone()),
+                    EventKind::AgentCancelled { partial_summary } => (
+                        "cancelled".to_string(),
+                        partial_summary
+                            .clone()
+                            .unwrap_or_else(|| "No summary".to_string()),
+                    ),
+                };
+
+                ReviewEventEntry {
+                    agent_name: e.agent_name.clone(),
+                    agent_type: e.agent_type.clone(),
+                    timestamp: e.timestamp.to_rfc3339(),
+                    event_type,
+                    summary,
+                }
+            })
+            .collect();
+
+        let event_count = entries.len();
+
+        // Restore orchestrator status to Running
+        self.context.events.send_status(
+            "orchestrator",
+            "orchestrator",
+            AgentStatus::Streaming,
+            None,
+        );
+
+        self.context.events.send_feed(
+            "orchestrator",
+            &format!(
+                "Reviewed {} event(s), {} agent(s) still running",
+                event_count, agents_running
+            ),
+            false,
+        );
+
+        Ok(ReviewEventsOutput {
+            events: entries,
+            event_count,
+            agents_running,
+        })
+    }
+}
+
+// ============================================================================
 // ListAgentsTool
 // ============================================================================
 
@@ -1485,5 +1647,19 @@ mod tests {
         let args: ReportMilestoneArgs = serde_json::from_str(json).unwrap();
         assert_eq!(args.milestone, "Scan started");
         assert!(args.details.is_none());
+    }
+
+    #[test]
+    fn test_review_events_args_deserialize() {
+        let json = r#"{"timeout_seconds": 30}"#;
+        let args: ReviewEventsArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.timeout_seconds.unwrap(), 30);
+    }
+
+    #[test]
+    fn test_review_events_args_defaults() {
+        let json = r#"{}"#;
+        let args: ReviewEventsArgs = serde_json::from_str(json).unwrap();
+        assert!(args.timeout_seconds.is_none());
     }
 }

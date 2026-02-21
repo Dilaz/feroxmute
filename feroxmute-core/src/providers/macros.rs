@@ -331,6 +331,7 @@ macro_rules! define_provider {
                     .tool($crate::tools::ListAgentsTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::RecordFindingTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::CompleteEngagementTool::new(std::sync::Arc::clone(&context)))
+                    .tool($crate::tools::ReviewEventsTool::new(std::sync::Arc::clone(&context)))
                     .tool($crate::tools::MemoryAddTool::new(std::sync::Arc::clone(&context.memory)))
                     .tool($crate::tools::MemoryGetTool::new(std::sync::Arc::clone(&context.memory)))
                     .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&context.memory)))
