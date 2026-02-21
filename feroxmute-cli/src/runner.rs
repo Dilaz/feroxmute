@@ -288,7 +288,7 @@ pub async fn run_orchestrator(
 
     // Run orchestrator with new provider method
     tokio::select! {
-        result = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider, target_llm_config) => {
+        (result, maybe_context) = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider, target_llm_config) => {
             match result {
                 Ok(output) => {
                     // Check if engagement was properly completed via complete_engagement tool
@@ -319,6 +319,22 @@ pub async fn run_orchestrator(
                             success: false,
                             message: format!("Engagement ended prematurely - orchestrator stopped without completing the full workflow (recon → scanner → report → complete). Last output:\n{}", output),
                         }).await;
+
+                        // Cleanup: abort still-running agents
+                        if let Some(ref context) = maybe_context {
+                            let aborted = {
+                                let mut registry = context.registry.lock().await;
+                                registry.abort_all()
+                            };
+                            for (name, agent_type) in &aborted {
+                                let _ = tx.try_send(AgentEvent::Status {
+                                    agent: name.clone(),
+                                    agent_type: agent_type.clone(),
+                                    status: AgentStatus::Failed,
+                                    current_tool: None,
+                                });
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -333,6 +349,22 @@ pub async fn run_orchestrator(
                         success: false,
                         message: format!("Engagement failed: {}", e),
                     }).await;
+
+                    // Cleanup: abort still-running agents
+                    if let Some(ref context) = maybe_context {
+                        let aborted = {
+                            let mut registry = context.registry.lock().await;
+                            registry.abort_all()
+                        };
+                        for (name, agent_type) in &aborted {
+                            let _ = tx.try_send(AgentEvent::Status {
+                                agent: name.clone(),
+                                agent_type: agent_type.clone(),
+                                status: AgentStatus::Failed,
+                                current_tool: None,
+                            });
+                        }
+                    }
                 }
             }
         }
@@ -392,7 +424,7 @@ async fn run_orchestrator_with_tools(
     session: Arc<feroxmute_core::state::Session>,
     target_provider: Option<Arc<dyn LlmProvider>>,
     target_llm_config: Option<feroxmute_core::config::ProviderConfig>,
-) -> Result<String> {
+) -> (anyhow::Result<String>, Option<Arc<OrchestratorContext>>) {
     // Create TuiEventSender first so it can be shared
     let events: Arc<dyn feroxmute_core::tools::EventSender> =
         Arc::new(TuiEventSender::new(tx.clone()));
@@ -400,9 +432,15 @@ async fn run_orchestrator_with_tools(
     // Use session DB for persistent storage.
     // We open a separate connection because the MemoryContext wraps it in Arc<Mutex<>>
     // for concurrent access from async tool calls, while Session owns its main connection.
-    let memory_conn = session
-        .open_connection()
-        .map_err(|e| anyhow::anyhow!("Failed to open session DB: {}", e))?;
+    let memory_conn = match session.open_connection() {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                Err(anyhow::anyhow!("Failed to open session DB: {}", e)),
+                None,
+            );
+        }
+    };
     let memory_context = Arc::new(MemoryContext {
         conn: Arc::new(Mutex::new(memory_conn)),
         events: Arc::clone(&events),
@@ -509,10 +547,17 @@ async fn run_orchestrator_with_tools(
     );
 
     // Use rig's built-in tool loop via the provider
-    let result = provider
-        .complete_with_orchestrator(orchestrator.system_prompt(), &user_prompt, context)
+    let result = match provider
+        .complete_with_orchestrator(
+            orchestrator.system_prompt(),
+            &user_prompt,
+            Arc::clone(&context),
+        )
         .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
+    {
+        Ok(r) => r,
+        Err(e) => return (Err(anyhow::anyhow!("{}", e)), Some(context)),
+    };
 
-    Ok(result)
+    (Ok(result), Some(context))
 }
