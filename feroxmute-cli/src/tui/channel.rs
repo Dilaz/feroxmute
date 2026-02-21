@@ -80,6 +80,14 @@ pub enum AgentEvent {
         finding: CodeFindingEvent,
     },
 
+    /// Agent reached a milestone (constructed by event bus bridge)
+    #[allow(dead_code)]
+    Milestone {
+        agent: String,
+        milestone: String,
+        details: String,
+    },
+
     /// A tool was invoked (for tool call counting)
     ToolCall,
 }

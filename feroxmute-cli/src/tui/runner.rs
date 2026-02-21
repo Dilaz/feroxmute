@@ -14,7 +14,7 @@ use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 use super::app::{App, View};
 use super::channel::{AgentEvent, VulnSeverity};
 use super::events::{EventResult, handle_event, poll_event};
-use super::widgets::{agent_detail, dashboard, memory, memory_modal, sast};
+use super::widgets::{agent_detail, dashboard, memory, memory_modal, sast, timeline};
 
 /// Render the current view
 fn render(frame: &mut Frame, app: &App) {
@@ -40,6 +40,9 @@ fn render(frame: &mut Frame, app: &App) {
             if app.show_memory_modal {
                 memory_modal::render(frame, app);
             }
+        }
+        View::Timeline => {
+            timeline::render(frame, app, frame.area());
         }
     }
 
@@ -204,7 +207,7 @@ fn render_help(frame: &mut Frame) {
         ]),
         Line::from(vec![
             Span::styled("  t          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Toggle thinking panel"),
+            Span::raw("Event timeline (from dashboard/memory)"),
         ]),
         Line::from(vec![
             Span::styled("  m          ", Style::default().fg(Color::Yellow)),
@@ -280,8 +283,23 @@ fn drain_events(app: &mut App) {
                 status,
                 current_tool,
             } => {
+                // Track spawned agents for timeline
+                let is_new = !app.agents.contains_key(&agent);
+
                 app.update_agent_status(&agent, status);
                 app.update_spawned_agent_status(&agent, &agent_type, status, current_tool);
+
+                // Record timeline events for key status changes
+                if is_new && agent != "orchestrator" {
+                    app.add_timeline_event(
+                        &agent,
+                        "spawned",
+                        &format!("Agent spawned ({})", agent_type),
+                    );
+                }
+                if status == feroxmute_core::agents::AgentStatus::Cancelled {
+                    app.add_timeline_event(&agent, "cancelled", "Agent cancelled");
+                }
             }
             AgentEvent::Metrics {
                 input,
@@ -308,6 +326,7 @@ fn drain_events(app: &mut App) {
                     "vuln",
                     format!("[{:?}] {}", severity, title),
                 ));
+                app.add_timeline_event("vuln", "finding", &format!("[{:?}] {}", severity, title));
             }
             AgentEvent::Finished { success, message } => {
                 let agent = "system";
@@ -328,6 +347,15 @@ fn drain_events(app: &mut App) {
                 next_steps,
                 raw_output,
             } => {
+                // Record timeline event
+                let event_type = if success { "completed" } else { "failed" };
+                let timeline_msg = if summary.is_empty() {
+                    format!("Agent {}", event_type)
+                } else {
+                    summary.clone()
+                };
+                app.add_timeline_event(&agent, event_type, &timeline_msg);
+
                 // Show raw output as separate feed entries for proper display
                 let icon = if success { "✓" } else { "✗" };
                 app.add_feed(super::app::FeedEntry::new(
@@ -399,6 +427,16 @@ fn drain_events(app: &mut App) {
                     &agent,
                     format!("[{:?}] {}", finding.severity, finding.title),
                 ));
+            }
+            AgentEvent::Milestone {
+                agent,
+                milestone,
+                details,
+            } => {
+                let msg = format!("[MILESTONE] {}: {}", milestone, details);
+                let entry = super::app::FeedEntry::new(&agent, &msg);
+                app.add_feed(entry);
+                app.add_timeline_event(&agent, "milestone", &format!("{}: {}", milestone, details));
             }
             AgentEvent::ToolCall => {
                 app.metrics.tool_calls += 1;

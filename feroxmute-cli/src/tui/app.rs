@@ -18,6 +18,16 @@ pub enum View {
     Logs,
     Help,
     Memory,
+    Timeline,
+}
+
+/// A timeline event for the event timeline view
+#[derive(Debug, Clone)]
+pub struct TimelineEvent {
+    pub timestamp: DateTime<Local>,
+    pub agent: String,
+    pub event_type: String,
+    pub message: String,
 }
 
 /// Metrics display
@@ -184,6 +194,10 @@ pub struct App {
     pub code_finding_counts: CodeFindingCounts,
     /// Channel receiver for agent events
     pub event_rx: Option<mpsc::Receiver<AgentEvent>>,
+    /// Timeline events for event timeline view
+    pub timeline_events: Vec<TimelineEvent>,
+    /// Scroll offset for timeline view
+    pub timeline_scroll: usize,
     /// Memory entries for display
     pub memory_entries: Vec<MemoryEntry>,
     /// Currently selected memory entry index
@@ -234,6 +248,8 @@ impl App {
             code_findings: Vec::new(),
             code_finding_counts: CodeFindingCounts::default(),
             event_rx,
+            timeline_events: Vec::new(),
+            timeline_scroll: 0,
             memory_entries: Vec::new(),
             selected_memory: 0,
             show_memory_modal: false,
@@ -517,6 +533,26 @@ impl App {
     /// Get currently selected memory entry
     pub fn selected_memory_entry(&self) -> Option<&MemoryEntry> {
         self.memory_entries.get(self.selected_memory)
+    }
+
+    /// Scroll timeline up (show older entries)
+    pub fn scroll_timeline_up(&mut self) {
+        self.timeline_scroll = self.timeline_scroll.saturating_add(1);
+    }
+
+    /// Scroll timeline down (show newer entries)
+    pub fn scroll_timeline_down(&mut self) {
+        self.timeline_scroll = self.timeline_scroll.saturating_sub(1);
+    }
+
+    /// Add a timeline event
+    pub fn add_timeline_event(&mut self, agent: &str, event_type: &str, message: &str) {
+        self.timeline_events.push(TimelineEvent {
+            timestamp: Local::now(),
+            agent: agent.to_string(),
+            event_type: event_type.to_string(),
+            message: message.to_string(),
+        });
     }
 }
 

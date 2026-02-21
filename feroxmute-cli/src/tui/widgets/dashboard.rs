@@ -319,13 +319,6 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
         "1".to_string()
     };
 
-    // Show thinking toggle state with color indicator
-    let (thinking_label, thinking_style) = if app.show_thinking {
-        ("[ON]", Style::default().fg(Color::Green))
-    } else {
-        ("[OFF]", Style::default().fg(Color::Red))
-    };
-
     let help = Line::from(vec![
         Span::styled("q", Style::default().fg(Color::Yellow)),
         Span::raw(" quit  "),
@@ -336,9 +329,7 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled("l", Style::default().fg(Color::Yellow)),
         Span::raw(" logs  "),
         Span::styled("t", Style::default().fg(Color::Yellow)),
-        Span::raw(" thinking "),
-        Span::styled(thinking_label, thinking_style),
-        Span::raw("  "),
+        Span::raw(" timeline  "),
         Span::styled("?", Style::default().fg(Color::Yellow)),
         Span::raw(" help"),
     ]);
