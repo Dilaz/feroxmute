@@ -173,7 +173,7 @@ mod tests {
                 assert_eq!(severity, "high");
                 assert_eq!(title, "SQL Injection in login");
             }
-            other => panic!("Expected FindingRecorded, got {other:?}"),
+            other => unreachable!("Expected FindingRecorded, got {other:?}"),
         }
     }
 

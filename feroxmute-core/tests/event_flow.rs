@@ -1,5 +1,7 @@
 //! Integration test for the event-driven workflow
 
+#![allow(clippy::indexing_slicing, clippy::unwrap_used)]
+
 use feroxmute_core::agents::event_bus::{AgentEvent, AgentEventBus, EventKind};
 
 use chrono::Utc;
