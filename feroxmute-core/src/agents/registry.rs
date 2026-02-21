@@ -138,6 +138,21 @@ impl AgentRegistry {
             };
         }
     }
+
+    /// Abort all running agents and return their (name, agent_type) for status notification
+    pub fn abort_all(&mut self) -> Vec<(String, String)> {
+        let mut aborted = Vec::new();
+        for agent in self.agents.values_mut() {
+            if !matches!(agent.status, AgentStatus::Completed | AgentStatus::Failed) {
+                if let Some(handle) = agent.handle.take() {
+                    handle.abort();
+                }
+                agent.status = AgentStatus::Failed;
+                aborted.push((agent.name.clone(), agent.agent_type.clone()));
+            }
+        }
+        aborted
+    }
 }
 
 impl AgentResultWaiter {
@@ -330,5 +345,45 @@ mod tests {
 
         registry.mark_agent_result("agent-1", true);
         assert_eq!(registry.is_agent_running("agent-1"), Some(false));
+    }
+
+    #[tokio::test]
+    async fn test_abort_all_marks_running_agents_failed() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+
+        // Register agents in different states
+        let handle1 = tokio::spawn(async { tokio::time::sleep(Duration::from_secs(60)).await });
+        registry.register(
+            "running-agent".to_string(),
+            "recon".to_string(),
+            "test".to_string(),
+            handle1,
+        );
+
+        let handle2 = tokio::spawn(async {});
+        registry.register(
+            "done-agent".to_string(),
+            "scanner".to_string(),
+            "test".to_string(),
+            handle2,
+        );
+        registry.mark_agent_result("done-agent", true); // Mark as Completed
+
+        let aborted = registry.abort_all();
+
+        // Only the running agent should be aborted
+        assert_eq!(aborted.len(), 1);
+        assert_eq!(aborted[0].0, "running-agent");
+        assert_eq!(aborted[0].1, "recon");
+
+        // All agents should now be in terminal state
+        assert_eq!(registry.running_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_abort_all_empty_registry() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+        let aborted = registry.abort_all();
+        assert!(aborted.is_empty());
     }
 }
