@@ -47,6 +47,21 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    // Timeline view specific handling
+    if app.view == View::Timeline {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.scroll_timeline_up();
+                return EventResult::Continue;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.scroll_timeline_down();
+                return EventResult::Continue;
+            }
+            _ => {} // Fall through to global keys
+        }
+    }
+
     // Memory view specific handling
     if app.view == View::Memory {
         if app.show_memory_modal {
@@ -109,9 +124,17 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
             }
         }
 
-        // Toggles
+        // Timeline / thinking toggle
         KeyCode::Char('t') => {
-            app.toggle_thinking();
+            if matches!(app.view, View::Dashboard | View::Memory | View::Timeline) {
+                app.view = if app.view == View::Timeline {
+                    View::Dashboard
+                } else {
+                    View::Timeline
+                };
+            } else {
+                app.toggle_thinking();
+            }
         }
         KeyCode::Char('o') => {
             if let View::AgentDetail(agent_name) = &app.view {
@@ -286,10 +309,27 @@ mod tests {
     }
 
     #[test]
-    fn test_toggle_thinking() {
+    fn test_timeline_toggle() {
         let mut app = App::new("test.com", "test-session", None);
+        assert_eq!(app.view, View::Dashboard);
+
+        // From dashboard, 't' switches to timeline
+        let key = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE);
+        handle_key_event(&mut app, key);
+        assert_eq!(app.view, View::Timeline);
+
+        // From timeline, 't' switches back to dashboard
+        handle_key_event(&mut app, key);
+        assert_eq!(app.view, View::Dashboard);
+    }
+
+    #[test]
+    fn test_toggle_thinking_from_logs() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.navigate(View::Logs);
         let initial = app.show_thinking;
 
+        // From non-dashboard/memory/timeline views, 't' toggles thinking
         let key = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE);
         handle_key_event(&mut app, key);
 
