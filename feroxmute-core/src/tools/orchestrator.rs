@@ -1083,6 +1083,21 @@ impl Tool for RecordFindingTool {
         let mut findings = self.context.findings.lock().await;
         findings.push(formatted.clone());
 
+        // Emit FindingRecorded event to orchestrator event bus
+        let event = crate::agents::event_bus::AgentEvent {
+            agent_name: "system".to_string(),
+            agent_type: "finding".to_string(),
+            timestamp: Utc::now(),
+            event: crate::agents::EventKind::FindingRecorded {
+                severity: args.severity.clone().unwrap_or_else(|| "info".to_string()),
+                title: args.finding.clone(),
+            },
+        };
+
+        if let Err(e) = self.context.event_bus_sender.send(event).await {
+            tracing::warn!("Failed to send finding event to bus: {}", e);
+        }
+
         self.context
             .events
             .send_feed("orchestrator", &format!("Recorded: {}", formatted), false);
