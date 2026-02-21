@@ -284,7 +284,7 @@ impl Tool for SpawnAgentTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "spawn_agent".to_string(),
-            description: "Spawn a new agent to run a task in the background. Returns immediately. After calling this, you MUST call wait_for_any() to get results - do not stop or complete the engagement without waiting."
+            description: "Spawn a new agent to run a task in the background. Returns immediately. Use review_events() or wait_for_any() to monitor progress."
                 .to_string(),
             parameters: json!({
                 "type": "object",
@@ -416,6 +416,7 @@ impl Tool for SpawnAgentTool {
 
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
+            let report_event_bus = event_bus_sender;
             tokio::spawn(async move {
                 let start = std::time::Instant::now();
 
@@ -434,6 +435,10 @@ impl Tool for SpawnAgentTool {
                     provider: Some(Arc::clone(&provider)),
                 });
 
+                // Clone values needed after tokio::select! in both branches
+                let agent_name_ev = agent_name.clone();
+                let agent_type_ev = agent_type.clone();
+
                 tokio::select! {
                     _ = agent_cancel.cancelled() => {
                         let _ = result_tx
@@ -445,6 +450,14 @@ impl Tool for SpawnAgentTool {
                                 duration: start.elapsed(),
                             })
                             .await;
+                        let _ = report_event_bus.send(crate::agents::event_bus::AgentEvent {
+                            agent_name: agent_name_ev,
+                            agent_type: agent_type_ev,
+                            timestamp: chrono::Utc::now(),
+                            event: crate::agents::EventKind::AgentCancelled {
+                                partial_summary: None,
+                            },
+                        }).await;
                     }
                     output = async {
                         match tokio::time::timeout(
@@ -467,10 +480,27 @@ impl Tool for SpawnAgentTool {
                                 name: agent_name.clone(),
                                 agent_type,
                                 success,
-                                output,
+                                output: output.clone(),
                                 duration: start.elapsed(),
                             })
                             .await;
+                        let _ = report_event_bus.send(crate::agents::event_bus::AgentEvent {
+                            agent_name: agent_name_ev,
+                            agent_type: agent_type_ev,
+                            timestamp: chrono::Utc::now(),
+                            event: if success {
+                                crate::agents::EventKind::AgentCompleted {
+                                    success: true,
+                                    summary: truncate_output(&output, 200),
+                                    key_findings: vec![],
+                                    next_steps: vec![],
+                                }
+                            } else {
+                                crate::agents::EventKind::AgentFailed {
+                                    error: truncate_output(&output, 200),
+                                }
+                            },
+                        }).await;
                     }
                 }
             })
@@ -478,6 +508,7 @@ impl Tool for SpawnAgentTool {
             // LLM pentest agents use specialized LLM testing tools
             let target_provider_arc = self.context.target_provider.clone();
             let target_llm_config = self.context.target_llm_config.clone();
+            let llm_event_bus = event_bus_sender.clone();
             tokio::spawn(async move {
                 let start = std::time::Instant::now();
 
@@ -487,10 +518,20 @@ impl Tool for SpawnAgentTool {
                         let _ = result_tx
                             .send(AgentResult {
                                 name: agent_name.clone(),
-                                agent_type,
+                                agent_type: agent_type.clone(),
                                 success: false,
                                 output: "Error: No target LLM configured. Use --target-llm to specify the target.".to_string(),
                                 duration: start.elapsed(),
+                            })
+                            .await;
+                        let _ = llm_event_bus
+                            .send(crate::agents::event_bus::AgentEvent {
+                                agent_name,
+                                agent_type,
+                                timestamp: chrono::Utc::now(),
+                                event: crate::agents::EventKind::AgentFailed {
+                                    error: "No target LLM configured".to_string(),
+                                },
                             })
                             .await;
                         return;
@@ -517,6 +558,10 @@ impl Tool for SpawnAgentTool {
                     target_provider_name: target_config.name.to_string(),
                 });
 
+                // Clone values needed after tokio::select! in both branches
+                let agent_name_ev = agent_name.clone();
+                let agent_type_ev = agent_type.clone();
+
                 tokio::select! {
                     _ = agent_cancel.cancelled() => {
                         let _ = result_tx
@@ -528,6 +573,14 @@ impl Tool for SpawnAgentTool {
                                 duration: start.elapsed(),
                             })
                             .await;
+                        let _ = llm_event_bus.send(crate::agents::event_bus::AgentEvent {
+                            agent_name: agent_name_ev,
+                            agent_type: agent_type_ev,
+                            timestamp: chrono::Utc::now(),
+                            event: crate::agents::EventKind::AgentCancelled {
+                                partial_summary: None,
+                            },
+                        }).await;
                     }
                     output = async {
                         match tokio::time::timeout(
@@ -561,17 +614,39 @@ impl Tool for SpawnAgentTool {
                                 name: agent_name.clone(),
                                 agent_type,
                                 success,
-                                output,
+                                output: output.clone(),
                                 duration: start.elapsed(),
                             })
                             .await;
+                        let _ = llm_event_bus.send(crate::agents::event_bus::AgentEvent {
+                            agent_name: agent_name_ev,
+                            agent_type: agent_type_ev,
+                            timestamp: chrono::Utc::now(),
+                            event: if success {
+                                crate::agents::EventKind::AgentCompleted {
+                                    success: true,
+                                    summary: truncate_output(&output, 200),
+                                    key_findings: vec![],
+                                    next_steps: vec![],
+                                }
+                            } else {
+                                crate::agents::EventKind::AgentFailed {
+                                    error: truncate_output(&output, 200),
+                                }
+                            },
+                        }).await;
                     }
                 }
             })
         } else {
             // Other agents use shell tool
+            let shell_event_bus = event_bus_sender.clone();
             tokio::spawn(async move {
                 let start = std::time::Instant::now();
+
+                // Clone values needed after tokio::select! in both branches
+                let agent_name_ev = agent_name.clone();
+                let agent_type_ev = agent_type.clone();
 
                 tokio::select! {
                     _ = agent_cancel.cancelled() => {
@@ -584,6 +659,14 @@ impl Tool for SpawnAgentTool {
                                 duration: start.elapsed(),
                             })
                             .await;
+                        let _ = shell_event_bus.send(crate::agents::event_bus::AgentEvent {
+                            agent_name: agent_name_ev,
+                            agent_type: agent_type_ev,
+                            timestamp: chrono::Utc::now(),
+                            event: crate::agents::EventKind::AgentCancelled {
+                                partial_summary: None,
+                            },
+                        }).await;
                     }
                     output = async {
                         match tokio::time::timeout(
@@ -616,10 +699,27 @@ impl Tool for SpawnAgentTool {
                                 name: agent_name.clone(),
                                 agent_type,
                                 success,
-                                output,
+                                output: output.clone(),
                                 duration: start.elapsed(),
                             })
                             .await;
+                        let _ = shell_event_bus.send(crate::agents::event_bus::AgentEvent {
+                            agent_name: agent_name_ev,
+                            agent_type: agent_type_ev,
+                            timestamp: chrono::Utc::now(),
+                            event: if success {
+                                crate::agents::EventKind::AgentCompleted {
+                                    success: true,
+                                    summary: truncate_output(&output, 200),
+                                    key_findings: vec![],
+                                    next_steps: vec![],
+                                }
+                            } else {
+                                crate::agents::EventKind::AgentFailed {
+                                    error: truncate_output(&output, 200),
+                                }
+                            },
+                        }).await;
                     }
                 }
             })
@@ -637,7 +737,7 @@ impl Tool for SpawnAgentTool {
         Ok(SpawnAgentOutput {
             success: true,
             message: format!(
-                "Agent '{}' ({}) is now running. YOUR NEXT TOOL CALL MUST BE: wait_for_any()",
+                "Agent '{}' ({}) is now running. Use review_events() or wait_for_any() to monitor progress.",
                 args.name, args.agent_type
             ),
         })
@@ -779,14 +879,17 @@ impl Tool for WaitForAgentTool {
                 // Send summary to TUI
                 self.context.events.send_summary(&result.name, &summary);
 
-                // Generate workflow hint based on agent type
-                let workflow_hint = if result.agent_type == "report" {
-                    "REPORT COMPLETED. You may now call complete_engagement with an executive summary.".to_string()
-                } else if result.agent_type == "recon" {
-                    "RECON COMPLETED. Spawn scanner agent(s) to test discovered endpoints, or wait for other agents.".to_string()
-                } else {
-                    "Agent completed. Continue with next phase of testing.".to_string()
+                // Get remaining running count for informational hint
+                let remaining_running = {
+                    let registry = self.context.registry.lock().await;
+                    registry.running_count()
                 };
+
+                // Generate informational workflow hint
+                let workflow_hint = format!(
+                    "Agent '{}' ({}) completed. {} agent(s) still running. Review the results and decide: spawn new agents, cancel running agents, update instructions, review more events, or complete the engagement.",
+                    result.name, result.agent_type, remaining_running
+                );
 
                 Ok(WaitForAgentOutput {
                     found: true,
@@ -851,7 +954,7 @@ impl Tool for WaitForAnyTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "wait_for_any".to_string(),
-            description: "REQUIRED after spawn_agent. Blocks until an agent completes and returns its results. You MUST call this after every spawn to get results and decide next steps. Returns remaining_running count.".to_string(),
+            description: "Block until any running agent completes and return its results. Returns the agent's summary and remaining_running count.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {}
@@ -905,17 +1008,14 @@ impl Tool for WaitForAnyTool {
         };
 
         // Brief lock: get instructions and remaining count
-        let (instructions, remaining_running, has_scanner, has_report) = {
+        let (instructions, remaining_running) = {
             let registry = self.context.registry.lock().await;
             let instr = result
                 .as_ref()
                 .and_then(|r| registry.get_agent_instructions(&r.name))
                 .unwrap_or_default();
             let remaining = registry.running_count();
-            let all_agents = registry.list_agents();
-            let scanner = all_agents.iter().any(|(_, t, _)| *t == "scanner");
-            let report = all_agents.iter().any(|(_, t, _)| *t == "report");
-            (instr, remaining, scanner, report)
+            (instr, remaining)
         };
         // Registry lock released here
 
@@ -956,21 +1056,11 @@ impl Tool for WaitForAnyTool {
                 // Send summary to TUI
                 self.context.events.send_summary(&result.name, &summary);
 
-                // Generate workflow hint based on current state
-                let workflow_hint = if result.agent_type == "recon" && !has_scanner {
-                    "RECON COMPLETED. You MUST now spawn scanner agent(s) to test the discovered endpoints/services. DO NOT call complete_engagement yet.".to_string()
-                } else if result.agent_type == "scanner" && remaining_running == 0 && !has_report {
-                    "ALL SCANNERS COMPLETED. You MUST now spawn a report agent to generate findings. DO NOT call complete_engagement yet.".to_string()
-                } else if result.agent_type == "report" && remaining_running == 0 {
-                    "REPORT COMPLETED. You may now call complete_engagement with an executive summary.".to_string()
-                } else if remaining_running > 0 {
-                    format!(
-                        "{} agent(s) still running. Call wait_for_any again or spawn more agents.",
-                        remaining_running
-                    )
-                } else {
-                    "Analyze results and spawn appropriate follow-up agents, or spawn report if all testing is done.".to_string()
-                };
+                // Generate informational workflow hint
+                let workflow_hint = format!(
+                    "Agent '{}' ({}) completed. {} agent(s) still running. Review the results and decide: spawn new agents, cancel running agents, update instructions, review more events, or complete the engagement.",
+                    result.name, result.agent_type, remaining_running
+                );
 
                 Ok(WaitForAnyOutput {
                     found: true,
@@ -1671,7 +1761,7 @@ impl Tool for CompleteEngagementTool {
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: "complete_engagement".to_string(),
-            description: "ONLY call after all work is done: spawn recon -> wait_for_any -> spawn scanners -> wait_for_any (repeat until remaining_running=0) -> spawn report -> wait_for_agent -> THEN complete. Will fail if agents are running.".to_string(),
+            description: "Mark the engagement as complete. Provide an executive summary of findings. Will fail if agents are still running.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
