@@ -212,8 +212,10 @@ impl LlmProvider for CliAgentProvider {
         container: Arc<ContainerManager>,
         events: Arc<dyn EventSender>,
         agent_name: &str,
+        _agent_type: &str,
         limitations: Arc<EngagementLimitations>,
         memory: Arc<MemoryContext>,
+        _event_bus_sender: crate::agents::AgentEventSender,
     ) -> Result<String> {
         // 1. Spawn isolated subprocess + HTTP MCP server
         let (bridge, mcp_server, http) = self.create_agent_env().await?;

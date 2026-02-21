@@ -406,6 +406,7 @@ impl Tool for SpawnAgentTool {
         let session_db_path = self.context.session_db_path.clone();
 
         let provider_metrics = provider.metrics().clone();
+        let event_bus_sender = self.context.event_bus_sender.clone();
 
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
@@ -505,8 +506,10 @@ impl Tool for SpawnAgentTool {
                         container,
                         events,
                         &agent_name,
+                        &agent_type,
                         limitations,
                         memory,
+                        event_bus_sender,
                     ),
                 )
                 .await
@@ -544,8 +547,10 @@ impl Tool for SpawnAgentTool {
                         container,
                         events,
                         &agent_name,
+                        &agent_type,
                         limitations,
                         memory,
+                        event_bus_sender,
                     ),
                 )
                 .await
@@ -1105,6 +1110,109 @@ impl Tool for RecordFindingTool {
 }
 
 // ============================================================================
+// ReportMilestoneTool
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ReportMilestoneArgs {
+    pub milestone: String,
+    #[serde(default)]
+    pub details: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReportMilestoneOutput {
+    pub recorded: bool,
+    pub message: String,
+}
+
+pub struct ReportMilestoneTool {
+    agent_name: String,
+    agent_type: String,
+    event_bus_sender: AgentEventSender,
+    events: Arc<dyn EventSender>,
+}
+
+impl ReportMilestoneTool {
+    pub fn new(
+        agent_name: String,
+        agent_type: String,
+        event_bus_sender: AgentEventSender,
+        events: Arc<dyn EventSender>,
+    ) -> Self {
+        Self {
+            agent_name,
+            agent_type,
+            event_bus_sender,
+            events,
+        }
+    }
+}
+
+impl Tool for ReportMilestoneTool {
+    const NAME: &'static str = "report_milestone";
+
+    type Error = OrchestratorToolError;
+    type Args = ReportMilestoneArgs;
+    type Output = ReportMilestoneOutput;
+
+    async fn definition(&self, _prompt: String) -> ToolDefinition {
+        ToolDefinition {
+            name: "report_milestone".to_string(),
+            description:
+                "Report a significant milestone to the orchestrator. Use this when you reach important checkpoints."
+                    .to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "milestone": {
+                        "type": "string",
+                        "description": "Name of the milestone reached"
+                    },
+                    "details": {
+                        "type": "string",
+                        "description": "Additional details about what was accomplished"
+                    }
+                },
+                "required": ["milestone"]
+            }),
+        }
+    }
+
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let details = args.details.clone().unwrap_or_default();
+
+        // Send MilestoneReached event to event bus
+        let event = crate::agents::event_bus::AgentEvent {
+            agent_name: self.agent_name.clone(),
+            agent_type: self.agent_type.clone(),
+            timestamp: Utc::now(),
+            event: crate::agents::EventKind::MilestoneReached {
+                milestone: args.milestone.clone(),
+                details: details.clone(),
+            },
+        };
+
+        if let Err(e) = self.event_bus_sender.send(event).await {
+            tracing::warn!("Failed to send milestone event to bus: {}", e);
+        }
+
+        // Send feed message to TUI
+        let feed_msg = if details.is_empty() {
+            format!("[MILESTONE] {}", args.milestone)
+        } else {
+            format!("[MILESTONE] {}: {}", args.milestone, details)
+        };
+        self.events.send_feed(&self.agent_name, &feed_msg, false);
+
+        Ok(ReportMilestoneOutput {
+            recorded: true,
+            message: format!("Milestone recorded: {}", args.milestone),
+        })
+    }
+}
+
+// ============================================================================
 // CompleteEngagementTool
 // ============================================================================
 
@@ -1346,5 +1454,21 @@ mod tests {
         let result = truncate_output(&long, 10);
         assert!(result.len() <= 14); // 10 chars + "..."
         assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_report_milestone_args_deserialize() {
+        let json = r#"{"milestone": "Port scan complete", "details": "Found 3 open ports: 80, 443, 8080"}"#;
+        let args: ReportMilestoneArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.milestone, "Port scan complete");
+        assert_eq!(args.details.unwrap(), "Found 3 open ports: 80, 443, 8080");
+    }
+
+    #[test]
+    fn test_report_milestone_args_deserialize_without_details() {
+        let json = r#"{"milestone": "Scan started"}"#;
+        let args: ReportMilestoneArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.milestone, "Scan started");
+        assert!(args.details.is_none());
     }
 }

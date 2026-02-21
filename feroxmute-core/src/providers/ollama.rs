@@ -143,10 +143,12 @@ impl LlmProvider for OllamaProvider {
         container: Arc<ContainerManager>,
         events: Arc<dyn EventSender>,
         agent_name: &str,
+        agent_type: &str,
         limitations: Arc<EngagementLimitations>,
         memory: Arc<crate::tools::MemoryContext>,
+        event_bus_sender: crate::agents::AgentEventSender,
     ) -> Result<String> {
-        use crate::tools::{MemoryAddTool, MemoryGetTool, MemoryListTool};
+        use crate::tools::{MemoryAddTool, MemoryGetTool, MemoryListTool, ReportMilestoneTool};
 
         let events_clone = Arc::clone(&events);
 
@@ -176,6 +178,12 @@ impl LlmProvider for OllamaProvider {
                 .tool(MemoryAddTool::new(Arc::clone(&memory)))
                 .tool(MemoryGetTool::new(Arc::clone(&memory)))
                 .tool(MemoryListTool::new(Arc::clone(&memory)))
+                .tool(ReportMilestoneTool::new(
+                    agent_name.to_string(),
+                    agent_type.to_string(),
+                    event_bus_sender.clone(),
+                    Arc::clone(&events),
+                ))
                 .build();
 
             // max_turns enables tool loop with max 50 iterations

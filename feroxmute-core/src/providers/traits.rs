@@ -155,8 +155,10 @@ pub trait LlmProvider: Send + Sync {
         _container: Arc<ContainerManager>,
         _events: Arc<dyn crate::tools::EventSender>,
         _agent_name: &str,
+        _agent_type: &str,
         _limitations: Arc<EngagementLimitations>,
         _memory: Arc<crate::tools::MemoryContext>,
+        _event_bus_sender: crate::agents::AgentEventSender,
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "Shell tool not supported by this provider".to_string(),
@@ -199,8 +201,10 @@ pub trait LlmProvider: Send + Sync {
         _container: Arc<ContainerManager>,
         _events: Arc<dyn crate::tools::EventSender>,
         _agent_name: &str,
+        _agent_type: &str,
         _limitations: Arc<EngagementLimitations>,
         _memory: Arc<crate::tools::MemoryContext>,
+        _event_bus_sender: crate::agents::AgentEventSender,
     ) -> Result<String> {
         Err(crate::Error::Provider(
             "LLM pentest tools not supported by this provider".to_string(),
