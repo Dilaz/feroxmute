@@ -22,7 +22,7 @@ pub use memory::{
 pub use orchestrator::{
     AgentSummary, CancelAgentTool, CompleteEngagementTool, EventSender, ListAgentsTool,
     OrchestratorContext, OrchestratorToolError, RecordFindingTool, ReportMilestoneTool,
-    ReviewEventsTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+    ReviewEventsTool, SpawnAgentTool, UpdateAgentTool, WaitForAgentTool, WaitForAnyTool,
 };
 pub use playbook::{PLAYBOOK_CATEGORIES, get_playbook, list_categories};
 pub use report::{
