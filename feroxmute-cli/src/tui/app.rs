@@ -537,12 +537,19 @@ impl App {
 
     /// Scroll timeline up (show older entries)
     pub fn scroll_timeline_up(&mut self) {
-        self.timeline_scroll = self.timeline_scroll.saturating_add(1);
+        self.timeline_scroll = self.timeline_scroll.saturating_add(1)
+            .min(self.timeline_events.len());
     }
 
     /// Scroll timeline down (show newer entries)
     pub fn scroll_timeline_down(&mut self) {
         self.timeline_scroll = self.timeline_scroll.saturating_sub(1);
+    }
+
+    /// Reset timeline scroll to bottom (newest)
+    #[allow(dead_code)]
+    pub fn scroll_timeline_to_bottom(&mut self) {
+        self.timeline_scroll = 0;
     }
 
     /// Add a timeline event

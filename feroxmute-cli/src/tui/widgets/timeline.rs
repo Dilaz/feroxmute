@@ -17,9 +17,8 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let lines: Vec<Line> = app
         .timeline_events
         .iter()
-        .rev()
         .map(|e| {
-            let time = e.timestamp.format("%H:%M:%S").to_string();
+            let time = e.timestamp.format("%Y-%m-%d %H:%M:%S").to_string();
             let type_style = match e.event_type.as_str() {
                 "finding" => Style::default().fg(Color::Red),
                 "milestone" => Style::default().fg(Color::Yellow),
@@ -39,13 +38,19 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
+    // Auto-scroll to bottom (newest), offset by user scroll
+    let total_lines = lines.len() as u16;
+    let visible_height = chunks[0].height.saturating_sub(2); // minus borders
+    let max_scroll = total_lines.saturating_sub(visible_height);
+    let scroll_pos = max_scroll.saturating_sub(app.timeline_scroll as u16);
+
     let paragraph = Paragraph::new(lines)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title(" Event Timeline "),
         )
-        .scroll((app.timeline_scroll as u16, 0));
+        .scroll((scroll_pos, 0));
 
     frame.render_widget(paragraph, chunks[0]);
 
