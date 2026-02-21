@@ -789,6 +789,7 @@ mod tests {
             reports_dir,
             session_db_path: None,
             deduplicated_findings: Arc::new(Mutex::new(None)),
+            provider: None,
         })
     }
 
@@ -1027,6 +1028,7 @@ mod tests {
             reports_dir,
             session_db_path: Some(db_path),
             deduplicated_findings: Arc::new(Mutex::new(None)),
+            provider: None,
         });
 
         let tool = McpGenerateReportTool::new(Arc::clone(&context));

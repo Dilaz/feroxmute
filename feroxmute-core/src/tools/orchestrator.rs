@@ -419,6 +419,7 @@ impl Tool for SpawnAgentTool {
                     reports_dir,
                     session_db_path,
                     deduplicated_findings: Arc::new(Mutex::new(None)),
+                    provider: Some(Arc::clone(&provider)),
                 });
 
                 let output = match tokio::time::timeout(

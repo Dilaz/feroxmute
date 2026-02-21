@@ -51,6 +51,8 @@ pub struct ReportContext {
     pub session_db_path: Option<std::path::PathBuf>,
     /// Deduplicated findings cache, populated by deduplicate_findings tool
     pub deduplicated_findings: Arc<Mutex<Option<Vec<crate::state::Vulnerability>>>>,
+    /// LLM provider for semantic deduplication (None = basic dedup only)
+    pub provider: Option<Arc<dyn crate::providers::LlmProvider>>,
 }
 
 // ============================================================================
@@ -132,7 +134,11 @@ impl Tool for DeduplicateFindingsTool {
         }
 
         let original_count = vulns.len();
-        let deduped = crate::reports::deduplicate_vulnerabilities(vulns);
+        let deduped = if let Some(ref provider) = self.context.provider {
+            crate::reports::llm_deduplicate_vulnerabilities(vulns, provider.as_ref()).await
+        } else {
+            crate::reports::deduplicate_vulnerabilities(vulns)
+        };
         let deduped_count = deduped.len();
 
         // Store in context for generate_report to use
@@ -334,9 +340,33 @@ impl Tool for GenerateReportTool {
 
         let end_time = Utc::now();
 
-        // Try loading findings from the database first (authoritative source),
-        // falling back to the in-memory Vec for backwards compatibility
-        let mut report = if let Some(ref db_path) = self.context.session_db_path {
+        // Check if deduplicated findings are cached (from deduplicate_findings tool)
+        let cached = self.context.deduplicated_findings.lock().await.take();
+
+        let mut report = if let Some(vulns) = cached {
+            // Use pre-deduplicated findings from cache
+            let metadata = ReportMetadata::new(
+                &self.context.target,
+                &self.context.session_id,
+                self.context.start_time,
+                end_time,
+            );
+            let mut r = Report::new(metadata);
+            let snapshot = self.context.metrics.snapshot();
+            r.metrics = ReportMetrics {
+                tool_calls: snapshot.tool_calls,
+                input_tokens: snapshot.tokens.input,
+                output_tokens: snapshot.tokens.output,
+                cache_read_tokens: snapshot.tokens.cached,
+                hosts_discovered: 0,
+                ports_discovered: 0,
+            };
+            for vuln in vulns {
+                r.add_finding(Finding::from(vuln));
+            }
+            r
+        } else if let Some(ref db_path) = self.context.session_db_path {
+            // Fall back to loading from database
             match rusqlite::Connection::open(db_path) {
                 Ok(conn) => match generate_report(
                     &conn,
