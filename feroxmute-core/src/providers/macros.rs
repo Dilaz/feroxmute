@@ -181,8 +181,10 @@ macro_rules! define_provider {
                 container: std::sync::Arc<$crate::docker::ContainerManager>,
                 events: std::sync::Arc<dyn $crate::tools::EventSender>,
                 agent_name: &str,
+                agent_type: &str,
                 limitations: std::sync::Arc<$crate::limitations::EngagementLimitations>,
                 memory: std::sync::Arc<$crate::tools::MemoryContext>,
+                event_bus_sender: $crate::agents::AgentEventSender,
             ) -> $crate::Result<String> {
                 use rig::client::CompletionClient;
                 use rig::completion::Prompt;
@@ -223,6 +225,12 @@ macro_rules! define_provider {
                         .tool($crate::tools::MemoryAddTool::new(std::sync::Arc::clone(&memory)))
                         .tool($crate::tools::MemoryGetTool::new(std::sync::Arc::clone(&memory)))
                         .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&memory)))
+                        .tool($crate::tools::ReportMilestoneTool::new(
+                            agent_name.to_string(),
+                            agent_type.to_string(),
+                            event_bus_sender.clone(),
+                            std::sync::Arc::clone(&events),
+                        ))
                         .build();
 
                     // Use non-streaming max_turns with 10-minute timeout
@@ -454,8 +462,10 @@ macro_rules! define_provider {
                 container: std::sync::Arc<$crate::docker::ContainerManager>,
                 events: std::sync::Arc<dyn $crate::tools::EventSender>,
                 agent_name: &str,
+                agent_type: &str,
                 limitations: std::sync::Arc<$crate::limitations::EngagementLimitations>,
                 memory: std::sync::Arc<$crate::tools::MemoryContext>,
+                event_bus_sender: $crate::agents::AgentEventSender,
             ) -> $crate::Result<String> {
                 use rig::client::CompletionClient;
                 use rig::completion::Prompt;
@@ -499,6 +509,12 @@ macro_rules! define_provider {
                         .tool($crate::tools::MemoryAddTool::new(std::sync::Arc::clone(&memory)))
                         .tool($crate::tools::MemoryGetTool::new(std::sync::Arc::clone(&memory)))
                         .tool($crate::tools::MemoryListTool::new(std::sync::Arc::clone(&memory)))
+                        .tool($crate::tools::ReportMilestoneTool::new(
+                            agent_name.to_string(),
+                            agent_type.to_string(),
+                            event_bus_sender.clone(),
+                            std::sync::Arc::clone(&events),
+                        ))
                         .build();
 
                     const LLM_TIMEOUT_SECS: u64 = 600;

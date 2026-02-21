@@ -200,6 +200,7 @@ impl McpTool for McpSpawnAgentTool {
         let session_db_path = self.context.session_db_path.clone();
 
         let provider_metrics = provider.metrics().clone();
+        let event_bus_sender = self.context.event_bus_sender.clone();
 
         let handle = if agent_type == "report" {
             // Report agents use specialized report tools
@@ -252,8 +253,10 @@ impl McpTool for McpSpawnAgentTool {
                         container,
                         events,
                         &agent_name,
+                        &agent_type,
                         limitations,
                         memory,
+                        event_bus_sender,
                     )
                     .await
                 {

@@ -21,7 +21,8 @@ pub use memory::{
 };
 pub use orchestrator::{
     AgentSummary, CompleteEngagementTool, EventSender, ListAgentsTool, OrchestratorContext,
-    OrchestratorToolError, RecordFindingTool, SpawnAgentTool, WaitForAgentTool, WaitForAnyTool,
+    OrchestratorToolError, RecordFindingTool, ReportMilestoneTool, SpawnAgentTool,
+    WaitForAgentTool, WaitForAnyTool,
 };
 pub use playbook::{PLAYBOOK_CATEGORIES, get_playbook, list_categories};
 pub use report::{
