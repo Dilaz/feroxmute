@@ -1522,6 +1522,8 @@ pub struct RecordFindingArgs {
     pub category: Option<String>,
     #[serde(default)]
     pub severity: Option<String>,
+    #[serde(default)]
+    pub cwe: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1565,6 +1567,10 @@ impl Tool for RecordFindingTool {
                     "severity": {
                         "type": "string",
                         "description": "Severity level for vulnerabilities: critical, high, medium, low, info. Required when category is 'vulnerability'."
+                    },
+                    "cwe": {
+                        "type": "string",
+                        "description": "CWE identifier (e.g. 'CWE-89', 'CWE-79'). Recommended for vulnerability findings."
                     }
                 },
                 "required": ["finding"]
@@ -1577,7 +1583,11 @@ impl Tool for RecordFindingTool {
         self.context.events.send_tool_call();
 
         let category = args.category.as_deref().unwrap_or("info");
-        let formatted = format!("[{}] {}", category.to_uppercase(), args.finding);
+        let formatted = if let Some(ref cwe) = args.cwe {
+            format!("[{}|{}] {}", category.to_uppercase(), cwe, args.finding)
+        } else {
+            format!("[{}] {}", category.to_uppercase(), args.finding)
+        };
 
         let mut findings = self.context.findings.lock().await;
         findings.push(formatted.clone());

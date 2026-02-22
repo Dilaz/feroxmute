@@ -36,6 +36,8 @@ struct RecordFindingArgs {
     evidence: Option<String>,
     #[serde(default)]
     recommendation: Option<String>,
+    #[serde(default)]
+    cwe: Option<String>,
 }
 
 impl McpRecordFindingTool {
@@ -94,6 +96,10 @@ impl McpTool for McpRecordFindingTool {
                 "recommendation": {
                     "type": "string",
                     "description": "Suggested remediation steps (optional)"
+                },
+                "cwe": {
+                    "type": "string",
+                    "description": "CWE identifier (e.g. 'CWE-89', 'CWE-79'). Recommended for vulnerability findings."
                 }
             },
             "required": ["title", "description", "severity"]
@@ -143,6 +149,10 @@ impl McpTool for McpRecordFindingTool {
 
         if let Some(ref recommendation) = args.recommendation {
             vuln = vuln.with_remediation(recommendation);
+        }
+
+        if let Some(ref cwe) = args.cwe {
+            vuln = vuln.with_cwe(cwe);
         }
 
         // Store in database

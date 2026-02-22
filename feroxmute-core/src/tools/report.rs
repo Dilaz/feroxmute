@@ -203,8 +203,8 @@ impl GenerateReportTool {
         let findings: Vec<Finding> = findings_strings
             .iter()
             .map(|s| {
-                // Parse "[category] title: description"
-                let (severity, rest) = if s.starts_with('[') {
+                // Parse "[category|CWE-XX] title: description" or "[category] title: description"
+                let (severity, cwe, rest) = if s.starts_with('[') {
                     if let Some(end) = s.find(']') {
                         let tag = &s[1..end];
                         let remainder = if s.len() > end + 2 {
@@ -212,8 +212,14 @@ impl GenerateReportTool {
                         } else {
                             String::new()
                         };
+                        // Split tag on '|' to extract optional CWE
+                        let (category_part, cwe_part) = if let Some(pipe) = tag.find('|') {
+                            (&tag[..pipe], Some(tag[pipe + 1..].to_string()))
+                        } else {
+                            (tag, None)
+                        };
                         // Map category tags to severity; default to medium
-                        let sev = match tag.to_lowercase().as_str() {
+                        let sev = match category_part.to_lowercase().as_str() {
                             "critical" => "critical",
                             "high" => "high",
                             "medium" => "medium",
@@ -221,12 +227,12 @@ impl GenerateReportTool {
                             "info" | "informational" => "info",
                             _ => "medium",
                         };
-                        (sev.to_string(), remainder)
+                        (sev.to_string(), cwe_part, remainder)
                     } else {
-                        ("medium".to_string(), s.clone())
+                        ("medium".to_string(), None, s.clone())
                     }
                 } else {
-                    ("medium".to_string(), s.clone())
+                    ("medium".to_string(), None, s.clone())
                 };
 
                 let (title, description) = if let Some(idx) = rest.find(':') {
@@ -242,7 +248,7 @@ impl GenerateReportTool {
                     title,
                     severity,
                     affected: self.context.target.clone(),
-                    cwe: UNCLASSIFIED_CWE.to_string(),
+                    cwe: cwe.unwrap_or_else(|| UNCLASSIFIED_CWE.to_string()),
                     description,
                     evidence: None,
                     reproduction_steps: None,

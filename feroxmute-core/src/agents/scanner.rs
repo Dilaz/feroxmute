@@ -176,6 +176,10 @@ impl ScannerAgent {
                         "remediation": {
                             "type": "string",
                             "description": "Suggested fix"
+                        },
+                        "cwe": {
+                            "type": "string",
+                            "description": "CWE identifier (e.g. 'CWE-89', 'CWE-79')"
                         }
                     },
                     "required": ["title", "severity", "description", "endpoint"]
@@ -327,6 +331,7 @@ impl Agent for ScannerAgent {
                         let endpoint = args.get("endpoint").and_then(|v| v.as_str()).unwrap_or("");
                         let evidence = args.get("evidence").and_then(|v| v.as_str());
                         let remediation = args.get("remediation").and_then(|v| v.as_str());
+                        let cwe = args.get("cwe").and_then(|v| v.as_str());
 
                         let mut vuln = Vulnerability::new(title, "web", severity, self.name())
                             .with_description(description)
@@ -337,6 +342,9 @@ impl Agent for ScannerAgent {
                         }
                         if let Some(rem) = remediation {
                             vuln = vuln.with_remediation(rem);
+                        }
+                        if let Some(cwe) = cwe {
+                            vuln = vuln.with_cwe(cwe);
                         }
 
                         if let Err(e) = vuln.insert(ctx.conn) {

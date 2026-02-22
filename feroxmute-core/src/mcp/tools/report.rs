@@ -122,16 +122,26 @@ impl McpGenerateReportTool {
         let findings: Vec<Finding> = findings_strings
             .iter()
             .map(|s| {
-                let (severity, rest) = if s.starts_with('[') {
+                // Parse "[severity|CWE-XX] title: description" or "[severity] title: description"
+                let (severity, cwe, rest) = if s.starts_with('[') {
                     if let Some(end) = s.find(']') {
-                        let sev = s.get(1..end).unwrap_or("medium").to_string();
+                        let tag = s.get(1..end).unwrap_or("medium");
                         let remainder = s.get(end + 2..).unwrap_or("").to_string();
-                        (sev, remainder)
+                        // Split tag on '|' to extract optional CWE
+                        let (sev_part, cwe_part) = if let Some(pipe) = tag.find('|') {
+                            (
+                                tag.get(..pipe).unwrap_or("medium"),
+                                Some(tag[pipe + 1..].to_string()),
+                            )
+                        } else {
+                            (tag, None)
+                        };
+                        (sev_part.to_string(), cwe_part, remainder)
                     } else {
-                        ("medium".to_string(), s.clone())
+                        ("medium".to_string(), None, s.clone())
                     }
                 } else {
-                    ("medium".to_string(), s.clone())
+                    ("medium".to_string(), None, s.clone())
                 };
 
                 let (title, description) = if let Some(idx) = rest.find(':') {
@@ -147,7 +157,7 @@ impl McpGenerateReportTool {
                     title,
                     severity,
                     affected: self.context.target.clone(),
-                    cwe: crate::reports::UNCLASSIFIED_CWE.to_string(),
+                    cwe: cwe.unwrap_or_else(|| crate::reports::UNCLASSIFIED_CWE.to_string()),
                     description,
                     evidence: None,
                     reproduction_steps: None,
