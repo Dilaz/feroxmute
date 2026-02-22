@@ -93,10 +93,10 @@ The best engagements loop aggressively: recon maps surface → scanners find vul
 
 Run multiple agents in parallel when their work is independent:
 ```
-# Spawn multiple scanners for different areas
-spawn_agent(agent_type="scanner", name="auth-scanner", instructions="Test /login and /api/auth for auth bypass, credential stuffing")
-spawn_agent(agent_type="scanner", name="api-scanner", instructions="Test /api/v1/users for IDOR, injection, broken access control")
-spawn_agent(agent_type="scanner", name="upload-scanner", instructions="Test /upload for unrestricted file upload, path traversal")
+# Spawn multiple scanners for different areas — always include relevant playbook names
+spawn_agent(agent_type="scanner", name="auth-scanner", instructions="Test /login and /api/auth for auth bypass, credential stuffing. Fetch playbooks: sql-injection, jwt-attacks")
+spawn_agent(agent_type="scanner", name="api-scanner", instructions="Test /api/v1/users for IDOR, injection, broken access control. Fetch playbooks: sql-injection, nosql-injection, command-injection")
+spawn_agent(agent_type="scanner", name="upload-scanner", instructions="Test /upload for unrestricted file upload, path traversal. Fetch playbooks: lfi-rfi, command-injection")
 
 # Monitor all of them, reacting to findings as they come in
 review_events(timeout_seconds=60)
@@ -104,16 +104,16 @@ review_events(timeout_seconds=60)
 
 ## Passing Context Forward
 
-When spawning agents, include what prior agents found:
+When spawning agents, include what prior agents found AND relevant playbook categories:
 ```
 spawn_agent(
   agent_type="scanner",
   name="api-scanner",
-  instructions="Test the REST API at /api/v1. Recon found: JWT auth, user endpoints at /api/v1/users/{id}, file upload at /upload. Tech stack: Node.js + Express."
+  instructions="Test the REST API at /api/v1. Recon found: JWT auth, user endpoints at /api/v1/users/{id}, file upload at /upload. Tech stack: Node.js + Express. Fetch playbooks: jwt-attacks, sql-injection, lfi-rfi"
 )
 ```
 
-The more context you pass, the more targeted and effective the agent will be.
+The more context you pass, the more targeted and effective the agent will be. Always suggest which playbooks to fetch — scanner agents have a `get_playbook(category)` tool with detailed techniques, tools, payloads, and bypass methods for 17 vulnerability categories.
 
 ## Recording Findings for the Report
 
@@ -608,7 +608,11 @@ In your completion summary, always suggest specific follow-up actions in next_st
 
 ## Vulnerability Playbooks
 
-Call `get_playbook(category)` for detailed testing techniques. Quick reference:
+**IMPORTANT:** Your FIRST action for any testing task should be to call `get_playbook(category)` for each vulnerability type relevant to your instructions. Playbooks contain detailed techniques, tools, payloads, and bypass methods that dramatically improve your testing effectiveness. Do NOT skip this step — test results are significantly better when guided by playbook techniques.
+
+If your instructions mention specific playbook categories (e.g., "Fetch playbooks: sql-injection, xss"), fetch ALL of them before starting any testing.
+
+Quick reference:
 
 | Category | Indicators | Primary Tools |
 |----------|-----------|---------------|
@@ -630,7 +634,7 @@ Call `get_playbook(category)` for detailed testing techniques. Quick reference:
 | windows-ad | Domain joined, SPNs, Kerberos | impacket, crackmapexec, msf |
 | crypto | Weak hashing, padding, key reuse | hashcat, john, manual |
 
-**Workflow:** When you identify potential vulnerability indicators, fetch the relevant playbook before testing.
+**Workflow:** Always fetch relevant playbooks FIRST, then follow the playbook techniques during testing. If you discover a new vulnerability type mid-testing, fetch that playbook before proceeding.
 """
 
 
@@ -765,12 +769,16 @@ Evidence Captured:
 
 ## Vulnerability Playbooks
 
-If detailed testing techniques are needed, the scanner agent can fetch playbooks. Key categories for exploitation:
+**IMPORTANT:** Before attempting exploitation, call `get_playbook(category)` to get detailed techniques, payloads, and bypass methods. Playbooks contain specific exploitation steps that improve your success rate. Key categories:
 
 - **deserialization**: Gadget chains for Java, PHP, Python, .NET
 - **windows-ad**: Kerberoasting, Pass-the-Hash, DCSync, Meterpreter
 - **crypto**: Padding oracle, weak hashing exploitation
 - **command-injection**: Reverse shell payloads, out-of-band exfiltration
+- **sql-injection**: UNION-based extraction, blind techniques, WAF bypass
+- **jwt-attacks**: Algorithm confusion, key brute-forcing, token forgery
+
+If your instructions suggest specific playbooks, fetch them all before starting.
 
 ## Milestone Reporting
 

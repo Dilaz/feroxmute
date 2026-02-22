@@ -5,6 +5,7 @@ mod docker_shell;
 mod finding;
 mod memory;
 mod orchestrator;
+mod playbook;
 mod report;
 mod script;
 
@@ -16,6 +17,7 @@ pub use orchestrator::{
     McpCompleteEngagementTool, McpListAgentsTool, McpSpawnAgentTool, McpWaitForAgentTool,
     McpWaitForAnyTool,
 };
+pub use playbook::McpGetPlaybookTool;
 pub use report::{
     McpAddRecommendationTool, McpExportHtmlTool, McpExportJsonTool, McpExportMarkdownTool,
     McpExportPdfTool, McpGenerateReportTool,

@@ -19,9 +19,9 @@ use crate::mcp::http::HttpMcpServer;
 use crate::mcp::tools::{
     FindingContext, McpAddRecommendationTool, McpCompleteEngagementTool,
     McpDeduplicateFindingsTool, McpDockerShellTool, McpExportHtmlTool, McpExportJsonTool,
-    McpExportMarkdownTool, McpExportPdfTool, McpGenerateReportTool, McpListAgentsTool,
-    McpMemoryAddTool, McpMemoryGetTool, McpMemoryListTool, McpRecordFindingTool, McpRunScriptTool,
-    McpSpawnAgentTool, McpWaitForAgentTool, McpWaitForAnyTool,
+    McpExportMarkdownTool, McpExportPdfTool, McpGenerateReportTool, McpGetPlaybookTool,
+    McpListAgentsTool, McpMemoryAddTool, McpMemoryGetTool, McpMemoryListTool, McpRecordFindingTool,
+    McpRunScriptTool, McpSpawnAgentTool, McpWaitForAgentTool, McpWaitForAnyTool,
 };
 use crate::providers::traits::{CompletionRequest, CompletionResponse, LlmProvider};
 use crate::state::MetricsTracker;
@@ -112,6 +112,10 @@ impl CliAgentProvider {
                 events,
                 agent_name.to_string(),
             )))
+            .await;
+
+        mcp_server
+            .register_tool(Arc::new(McpGetPlaybookTool::new()))
             .await;
     }
 
