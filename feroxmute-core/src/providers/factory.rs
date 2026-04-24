@@ -18,6 +18,8 @@ fn create_cli_agent(
     agent_type: CliAgentType,
     working_dir: Option<PathBuf>,
     metrics: MetricsTracker,
+    model: &str,
+    cli_path: Option<PathBuf>,
 ) -> Result<Arc<dyn LlmProvider>> {
     let working_dir = working_dir.ok_or_else(|| {
         Error::Provider(format!(
@@ -25,7 +27,10 @@ fn create_cli_agent(
             agent_type
         ))
     })?;
-    let cli_config = CliAgentConfig::new(agent_type);
+    let mut cli_config = CliAgentConfig::new(agent_type).with_model(model);
+    if let Some(path) = cli_path {
+        cli_config = cli_config.with_binary_path(path);
+    }
     let provider = CliAgentProvider::new(cli_config, working_dir, metrics);
     Ok(Arc::new(provider))
 }
@@ -40,6 +45,19 @@ pub fn create_provider(
     config: &ProviderConfig,
     metrics: MetricsTracker,
     working_dir: Option<PathBuf>,
+) -> Result<Arc<dyn LlmProvider>> {
+    create_provider_with_cli_path(config, metrics, working_dir, None)
+}
+
+/// Create a provider from configuration with an optional CLI-agent binary path.
+///
+/// `cli_path` applies only to CLI agent providers (`claude-code`, `codex`,
+/// `gemini-cli`) and is ignored by API-backed providers.
+pub fn create_provider_with_cli_path(
+    config: &ProviderConfig,
+    metrics: MetricsTracker,
+    working_dir: Option<PathBuf>,
+    cli_path: Option<PathBuf>,
 ) -> Result<Arc<dyn LlmProvider>> {
     match config.name {
         ProviderName::Anthropic => {
@@ -173,11 +191,27 @@ pub fn create_provider(
             Ok(Arc::new(provider))
         }
         // CLI agent providers
-        ProviderName::ClaudeCode => {
-            create_cli_agent(CliAgentType::ClaudeCode, working_dir, metrics)
-        }
-        ProviderName::Codex => create_cli_agent(CliAgentType::Codex, working_dir, metrics),
-        ProviderName::GeminiCli => create_cli_agent(CliAgentType::GeminiCli, working_dir, metrics),
+        ProviderName::ClaudeCode => create_cli_agent(
+            CliAgentType::ClaudeCode,
+            working_dir,
+            metrics,
+            &config.model,
+            cli_path,
+        ),
+        ProviderName::Codex => create_cli_agent(
+            CliAgentType::Codex,
+            working_dir,
+            metrics,
+            &config.model,
+            cli_path,
+        ),
+        ProviderName::GeminiCli => create_cli_agent(
+            CliAgentType::GeminiCli,
+            working_dir,
+            metrics,
+            &config.model,
+            cli_path,
+        ),
     }
 }
 
@@ -355,5 +389,37 @@ mod tests {
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cli_agent_uses_custom_binary_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cli_path = PathBuf::from("/definitely/not/codex-acp");
+        let config = ProviderConfig {
+            name: ProviderName::Codex,
+            model: "gpt-5.2".to_string(),
+            api_key: None,
+            base_url: None,
+        };
+        let provider = create_provider_with_cli_path(
+            &config,
+            MetricsTracker::new(),
+            Some(temp_dir.path().to_path_buf()),
+            Some(cli_path.clone()),
+        )
+        .unwrap();
+
+        let request =
+            crate::providers::CompletionRequest::new(vec![crate::providers::Message::user("hi")]);
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(provider.complete(request));
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains(&cli_path.display().to_string())
+        );
     }
 }

@@ -9,7 +9,7 @@ use clap::Parser;
 use feroxmute_core::config::{EngagementConfig, ProviderConfig, ProviderName};
 use feroxmute_core::docker::{ContainerConfig, ContainerManager, find_docker_dir};
 use feroxmute_core::limitations::EngagementLimitations;
-use feroxmute_core::providers::create_provider;
+use feroxmute_core::providers::{create_provider, create_provider_with_cli_path};
 use feroxmute_core::state::MetricsTracker;
 use feroxmute_core::targets::{RelationshipDetector, TargetCollection};
 use std::fs;
@@ -92,11 +92,15 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Set up tracing based on verbosity
-    let filter = match args.verbose {
-        0 => "warn",
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
+    let filter = if args.debug {
+        "debug"
+    } else {
+        match args.verbose {
+            0 => "warn",
+            1 => "info",
+            2 => "debug",
+            _ => "trace",
+        }
     };
 
     // Create logs directory
@@ -220,29 +224,47 @@ async fn main() -> Result<()> {
     // CLI agent providers need a working directory (use session dir or current dir)
     let working_dir = Some(config.output.session_dir.clone());
     let metrics = MetricsTracker::new();
-    let provider = create_provider(&provider_config, metrics, working_dir).map_err(|e| {
-        anyhow!(
-            "LLM provider error: {}\n\nHint: Set API key in ~/.feroxmute/config.toml or {} environment variable",
-            e,
-            match provider_config.name {
-                ProviderName::Anthropic => "ANTHROPIC_API_KEY",
-                ProviderName::OpenAi => "OPENAI_API_KEY",
-                ProviderName::Cohere => "COHERE_API_KEY",
-                ProviderName::Gemini => "GEMINI_API_KEY or GOOGLE_API_KEY",
-                ProviderName::Xai => "XAI_API_KEY",
-                ProviderName::DeepSeek => "DEEPSEEK_API_KEY",
-                ProviderName::Azure => "AZURE_OPENAI_API_KEY",
-                ProviderName::Perplexity => "PERPLEXITY_API_KEY",
-                ProviderName::Mira => "MIRA_API_KEY",
-                ProviderName::LiteLlm => "LITELLM_API_KEY",
-                ProviderName::Ollama => "OLLAMA_API_BASE_URL (optional, defaults to localhost:11434)",
-                // CLI agent providers don't use API keys - they use the CLI tool's auth
-                ProviderName::ClaudeCode => "Run 'claude login' to authenticate",
-                ProviderName::Codex => "Set OPENAI_API_KEY or CODEX_API_KEY env var",
-                ProviderName::GeminiCli => "Run 'gemini auth' to authenticate",
-            }
-        )
-    })?;
+    let provider_hint = match provider_config.name {
+        ProviderName::Anthropic => {
+            "Set ANTHROPIC_API_KEY in ~/.feroxmute/config.toml or the environment"
+        }
+        ProviderName::OpenAi => "Set OPENAI_API_KEY in ~/.feroxmute/config.toml or the environment",
+        ProviderName::Cohere => "Set COHERE_API_KEY in ~/.feroxmute/config.toml or the environment",
+        ProviderName::Gemini => {
+            "Set GEMINI_API_KEY or GOOGLE_API_KEY in ~/.feroxmute/config.toml or the environment"
+        }
+        ProviderName::Xai => "Set XAI_API_KEY in ~/.feroxmute/config.toml or the environment",
+        ProviderName::DeepSeek => {
+            "Set DEEPSEEK_API_KEY in ~/.feroxmute/config.toml or the environment"
+        }
+        ProviderName::Azure => {
+            "Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in ~/.feroxmute/config.toml or the environment"
+        }
+        ProviderName::Perplexity => {
+            "Set PERPLEXITY_API_KEY in ~/.feroxmute/config.toml or the environment"
+        }
+        ProviderName::Mira => "Set MIRA_API_KEY in ~/.feroxmute/config.toml or the environment",
+        ProviderName::LiteLlm => {
+            "Set LITELLM_API_KEY in ~/.feroxmute/config.toml or the environment"
+        }
+        ProviderName::Ollama => "Set OLLAMA_API_BASE_URL if not using localhost:11434",
+        ProviderName::ClaudeCode => {
+            "Install claude-code-acp in PATH or pass --cli-path, then run 'claude login'"
+        }
+        ProviderName::Codex => {
+            "Install codex-acp in PATH or pass --cli-path /path/to/codex-acp, then authenticate with OPENAI_API_KEY, CODEX_API_KEY, or Codex auth"
+        }
+        ProviderName::GeminiCli => {
+            "Install gemini in PATH or pass --cli-path, then run 'gemini auth'"
+        }
+    };
+    let provider = create_provider_with_cli_path(
+        &provider_config,
+        metrics,
+        working_dir,
+        args.cli_path.clone(),
+    )
+    .map_err(|e| anyhow!("LLM provider error: {}\n\nHint: {}", e, provider_hint))?;
 
     // Build target LLM config from CLI flags (if provided)
     if let Some(ref target_llm_name) = args.target_llm {

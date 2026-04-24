@@ -16,7 +16,7 @@ pub mod traits;
 mod azure;
 mod ollama;
 
-pub use factory::create_provider;
+pub use factory::{create_provider, create_provider_with_cli_path};
 pub use traits::{
     CompletionRequest, CompletionResponse, LlmProvider, Message, Role, StopReason, TokenUsage,
     ToolCall, ToolDefinition,
