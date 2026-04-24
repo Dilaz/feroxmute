@@ -96,6 +96,10 @@ pub struct Args {
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Enable debug logging and diagnostic TUI feed entries
+    #[arg(long)]
+    pub debug: bool,
+
     /// Custom instruction to guide the engagement (supplements default behavior)
     #[arg(long)]
     pub instruction: Option<String>,

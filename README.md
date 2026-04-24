@@ -127,8 +127,8 @@ feroxmute --sast-only --target ./my-project
 # Use Claude Code as the LLM backend
 feroxmute --target https://app.example.com --provider claude-code
 
-# Use Codex with a custom binary path
-feroxmute --target https://app.example.com --provider codex --cli-path /usr/local/bin/codex
+# Use Codex with a custom codex-acp adapter path
+feroxmute --target https://app.example.com --provider codex --cli-path /usr/local/bin/codex-acp
 
 # Use Gemini CLI
 feroxmute --target https://app.example.com --provider gemini-cli
@@ -150,7 +150,7 @@ Instead of calling LLM APIs directly, feroxmute can drive CLI-based AI agents as
 | Provider | Binary | Auth |
 |----------|--------|------|
 | `claude-code` | `claude-code-acp` | `ANTHROPIC_API_KEY` or `claude login` |
-| `codex` | [`codex-acp`](https://github.com/zed-industries/codex-acp) | `OPENAI_API_KEY` or `CODEX_API_KEY` |
+| `codex` | [`codex-acp`](https://github.com/zed-industries/codex-acp) | `OPENAI_API_KEY`, `CODEX_API_KEY`, or existing Codex auth |
 | `gemini-cli` | `gemini` | `gemini auth` |
 
 ### Custom Binary Path
@@ -159,6 +159,7 @@ If the CLI agent binary isn't on your `$PATH`, use `--cli-path`:
 
 ```bash
 feroxmute --target example.com --provider claude-code --cli-path ~/bin/claude-code-acp
+feroxmute --target example.com --provider codex --cli-path ~/bin/codex-acp
 ```
 
 ## Docker
