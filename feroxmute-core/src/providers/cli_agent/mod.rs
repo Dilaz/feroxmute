@@ -8,6 +8,6 @@ mod bridge;
 mod config;
 mod provider;
 
-pub use bridge::{AcpBridge, AcpEvent};
+pub use bridge::AcpBridge;
 pub use config::{CliAgentConfig, CliAgentType};
 pub use provider::CliAgentProvider;

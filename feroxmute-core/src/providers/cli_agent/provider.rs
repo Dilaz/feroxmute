@@ -6,10 +6,13 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
+use agent_client_protocol as acp;
 use async_trait::async_trait;
 use chrono::Utc;
 use tokio::sync::Mutex;
+use tracing::Level;
 
 use crate::Result;
 use crate::docker::ContainerManager;
@@ -29,6 +32,123 @@ use crate::tools::{EventSender, MemoryContext, OrchestratorContext, ReportContex
 
 use super::bridge::AcpBridge;
 use super::config::CliAgentConfig;
+
+const CLI_PROMPT_PROGRESS_INTERVAL: Duration = Duration::from_secs(15);
+
+fn debug_feed_enabled() -> bool {
+    tracing::enabled!(Level::DEBUG)
+}
+
+fn send_debug_feed(events: &dyn EventSender, agent_name: &str, message: &str) {
+    if debug_feed_enabled() {
+        events.send_feed(agent_name, message, false);
+    }
+}
+
+fn send_debug_feed_with_output(
+    events: &dyn EventSender,
+    agent_name: &str,
+    message: &str,
+    output: &str,
+) {
+    if debug_feed_enabled() {
+        events.send_feed_with_output(agent_name, message, false, output);
+    }
+}
+
+fn with_http_mcp_diagnostics(error: crate::Error, http: &HttpMcpServer) -> crate::Error {
+    let activity = http.recent_activity_summary();
+    if activity.is_empty() {
+        error
+    } else {
+        let message = match error {
+            crate::Error::Provider(message) => message,
+            other => other.to_string(),
+        };
+        crate::Error::Provider(format!(
+            "{message}\n\nRecent MCP HTTP activity:\n{activity}"
+        ))
+    }
+}
+
+async fn prompt_with_progress(
+    bridge: &AcpBridge,
+    session_id: &acp::SessionId,
+    prompt: &str,
+    events: &dyn EventSender,
+    agent_name: &str,
+    http: &HttpMcpServer,
+) -> Result<String> {
+    if !debug_feed_enabled() {
+        return bridge
+            .prompt(session_id, prompt)
+            .await
+            .map_err(|e| with_http_mcp_diagnostics(e, http));
+    }
+
+    send_debug_feed(events, agent_name, "Waiting for CLI agent prompt response");
+
+    let prompt_future = bridge.prompt(session_id, prompt);
+    tokio::pin!(prompt_future);
+
+    let progress_sleep = tokio::time::sleep(CLI_PROMPT_PROGRESS_INTERVAL);
+    tokio::pin!(progress_sleep);
+    let mut last_activity = String::new();
+
+    loop {
+        tokio::select! {
+            result = &mut prompt_future => {
+                return result.map_err(|e| {
+                    let error = with_http_mcp_diagnostics(e, http);
+                    if debug_feed_enabled() {
+                        let error_text = error.to_string();
+                        let headline = error_text.lines().next().unwrap_or(&error_text);
+                        events.send_feed_with_output(
+                            agent_name,
+                            &format!("CLI agent prompt failed: {headline}"),
+                            true,
+                            &http.recent_activity_summary(),
+                        );
+                    }
+                    error
+                });
+            }
+            _ = &mut progress_sleep => {
+                let activity = http.recent_activity_summary();
+                let latest = http
+                    .latest_activity()
+                    .unwrap_or_else(|| "no MCP HTTP activity seen yet".to_string());
+                if activity.is_empty() {
+                    send_debug_feed(
+                        events,
+                        agent_name,
+                        "Still waiting for CLI agent response; no MCP HTTP activity seen yet",
+                    );
+                } else if activity != last_activity {
+                    send_debug_feed_with_output(
+                        events,
+                        agent_name,
+                        &format!("Still waiting for CLI agent response; latest MCP: {latest}"),
+                        &activity,
+                    );
+                    last_activity = activity;
+                } else {
+                    send_debug_feed(
+                        events,
+                        agent_name,
+                        &format!(
+                            "Still waiting for CLI agent response; MCP unchanged: {latest}"
+                        ),
+                    );
+                }
+
+                progress_sleep
+                    .as_mut()
+                    .reset(tokio::time::Instant::now() + CLI_PROMPT_PROGRESS_INTERVAL);
+            }
+        }
+    }
+}
 
 /// CLI Agent Provider that wraps CLI-based coding agents.
 ///
@@ -247,12 +367,31 @@ impl LlmProvider for CliAgentProvider {
         );
 
         // 3. Create session with MCP server and prompt
+        send_debug_feed(
+            events.as_ref(),
+            agent_name,
+            "Creating CLI agent ACP session with MCP tools",
+        );
         let session_id = bridge
             .new_session(agent_name, &self.working_dir, Some(http_url), Some(token))
-            .await?;
+            .await
+            .map_err(|e| with_http_mcp_diagnostics(e, &http))?;
+        send_debug_feed(
+            events.as_ref(),
+            agent_name,
+            "CLI agent ACP session created; sending prompt",
+        );
 
         let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
-        let response = bridge.prompt(&session_id, &combined_prompt).await?;
+        let response = prompt_with_progress(
+            &bridge,
+            &session_id,
+            &combined_prompt,
+            events.as_ref(),
+            agent_name,
+            &http,
+        )
+        .await?;
 
         // bridge + http dropped here → subprocess killed, HTTP server shut down
         Ok(response)
@@ -308,7 +447,12 @@ impl LlmProvider for CliAgentProvider {
             false,
         );
 
-        // 3. Create session with MCP server and 30-minute timeout for orchestration
+        // 3. Create session with MCP server and prompt
+        send_debug_feed(
+            context.events.as_ref(),
+            "orchestrator",
+            "Creating CLI agent ACP session with MCP tools",
+        );
         let session_id = bridge
             .new_session(
                 "orchestrator",
@@ -316,17 +460,24 @@ impl LlmProvider for CliAgentProvider {
                 Some(http_url),
                 Some(token),
             )
-            .await?;
+            .await
+            .map_err(|e| with_http_mcp_diagnostics(e, &http))?;
+        send_debug_feed(
+            context.events.as_ref(),
+            "orchestrator",
+            "CLI agent ACP session created; sending orchestration prompt",
+        );
 
         let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
-        let response = tokio::time::timeout(
-            std::time::Duration::from_secs(1800),
-            bridge.prompt(&session_id, &combined_prompt),
+        let response = prompt_with_progress(
+            &bridge,
+            &session_id,
+            &combined_prompt,
+            context.events.as_ref(),
+            "orchestrator",
+            &http,
         )
-        .await
-        .map_err(|_| {
-            crate::Error::Provider("Orchestrator session timed out after 30 minutes".into())
-        })??;
+        .await?;
 
         // bridge + http dropped here → subprocess killed, HTTP server shut down
         Ok(response)
@@ -356,12 +507,31 @@ impl LlmProvider for CliAgentProvider {
         );
 
         // 3. Create session with MCP server and prompt
+        send_debug_feed(
+            context.events.as_ref(),
+            "report",
+            "Creating CLI agent ACP session with MCP tools",
+        );
         let session_id = bridge
             .new_session("report", &self.working_dir, Some(http_url), Some(token))
-            .await?;
+            .await
+            .map_err(|e| with_http_mcp_diagnostics(e, &http))?;
+        send_debug_feed(
+            context.events.as_ref(),
+            "report",
+            "CLI agent ACP session created; sending report prompt",
+        );
 
         let combined_prompt = format!("{system_prompt}\n\n{user_prompt}");
-        let response = bridge.prompt(&session_id, &combined_prompt).await?;
+        let response = prompt_with_progress(
+            &bridge,
+            &session_id,
+            &combined_prompt,
+            context.events.as_ref(),
+            "report",
+            &http,
+        )
+        .await?;
 
         // bridge + http dropped here → subprocess killed, HTTP server shut down
         Ok(response)

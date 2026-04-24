@@ -6,7 +6,7 @@
 //! tokio runtime + `LocalSet`, communicating via channels.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::rc::Rc;
@@ -25,35 +25,6 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use super::config::{CliAgentConfig, CliAgentType};
 use crate::Result;
-
-// ---------------------------------------------------------------------------
-// Public event type (forwarded from bridge thread to main runtime)
-// ---------------------------------------------------------------------------
-
-/// Events emitted by the CLI agent during prompt processing.
-///
-/// These are forwarded from the bridge thread via an unbounded channel so that
-/// the main runtime can update the TUI / `EventSender`.
-#[derive(Debug, Clone)]
-pub enum AcpEvent {
-    AgentMessage {
-        session_id: String,
-        text: String,
-    },
-    AgentThought {
-        session_id: String,
-        text: String,
-    },
-    ToolCallStarted {
-        session_id: String,
-        title: String,
-        tool_call_id: String,
-    },
-    ToolCallCompleted {
-        session_id: String,
-        tool_call_id: String,
-    },
-}
 
 // ---------------------------------------------------------------------------
 // Commands sent to the bridge thread
@@ -86,6 +57,10 @@ enum AcpCommand {
 // Response collector (single-threaded, lives inside bridge thread)
 // ---------------------------------------------------------------------------
 
+const ACP_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+const ACP_SETUP_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_STDERR_LINES: usize = 20;
+
 #[derive(Default)]
 struct ResponseCollector {
     session_content: HashMap<String, Vec<String>>,
@@ -115,6 +90,68 @@ struct GeminiConnection {
     /// Signaled by the stdout reader whenever the agent shows activity (notifications,
     /// agent-initiated requests). Used to reset the idle timeout in `call()`.
     activity: Arc<Notify>,
+}
+
+/// Standard ACP connection state.
+struct StandardConnection {
+    conn: acp::ClientSideConnection,
+    /// Signaled by the ACP delegate whenever the agent emits a notification or
+    /// client request. Used to reset the idle timeout for `session/prompt`.
+    activity: Rc<Notify>,
+    diagnostics: Rc<RefCell<CliDiagnostics>>,
+    mcp_capabilities: acp::McpCapabilities,
+}
+
+#[derive(Default)]
+struct CliDiagnostics {
+    stderr_lines: VecDeque<String>,
+    rpc_events: VecDeque<String>,
+}
+
+impl CliDiagnostics {
+    fn push_stderr(&mut self, line: String) {
+        if self.stderr_lines.len() >= MAX_STDERR_LINES {
+            self.stderr_lines.pop_front();
+        }
+        self.stderr_lines.push_back(line);
+    }
+
+    fn push_rpc_event(&mut self, event: String) {
+        if self.rpc_events.len() >= MAX_STDERR_LINES {
+            self.rpc_events.pop_front();
+        }
+        self.rpc_events.push_back(event);
+    }
+
+    fn recent_summary(&self) -> String {
+        let mut sections = Vec::new();
+        if !self.stderr_lines.is_empty() {
+            sections.push(format!(
+                "Recent CLI stderr:\n{}",
+                format_diagnostic_lines(&self.stderr_lines)
+            ));
+        }
+        if !self.rpc_events.is_empty() {
+            sections.push(format!(
+                "Recent ACP RPC activity:\n{}",
+                format_diagnostic_lines(&self.rpc_events)
+            ));
+        }
+
+        if sections.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", sections.join("\n"))
+        }
+    }
+}
+
+fn format_diagnostic_lines(lines: &VecDeque<String>) -> String {
+    lines
+        .iter()
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 impl GeminiConnection {
@@ -230,7 +267,7 @@ impl GeminiConnection {
 }
 
 enum Connection {
-    Standard(acp::ClientSideConnection),
+    Standard(StandardConnection),
     Gemini(GeminiConnection),
 }
 
@@ -246,7 +283,6 @@ enum Connection {
 /// that satisfy the `LlmProvider` trait bounds.
 pub struct AcpBridge {
     cmd_tx: mpsc::Sender<AcpCommand>,
-    event_rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<AcpEvent>>,
     thread_handle: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
@@ -254,17 +290,15 @@ impl AcpBridge {
     /// Create a new bridge. Spawns the background thread immediately.
     pub fn new(config: CliAgentConfig) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<AcpCommand>(32);
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
 
         let handle = std::thread::spawn(move || {
             let rt = build_bridge_runtime();
             let local = tokio::task::LocalSet::new();
-            local.block_on(&rt, command_loop(cmd_rx, event_tx, config));
+            local.block_on(&rt, command_loop(cmd_rx, config));
         });
 
         Self {
             cmd_tx,
-            event_rx: tokio::sync::Mutex::new(event_rx),
             thread_handle: std::sync::Mutex::new(Some(handle)),
         }
     }
@@ -338,15 +372,6 @@ impl AcpBridge {
             .await;
     }
 
-    /// Take the event receiver (can only be called once).
-    pub async fn take_event_receiver(&self) -> mpsc::UnboundedReceiver<AcpEvent> {
-        // Replace with an unbounded channel whose sender is already dropped
-        // so the caller owns the original receiver.
-        let (_dummy_tx, dummy_rx) = mpsc::unbounded_channel();
-        let mut guard = self.event_rx.lock().await;
-        std::mem::replace(&mut *guard, dummy_rx)
-    }
-
     /// Shut down the bridge thread gracefully.
     pub async fn shutdown(&self) {
         let _ = self.cmd_tx.send(AcpCommand::Shutdown).await;
@@ -380,11 +405,7 @@ fn build_bridge_runtime() -> tokio::runtime::Runtime {
 // ---------------------------------------------------------------------------
 
 /// Main event loop that runs inside the bridge thread's `LocalSet`.
-async fn command_loop(
-    mut cmd_rx: mpsc::Receiver<AcpCommand>,
-    event_tx: mpsc::UnboundedSender<AcpEvent>,
-    config: CliAgentConfig,
-) {
+async fn command_loop(mut cmd_rx: mpsc::Receiver<AcpCommand>, config: CliAgentConfig) {
     let mut child: Option<Child> = None;
     let mut connection: Option<Connection> = None;
     let collector = Rc::new(RefCell::new(ResponseCollector::default()));
@@ -392,7 +413,7 @@ async fn command_loop(
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
             AcpCommand::Connect { working_dir, reply } => {
-                let result = do_connect(&config, &working_dir, &event_tx, &collector).await;
+                let result = do_connect(&config, &working_dir, &collector).await;
                 match result {
                     Ok((c, conn)) => {
                         child = Some(c);
@@ -415,24 +436,24 @@ async fn command_loop(
                 let result = match connection.as_ref() {
                     Some(Connection::Standard(conn)) => {
                         tracing::debug!("Creating standard ACP session for role '{}'", agent_role);
-                        let mut request = acp::NewSessionRequest::new(&working_dir);
-                        if let Some(url) = mcp_server_url {
-                            tracing::debug!("Attaching MCP server at {}", url);
-                            let mut mcp_http = acp::McpServerHttp::new("feroxmute", url);
-                            if let Some(ref token) = bearer_token {
-                                mcp_http = mcp_http.headers(vec![acp::HttpHeader::new(
-                                    "Authorization",
-                                    format!("Bearer {token}"),
-                                )]);
+                        let request = acp::NewSessionRequest::new(&working_dir);
+                        match attach_http_mcp_server(
+                            request,
+                            mcp_server_url,
+                            bearer_token,
+                            &conn.mcp_capabilities,
+                            config.agent_type.provider_name(),
+                        ) {
+                            Ok(request) => {
+                                standard_new_session_with_timeout(
+                                    conn,
+                                    request,
+                                    config.agent_type.provider_name(),
+                                )
+                                .await
                             }
-                            request = request.mcp_servers(vec![acp::McpServer::Http(mcp_http)]);
+                            Err(e) => Err(e),
                         }
-                        conn.new_session(request)
-                            .await
-                            .map(|r| r.session_id)
-                            .map_err(|e| {
-                                crate::Error::Provider(format!("Failed to create ACP session: {e}"))
-                            })
                     }
                     Some(Connection::Gemini(conn)) => {
                         tracing::debug!("Creating Gemini ACP session for role '{}'", agent_role);
@@ -498,29 +519,20 @@ async fn command_loop(
             } => {
                 let result = match connection.as_ref() {
                     Some(Connection::Standard(conn)) => {
-                        let prompt_result = conn
-                            .prompt(acp::PromptRequest::new(
-                                session_id.clone(),
-                                vec![acp::ContentBlock::Text(acp::TextContent::new(&message))],
-                            ))
-                            .await;
+                        let prompt_result = standard_prompt_with_idle_timeout(
+                            conn,
+                            session_id.clone(),
+                            &message,
+                            &config.agent_type,
+                        )
+                        .await;
                         match prompt_result {
                             Ok(_) => {
                                 let text =
                                     collector.borrow_mut().take_content(session_id.0.as_ref());
                                 Ok(text)
                             }
-                            Err(e) => {
-                                if e.code == acp::ErrorCode::AuthRequired {
-                                    Err(crate::Error::Provider(format!(
-                                        "{} requires authentication. Run: {}",
-                                        config.agent_type.provider_name(),
-                                        config.agent_type.auth_hint()
-                                    )))
-                                } else {
-                                    Err(crate::Error::Provider(format!("ACP prompt failed: {e}")))
-                                }
-                            }
+                            Err(e) => Err(e),
                         }
                     }
                     Some(Connection::Gemini(conn)) => {
@@ -566,7 +578,10 @@ async fn command_loop(
 
             AcpCommand::Cancel { session_id } => match connection.as_ref() {
                 Some(Connection::Standard(conn)) => {
-                    let _ = conn.cancel(acp::CancelNotification::new(session_id)).await;
+                    let _ = conn
+                        .conn
+                        .cancel(acp::CancelNotification::new(session_id))
+                        .await;
                 }
                 Some(Connection::Gemini(conn)) => {
                     let _ = conn
@@ -583,6 +598,115 @@ async fn command_loop(
                 break;
             }
         }
+    }
+}
+
+fn attach_http_mcp_server(
+    mut request: acp::NewSessionRequest,
+    mcp_server_url: Option<String>,
+    bearer_token: Option<String>,
+    mcp_capabilities: &acp::McpCapabilities,
+    provider_name: &str,
+) -> Result<acp::NewSessionRequest> {
+    let Some(url) = mcp_server_url else {
+        return Ok(request);
+    };
+
+    if !mcp_capabilities.http {
+        return Err(crate::Error::Provider(format!(
+            "{provider_name} ACP adapter does not advertise HTTP MCP support, \
+             so feroxmute cannot attach its tool server. Update the ACP adapter \
+             or use a provider that supports ACP HTTP MCP servers."
+        )));
+    }
+
+    tracing::debug!("Attaching MCP server at {}", url);
+    let mut mcp_http = acp::McpServerHttp::new("feroxmute", url);
+    if let Some(token) = bearer_token {
+        mcp_http = mcp_http.headers(vec![acp::HttpHeader::new(
+            "Authorization",
+            format!("Bearer {token}"),
+        )]);
+    }
+    request = request.mcp_servers(vec![acp::McpServer::Http(mcp_http)]);
+
+    Ok(request)
+}
+
+async fn standard_new_session_with_timeout(
+    conn: &StandardConnection,
+    request: acp::NewSessionRequest,
+    provider_name: &str,
+) -> Result<acp::SessionId> {
+    match tokio::time::timeout(ACP_SETUP_TIMEOUT, conn.conn.new_session(request)).await {
+        Ok(Ok(response)) => Ok(response.session_id),
+        Ok(Err(e)) => Err(crate::Error::Provider(format!(
+            "Failed to create ACP session: {e}"
+        ))),
+        Err(_) => {
+            let diagnostics = conn.diagnostics.borrow().recent_summary();
+            Err(crate::Error::Provider(format!(
+                "{provider_name} ACP session/new timed out after {} seconds. \
+                 The CLI connected, but did not create a session with feroxmute's MCP server. \
+                 Check authentication, model availability, ACP MCP support, and adapter logs.{}",
+                ACP_SETUP_TIMEOUT.as_secs(),
+                diagnostics,
+            )))
+        }
+    }
+}
+
+async fn standard_prompt_with_idle_timeout(
+    conn: &StandardConnection,
+    session_id: acp::SessionId,
+    message: &str,
+    agent_type: &CliAgentType,
+) -> Result<acp::PromptResponse> {
+    let prompt_result = conn.conn.prompt(acp::PromptRequest::new(
+        session_id.clone(),
+        vec![acp::ContentBlock::Text(acp::TextContent::new(message))],
+    ));
+    tokio::pin!(prompt_result);
+
+    let idle_deadline = tokio::time::Instant::now() + ACP_PROMPT_IDLE_TIMEOUT;
+    let idle_sleep = tokio::time::sleep_until(idle_deadline);
+    tokio::pin!(idle_sleep);
+
+    loop {
+        tokio::select! {
+            result = &mut prompt_result => {
+                return result.map_err(|e| standard_prompt_error(&e, agent_type));
+            }
+            _ = &mut idle_sleep => {
+                let _ = conn.conn.cancel(acp::CancelNotification::new(session_id.clone())).await;
+                let diagnostics = conn.diagnostics.borrow().recent_summary();
+                return Err(crate::Error::Provider(format!(
+                    "{} ACP prompt timed out after {} seconds of inactivity. \
+                     The CLI connected, but did not return a response or emit ACP activity. \
+                     Check authentication, model availability, and the ACP adapter process logs.{}",
+                    agent_type.provider_name(),
+                    ACP_PROMPT_IDLE_TIMEOUT.as_secs(),
+                    diagnostics,
+                )));
+            }
+            _ = conn.activity.notified() => {
+                idle_sleep
+                    .as_mut()
+                    .reset(tokio::time::Instant::now() + ACP_PROMPT_IDLE_TIMEOUT);
+            }
+        }
+    }
+}
+
+fn standard_prompt_error(e: &acp::Error, agent_type: &CliAgentType) -> crate::Error {
+    if e.code == acp::ErrorCode::AuthRequired {
+        crate::Error::Provider(format!(
+            "{} requires authentication. Run: {}",
+            agent_type.provider_name(),
+            agent_type.auth_hint()
+        ))
+    } else {
+        crate::Error::Provider(format!("ACP prompt failed: {e}"))
     }
 }
 
@@ -674,7 +798,6 @@ fn handle_gemini_notification(
     method: &str,
     val: &Value,
     collector: &Rc<RefCell<ResponseCollector>>,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
 ) {
     if method != "session/update" && method != "session/notification" {
         tracing::trace!("Gemini notification: {method}");
@@ -705,25 +828,16 @@ fn handle_gemini_notification(
                 collector
                     .borrow_mut()
                     .add_content(session_id, text_str.to_string());
-                let _ = event_tx.send(AcpEvent::AgentMessage {
-                    session_id: session_id.to_string(),
-                    text: text_str.to_string(),
-                });
             }
         }
         "agent_thought_chunk" => {
-            if let Some(text_str) = extract_content_text(update) {
-                let _ = event_tx.send(AcpEvent::AgentThought {
-                    session_id: session_id.to_string(),
-                    text: text_str.to_string(),
-                });
-            }
+            tracing::trace!("Gemini thought chunk for session '{session_id}'");
         }
         "tool_call" => {
-            emit_tool_call_started(update, session_id, event_tx);
+            tracing::debug!("Gemini tool call for session '{session_id}': {update}");
         }
         "tool_call_update" => {
-            emit_tool_call_completed(update, session_id, event_tx);
+            tracing::debug!("Gemini tool call update for session '{session_id}': {update}");
         }
         _ => {
             // Try nested object format (fallback)
@@ -732,30 +846,13 @@ fn handle_gemini_notification(
                     collector
                         .borrow_mut()
                         .add_content(session_id, text_str.to_string());
-                    let _ = event_tx.send(AcpEvent::AgentMessage {
-                        session_id: session_id.to_string(),
-                        text: text_str.to_string(),
-                    });
                 }
             } else if let Some(thought) = update.get("agentThoughtChunk") {
-                if let Some(text_str) = extract_content_text(thought) {
-                    let _ = event_tx.send(AcpEvent::AgentThought {
-                        session_id: session_id.to_string(),
-                        text: text_str.to_string(),
-                    });
-                }
+                tracing::trace!("Gemini thought chunk for session '{session_id}': {thought}");
             } else if update.get("toolCall").is_some() {
-                emit_tool_call_started(
-                    update.get("toolCall").unwrap_or(update),
-                    session_id,
-                    event_tx,
-                );
+                tracing::debug!("Gemini tool call for session '{session_id}': {update}");
             } else if update.get("toolCallUpdate").is_some() {
-                emit_tool_call_completed(
-                    update.get("toolCallUpdate").unwrap_or(update),
-                    session_id,
-                    event_tx,
-                );
+                tracing::debug!("Gemini tool call update for session '{session_id}': {update}");
             } else {
                 tracing::trace!("Unrecognized Gemini update: {update}");
             }
@@ -770,46 +867,23 @@ fn extract_content_text(obj: &Value) -> Option<&str> {
         .and_then(|t| t.as_str())
 }
 
-fn emit_tool_call_started(
-    obj: &Value,
-    session_id: &str,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
-) {
-    let _ = event_tx.send(AcpEvent::ToolCallStarted {
-        session_id: session_id.to_string(),
-        title: obj
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        tool_call_id: obj
-            .get("toolCallId")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-    });
-}
+fn summarize_acp_stream_message(message: &acp::StreamMessage) -> String {
+    let direction = match message.direction {
+        acp::StreamMessageDirection::Incoming => "<-",
+        acp::StreamMessageDirection::Outgoing => "->",
+    };
 
-fn emit_tool_call_completed(
-    obj: &Value,
-    session_id: &str,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
-) {
-    // For tagged format, status is inline; for nested format, it's in `fields`
-    let status = obj
-        .get("status")
-        .or_else(|| obj.get("fields").and_then(|f| f.get("status")))
-        .and_then(|v| v.as_str());
-
-    if status == Some("completed") {
-        let _ = event_tx.send(AcpEvent::ToolCallCompleted {
-            session_id: session_id.to_string(),
-            tool_call_id: obj
-                .get("toolCallId")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        });
+    match &message.message {
+        acp::StreamMessageContent::Request { id, method, .. } => {
+            format!("{direction} request {id:?} {method}")
+        }
+        acp::StreamMessageContent::Response { id, result } => match result {
+            Ok(_) => format!("{direction} response {id:?} ok"),
+            Err(e) => format!("{direction} response {id:?} error {e}"),
+        },
+        acp::StreamMessageContent::Notification { method, .. } => {
+            format!("{direction} notification {method}")
+        }
     }
 }
 
@@ -821,7 +895,6 @@ fn emit_tool_call_completed(
 async fn do_connect(
     config: &CliAgentConfig,
     working_dir: &Path,
-    event_tx: &mpsc::UnboundedSender<AcpEvent>,
     collector: &Rc<RefCell<ResponseCollector>>,
 ) -> Result<(Child, Connection)> {
     // Check binary availability first
@@ -840,10 +913,16 @@ async fn do_connect(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // Add ACP mode and model for Gemini CLI
-    if config.agent_type == CliAgentType::GeminiCli {
-        cmd.arg("--experimental-acp");
-        cmd.arg("-m").arg(&config.model);
+    match config.agent_type {
+        CliAgentType::Codex => {
+            cmd.arg("-c")
+                .arg(format!("model={}", toml_string_literal(&config.model)));
+        }
+        CliAgentType::GeminiCli => {
+            cmd.arg("--experimental-acp");
+            cmd.arg("-m").arg(&config.model);
+        }
+        CliAgentType::ClaudeCode => {}
     }
 
     let mut child = cmd.spawn().map_err(|e| {
@@ -866,11 +945,17 @@ async fn do_connect(
         .take()
         .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stderr".to_string()))?;
 
+    let diagnostics = Rc::new(RefCell::new(CliDiagnostics::default()));
+    let diagnostics_for_stderr = Rc::clone(&diagnostics);
+
     // Log stderr in a background task
     tokio::task::spawn_local(async move {
         use tokio::io::AsyncBufReadExt;
         let mut reader = tokio::io::BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
+            diagnostics_for_stderr
+                .borrow_mut()
+                .push_stderr(line.clone());
             tracing::warn!("CLI STDERR: {}", line);
         }
     });
@@ -880,7 +965,6 @@ async fn do_connect(
         let pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>> =
             Arc::new(Mutex::new(HashMap::new()));
         let pending_requests_clone = Arc::clone(&pending_requests);
-        let event_tx_clone = event_tx.clone();
         let collector_clone = Rc::clone(collector);
         let activity = Arc::new(Notify::new());
         let activity_clone = Arc::clone(&activity);
@@ -933,7 +1017,7 @@ async fn do_connect(
                     } else {
                         // Notification — no response needed
                         tracing::debug!("Gemini notification: {method}");
-                        handle_gemini_notification(method, &val, &collector_clone, &event_tx_clone);
+                        handle_gemini_notification(method, &val, &collector_clone);
                     }
                 } else {
                     tracing::warn!("Gemini stdout unrecognized message: {}", val);
@@ -979,10 +1063,12 @@ async fn do_connect(
 
         Ok((child, Connection::Gemini(gemini_conn)))
     } else {
+        let activity = Rc::new(Notify::new());
+
         // Build delegate (Rc-based, single-threaded)
         let delegate = AcpClientDelegate {
-            event_tx: event_tx.clone(),
             collector: Rc::clone(collector),
+            activity: Rc::clone(&activity),
         };
 
         let (conn, io_task) = acp::ClientSideConnection::new(
@@ -993,6 +1079,22 @@ async fn do_connect(
                 tokio::task::spawn_local(fut);
             },
         );
+
+        let mut stream = conn.subscribe();
+        let activity_for_stream = Rc::clone(&activity);
+        let diagnostics_for_stream = Rc::clone(&diagnostics);
+        tokio::task::spawn_local(async move {
+            while let Ok(message) = stream.recv().await {
+                if matches!(message.direction, acp::StreamMessageDirection::Incoming) {
+                    activity_for_stream.notify_waiters();
+                }
+                let summary = summarize_acp_stream_message(&message);
+                diagnostics_for_stream
+                    .borrow_mut()
+                    .push_rpc_event(summary.clone());
+                tracing::debug!("ACP RPC: {summary}");
+            }
+        });
 
         // Spawn IO task on the LocalSet
         tokio::task::spawn_local(async move {
@@ -1011,14 +1113,43 @@ async fn do_connect(
             .await
             .map_err(|e| crate::Error::Provider(format!("ACP initialization failed: {e}")))?;
 
+        let mcp_capabilities = init_response.agent_capabilities.mcp_capabilities.clone();
+
         tracing::info!(
-            "Connected to {} (protocol version: {:?})",
+            "Connected to {} (protocol version: {:?}, mcp_http: {}, mcp_sse: {})",
             config.agent_type.provider_name(),
-            init_response.protocol_version
+            init_response.protocol_version,
+            mcp_capabilities.http,
+            mcp_capabilities.sse
         );
 
-        Ok((child, Connection::Standard(conn)))
+        Ok((
+            child,
+            Connection::Standard(StandardConnection {
+                conn,
+                activity,
+                diagnostics,
+                mcp_capabilities,
+            }),
+        ))
     }
+}
+
+fn toml_string_literal(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,8 +1157,8 @@ async fn do_connect(
 // ---------------------------------------------------------------------------
 
 struct AcpClientDelegate {
-    event_tx: mpsc::UnboundedSender<AcpEvent>,
     collector: Rc<RefCell<ResponseCollector>>,
+    activity: Rc<Notify>,
 }
 
 #[async_trait::async_trait(?Send)]
@@ -1036,6 +1167,8 @@ impl acp::Client for AcpClientDelegate {
         &self,
         args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
+        self.activity.notify_waiters();
+
         // Auto-approve all tool calls — feroxmute handles its own permissions
         // via the MCP tool layer. Pick the best option from the agent's list:
         // prefer AllowAlways > AllowOnce > first available.
@@ -1062,44 +1195,36 @@ impl acp::Client for AcpClientDelegate {
         &self,
         notification: acp::SessionNotification,
     ) -> acp::Result<()> {
+        self.activity.notify_waiters();
+
         let session_id = notification.session_id.0.to_string();
 
         match notification.update {
             acp::SessionUpdate::AgentMessageChunk(chunk) => {
                 if let acp::ContentBlock::Text(text_content) = chunk.content {
-                    // Accumulate for response collection
                     self.collector
                         .borrow_mut()
-                        .add_content(&session_id, text_content.text.clone());
-
-                    // Forward event to main runtime
-                    let _ = self.event_tx.send(AcpEvent::AgentMessage {
-                        session_id,
-                        text: text_content.text,
-                    });
+                        .add_content(&session_id, text_content.text);
                 }
             }
-            acp::SessionUpdate::AgentThoughtChunk(chunk) => {
-                if let acp::ContentBlock::Text(text_content) = chunk.content {
-                    let _ = self.event_tx.send(AcpEvent::AgentThought {
-                        session_id,
-                        text: text_content.text,
-                    });
-                }
+            acp::SessionUpdate::AgentThoughtChunk(_) => {
+                tracing::trace!("ACP thought chunk for session '{session_id}'");
             }
             acp::SessionUpdate::ToolCall(tool_call) => {
-                let _ = self.event_tx.send(AcpEvent::ToolCallStarted {
+                tracing::debug!(
+                    "ACP tool call for session '{}': {} ({})",
                     session_id,
-                    title: tool_call.title,
-                    tool_call_id: tool_call.tool_call_id.0.to_string(),
-                });
+                    tool_call.title,
+                    tool_call.tool_call_id.0
+                );
             }
             acp::SessionUpdate::ToolCallUpdate(update) => {
                 if let Some(acp::ToolCallStatus::Completed) = update.fields.status {
-                    let _ = self.event_tx.send(AcpEvent::ToolCallCompleted {
+                    tracing::debug!(
+                        "ACP tool call completed for session '{}': {}",
                         session_id,
-                        tool_call_id: update.tool_call_id.0.to_string(),
-                    });
+                        update.tool_call_id.0
+                    );
                 }
             }
             _ => {
@@ -1161,6 +1286,15 @@ mod tests {
     fn test_extract_content_text_missing_text() {
         let obj = serde_json::json!({"content": {"image": "x"}});
         assert_eq!(extract_content_text(&obj), None);
+    }
+
+    #[test]
+    fn test_toml_string_literal_escapes_codex_model() {
+        assert_eq!(toml_string_literal("gpt-5.2"), "\"gpt-5.2\"");
+        assert_eq!(
+            toml_string_literal("model \"x\"\\next"),
+            "\"model \\\"x\\\"\\\\next\""
+        );
     }
 
     #[test]
