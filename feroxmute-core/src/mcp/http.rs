@@ -7,8 +7,9 @@
 //! Requests without a valid `Authorization: Bearer <token>` header
 //! are rejected with `401 Unauthorized`.
 
+use std::collections::VecDeque;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use http_body_util::{BodyExt, Full};
 use hyper::body::Bytes;
@@ -26,6 +27,43 @@ use crate::Result;
 use crate::mcp::McpServer;
 use crate::mcp::protocol::{JsonRpcRequest, error_codes};
 
+const MAX_HTTP_DIAGNOSTICS: usize = 30;
+
+#[derive(Default)]
+struct HttpMcpDiagnostics {
+    entries: Mutex<VecDeque<String>>,
+}
+
+impl HttpMcpDiagnostics {
+    fn push(&self, entry: impl Into<String>) {
+        if let Ok(mut entries) = self.entries.lock() {
+            if entries.len() >= MAX_HTTP_DIAGNOSTICS {
+                entries.pop_front();
+            }
+            entries.push_back(entry.into());
+        }
+    }
+
+    fn summary(&self) -> String {
+        let Ok(entries) = self.entries.lock() else {
+            return String::new();
+        };
+
+        entries
+            .iter()
+            .map(|entry| format!("  {entry}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn latest(&self) -> Option<String> {
+        self.entries
+            .lock()
+            .ok()
+            .and_then(|entries| entries.back().cloned())
+    }
+}
+
 /// HTTP server wrapping an MCP server for tool access via HTTP POST.
 ///
 /// Binds to an OS-assigned port on localhost and forwards JSON-RPC
@@ -35,6 +73,7 @@ pub struct HttpMcpServer {
     port: u16,
     /// Bearer token required for all requests.
     token: String,
+    diagnostics: Arc<HttpMcpDiagnostics>,
     shutdown_tx: Option<oneshot::Sender<()>>,
     _task: JoinHandle<()>,
 }
@@ -56,15 +95,26 @@ impl HttpMcpServer {
         debug!("MCP HTTP server listening on {}", local_addr);
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+        let diagnostics = Arc::new(HttpMcpDiagnostics::default());
+        diagnostics.push(format!("listening on http://127.0.0.1:{port}"));
 
         let accept_token = token.clone();
+        let accept_diagnostics = Arc::clone(&diagnostics);
         let task = tokio::spawn(async move {
-            Self::accept_loop(listener, server, accept_token, shutdown_rx).await;
+            Self::accept_loop(
+                listener,
+                server,
+                accept_token,
+                accept_diagnostics,
+                shutdown_rx,
+            )
+            .await;
         });
 
         Ok(Self {
             port,
             token,
+            diagnostics,
             shutdown_tx: Some(shutdown_tx),
             _task: task,
         })
@@ -85,6 +135,16 @@ impl HttpMcpServer {
         self.port
     }
 
+    /// Recent HTTP/MCP activity, formatted for diagnostic error messages.
+    pub fn recent_activity_summary(&self) -> String {
+        self.diagnostics.summary()
+    }
+
+    /// Latest HTTP/MCP activity as a single line for live status updates.
+    pub fn latest_activity(&self) -> Option<String> {
+        self.diagnostics.latest()
+    }
+
     /// Gracefully shut down the server.
     pub async fn shutdown(mut self) {
         if let Some(tx) = self.shutdown_tx.take() {
@@ -97,6 +157,7 @@ impl HttpMcpServer {
         listener: TcpListener,
         server: Arc<McpServer>,
         token: String,
+        diagnostics: Arc<HttpMcpDiagnostics>,
         mut shutdown_rx: oneshot::Receiver<()>,
     ) {
         let token = Arc::new(token);
@@ -106,14 +167,17 @@ impl HttpMcpServer {
                     match result {
                         Ok((stream, addr)) => {
                             debug!("MCP HTTP connection from {}", addr);
+                            diagnostics.push(format!("connection from {addr}"));
                             let server = Arc::clone(&server);
                             let token = Arc::clone(&token);
+                            let diagnostics = Arc::clone(&diagnostics);
                             tokio::spawn(async move {
                                 let io = TokioIo::new(stream);
                                 let service = service_fn(move |req| {
                                     let server = Arc::clone(&server);
                                     let token = Arc::clone(&token);
-                                    handle_mcp_request(server, token, req)
+                                    let diagnostics = Arc::clone(&diagnostics);
+                                    handle_mcp_request(server, token, diagnostics, req)
                                 });
                                 if let Err(e) = http1::Builder::new()
                                     .serve_connection(io, service)
@@ -125,11 +189,13 @@ impl HttpMcpServer {
                         }
                         Err(e) => {
                             error!("MCP HTTP accept error: {}", e);
+                            diagnostics.push(format!("accept error: {e}"));
                         }
                     }
                 }
                 _ = &mut shutdown_rx => {
                     debug!("MCP HTTP server shutting down");
+                    diagnostics.push("server shutting down");
                     break;
                 }
             }
@@ -154,6 +220,19 @@ fn json_response(status: StatusCode, body: &serde_json::Value) -> Response<Full<
         })
 }
 
+/// Build an empty HTTP response.
+fn empty_response(status: StatusCode) -> Response<Full<Bytes>> {
+    Response::builder()
+        .status(status)
+        .body(Full::new(Bytes::new()))
+        .unwrap_or_else(|_| {
+            warn!("Failed to build empty HTTP response, returning empty 500");
+            let mut resp = Response::new(Full::new(Bytes::new()));
+            *resp.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            resp
+        })
+}
+
 /// Validate the `Authorization: Bearer <token>` header.
 fn check_bearer_token(req: &Request<hyper::body::Incoming>, expected: &str) -> bool {
     req.headers()
@@ -163,14 +242,30 @@ fn check_bearer_token(req: &Request<hyper::body::Incoming>, expected: &str) -> b
         .is_some_and(|t| t == expected)
 }
 
+fn describe_mcp_request(request: &JsonRpcRequest) -> String {
+    if request.method == "tools/call" {
+        let tool_name = request
+            .params
+            .as_ref()
+            .and_then(|params| params.get("name"))
+            .and_then(|name| name.as_str())
+            .unwrap_or("<unknown>");
+        format!("tools/call {tool_name}")
+    } else {
+        request.method.clone()
+    }
+}
+
 /// Handle a single HTTP request by dispatching to the MCP server.
 async fn handle_mcp_request(
     server: Arc<McpServer>,
     token: Arc<String>,
+    diagnostics: Arc<HttpMcpDiagnostics>,
     req: Request<hyper::body::Incoming>,
 ) -> std::result::Result<Response<Full<Bytes>>, hyper::Error> {
     // Only accept POST requests
     if req.method() != hyper::Method::POST {
+        diagnostics.push(format!("{} -> 405 method not allowed", req.method()));
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": null,
@@ -184,6 +279,7 @@ async fn handle_mcp_request(
 
     // Validate bearer token
     if !check_bearer_token(&req, &token) {
+        diagnostics.push("POST -> 401 unauthorized");
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": null,
@@ -202,6 +298,7 @@ async fn handle_mcp_request(
     let rpc_request: JsonRpcRequest = match serde_json::from_slice(&body) {
         Ok(r) => r,
         Err(e) => {
+            diagnostics.push(format!("POST -> parse error: {e}"));
             let error_body = serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": null,
@@ -213,19 +310,29 @@ async fn handle_mcp_request(
             return Ok(json_response(StatusCode::OK, &error_body));
         }
     };
+    let request_description = describe_mcp_request(&rpc_request);
 
     // Handle notification methods that don't require processing
     if rpc_request.method == "notifications/initialized" || rpc_request.method == "initialized" {
-        let response_body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": rpc_request.id,
-            "result": {}
-        });
-        return Ok(json_response(StatusCode::OK, &response_body));
+        diagnostics.push(format!("{request_description} -> accepted"));
+        return Ok(empty_response(StatusCode::ACCEPTED));
+    }
+
+    if rpc_request.id.is_none() {
+        diagnostics.push(format!("{request_description} -> accepted notification"));
+        return Ok(empty_response(StatusCode::ACCEPTED));
     }
 
     // Delegate to the MCP server
     let rpc_response = server.handle_request(rpc_request).await;
+    if let Some(error) = &rpc_response.error {
+        diagnostics.push(format!(
+            "{request_description} -> error {} ({})",
+            error.code, error.message
+        ));
+    } else {
+        diagnostics.push(format!("{request_description} -> ok"));
+    }
 
     let json_bytes = serde_json::to_vec(&rpc_response).unwrap_or_default();
     let response = Response::builder()
@@ -250,6 +357,7 @@ mod tests {
     use crate::mcp::protocol::McpToolResult;
     use async_trait::async_trait;
     use serde_json::Value;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     struct EchoTool;
 
@@ -336,6 +444,48 @@ mod tests {
         let port: u16 = port_str.parse().expect("port should be a valid u16");
         assert!(port > 0);
         assert_eq!(port, http.port());
+
+        http.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn test_initialized_notification_returns_accepted_without_jsonrpc_body() {
+        let server = Arc::new(McpServer::new("test", "1.0.0"));
+        let http = HttpMcpServer::start(server).await.unwrap();
+
+        let body = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+        let request = format!(
+            "POST / HTTP/1.1\r\n\
+             Host: 127.0.0.1:{}\r\n\
+             Authorization: Bearer {}\r\n\
+             Content-Type: application/json\r\n\
+             Content-Length: {}\r\n\
+             Connection: close\r\n\
+             \r\n\
+             {}",
+            http.port(),
+            http.token(),
+            body.len(),
+            body
+        );
+
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", http.port()))
+            .await
+            .unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+        let response = String::from_utf8(response).unwrap();
+
+        assert!(
+            response.starts_with("HTTP/1.1 202 Accepted"),
+            "unexpected response: {response}"
+        );
+        assert!(
+            !response.contains("\"jsonrpc\""),
+            "notifications must not receive JSON-RPC response bodies: {response}"
+        );
 
         http.shutdown().await;
     }
