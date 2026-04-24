@@ -310,7 +310,9 @@ impl EngagementLimitations {
         }
 
         if lines.len() == 1 {
-            lines.push("- No restrictions - full scope authorized".into());
+            lines.push(
+                "- Default authorized web testing scope - stay within the specified target and use non-destructive validation".into(),
+            );
         }
 
         lines.push("\nCommands violating these limitations will be blocked.".into());
@@ -455,7 +457,7 @@ mod tests {
             ..Default::default()
         };
         let section = limits.to_prompt_section();
-        assert!(section.contains("No restrictions"));
+        assert!(section.contains("Default authorized web testing scope"));
     }
 
     #[test]

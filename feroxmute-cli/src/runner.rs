@@ -484,11 +484,21 @@ async fn run_orchestrator_with_tools(
     // Build user prompt with limitations
     let engagement_task = match &instruction {
         Some(instr) => format!(
-            "Engagement Task: Perform security assessment\n\nAdditional Objective: {}",
+            "Engagement Task: Perform an authorized, scope-limited security assessment\n\nAdditional Objective: {}",
             instr
         ),
-        None => "Engagement Task: Perform security assessment".to_string(),
+        None => {
+            "Engagement Task: Perform an authorized, scope-limited security assessment".to_string()
+        }
     };
+
+    let authorization_section = "\
+        ## Authorization and Safety Boundaries\n\
+        The operator supplied the exact target below as the authorized in-scope system for this assessment. \
+        Work only on that target and any explicitly configured source code. Use non-destructive validation. \
+        Do not perform credential stuffing, phishing, social engineering, persistence, malware, denial-of-service, \
+        destructive actions, or bulk data extraction. If a test would exceed these boundaries, record the limitation \
+        and choose a safer validation method.";
 
     let source_section = if has_source_target {
         "\n\n## Source Code Available - IMPORTANT\n\
@@ -527,13 +537,14 @@ async fn run_orchestrator_with_tools(
     };
 
     let user_prompt = format!(
-        "{}Target: {}\n\n{}\n\n{}{}{}\n\n\
+        "{}Target: {}\n\n{}\n\n{}\n\n{}{}{}\n\n\
         Available agent types: recon, scanner{}, report.\n\n\
         {}\n\n\
         CRITICAL: After EVERY spawn_agent call, you MUST call wait_for_any() to get results. Never stop without waiting for spawned agents.\n\n\
         {}",
         resume_prefix,
         target,
+        authorization_section,
         limitations.to_prompt_section(),
         engagement_task,
         source_section,
