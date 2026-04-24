@@ -182,27 +182,9 @@ impl WizardState {
                 if self.entering_custom_model {
                     // Text input mode for custom model name
                     match key.code {
-                        KeyCode::Char(c) => {
-                            let byte_idx =
-                                char_to_byte_index(&self.text_input, self.cursor_position);
-                            self.text_input.insert(byte_idx, c);
-                            self.cursor_position += 1;
-                        }
-                        KeyCode::Backspace => {
-                            if self.cursor_position > 0 {
-                                self.cursor_position -= 1;
-                                let byte_idx =
-                                    char_to_byte_index(&self.text_input, self.cursor_position);
-                                self.text_input.remove(byte_idx);
-                            }
-                        }
-                        KeyCode::Delete => {
-                            if self.cursor_position < self.text_input.chars().count() {
-                                let byte_idx =
-                                    char_to_byte_index(&self.text_input, self.cursor_position);
-                                self.text_input.remove(byte_idx);
-                            }
-                        }
+                        KeyCode::Char(c) => self.insert_text_char(c),
+                        KeyCode::Backspace => self.backspace_text_input(),
+                        KeyCode::Delete => self.delete_text_input(),
                         KeyCode::Left => {
                             self.cursor_position = self.cursor_position.saturating_sub(1);
                         }
@@ -212,15 +194,13 @@ impl WizardState {
                         }
                         KeyCode::Home => self.cursor_position = 0,
                         KeyCode::End => self.cursor_position = self.text_input.chars().count(),
-                        KeyCode::Enter => {
-                            if !self.text_input.is_empty() {
-                                self.data.model = Some(self.text_input.clone());
-                                self.text_input.clear();
-                                self.cursor_position = 0;
-                                self.entering_custom_model = false;
-                                self.selected_index = 0;
-                                return self.next_screen();
-                            }
+                        KeyCode::Enter if !self.text_input.is_empty() => {
+                            self.data.model = Some(self.text_input.clone());
+                            self.text_input.clear();
+                            self.cursor_position = 0;
+                            self.entering_custom_model = false;
+                            self.selected_index = 0;
+                            return self.next_screen();
                         }
                         KeyCode::Esc => {
                             // Return to list mode
@@ -266,24 +246,9 @@ impl WizardState {
             }
             WizardScreen::ApiKey => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
-                KeyCode::Char(c) => {
-                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                    self.text_input.insert(byte_idx, c);
-                    self.cursor_position += 1;
-                }
-                KeyCode::Backspace => {
-                    if self.cursor_position > 0 {
-                        self.cursor_position -= 1;
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
-                KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.chars().count() {
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
+                KeyCode::Char(c) => self.insert_text_char(c),
+                KeyCode::Backspace => self.backspace_text_input(),
+                KeyCode::Delete => self.delete_text_input(),
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
@@ -293,14 +258,12 @@ impl WizardState {
                 }
                 KeyCode::Home => self.cursor_position = 0,
                 KeyCode::End => self.cursor_position = self.text_input.chars().count(),
-                KeyCode::Enter => {
-                    if !self.text_input.is_empty() {
-                        self.data.api_key = self.text_input.clone();
-                        self.text_input.clear();
-                        self.cursor_position = 0;
-                        self.selected_index = 0;
-                        return self.next_screen();
-                    }
+                KeyCode::Enter if !self.text_input.is_empty() => {
+                    self.data.api_key = self.text_input.clone();
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    self.selected_index = 0;
+                    return self.next_screen();
                 }
                 KeyCode::Esc => {
                     self.text_input.clear();
@@ -311,24 +274,9 @@ impl WizardState {
             },
             WizardScreen::AzureEndpoint => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
-                KeyCode::Char(c) => {
-                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                    self.text_input.insert(byte_idx, c);
-                    self.cursor_position += 1;
-                }
-                KeyCode::Backspace => {
-                    if self.cursor_position > 0 {
-                        self.cursor_position -= 1;
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
-                KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.chars().count() {
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
+                KeyCode::Char(c) => self.insert_text_char(c),
+                KeyCode::Backspace => self.backspace_text_input(),
+                KeyCode::Delete => self.delete_text_input(),
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
@@ -338,14 +286,12 @@ impl WizardState {
                 }
                 KeyCode::Home => self.cursor_position = 0,
                 KeyCode::End => self.cursor_position = self.text_input.chars().count(),
-                KeyCode::Enter => {
-                    if !self.text_input.is_empty() {
-                        self.data.base_url = Some(self.text_input.clone());
-                        self.text_input.clear();
-                        self.cursor_position = 0;
-                        self.selected_index = 0;
-                        return self.next_screen();
-                    }
+                KeyCode::Enter if !self.text_input.is_empty() => {
+                    self.data.base_url = Some(self.text_input.clone());
+                    self.text_input.clear();
+                    self.cursor_position = 0;
+                    self.selected_index = 0;
+                    return self.next_screen();
                 }
                 KeyCode::Esc => {
                     self.text_input.clear();
@@ -356,24 +302,9 @@ impl WizardState {
             },
             WizardScreen::OllamaBaseUrl => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
-                KeyCode::Char(c) => {
-                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                    self.text_input.insert(byte_idx, c);
-                    self.cursor_position += 1;
-                }
-                KeyCode::Backspace => {
-                    if self.cursor_position > 0 {
-                        self.cursor_position -= 1;
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
-                KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.chars().count() {
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
+                KeyCode::Char(c) => self.insert_text_char(c),
+                KeyCode::Backspace => self.backspace_text_input(),
+                KeyCode::Delete => self.delete_text_input(),
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
@@ -405,24 +336,9 @@ impl WizardState {
             },
             WizardScreen::OllamaApiKey => match key.code {
                 KeyCode::Char('q') if self.text_input.is_empty() => return WizardAction::Quit,
-                KeyCode::Char(c) => {
-                    let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                    self.text_input.insert(byte_idx, c);
-                    self.cursor_position += 1;
-                }
-                KeyCode::Backspace => {
-                    if self.cursor_position > 0 {
-                        self.cursor_position -= 1;
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
-                KeyCode::Delete => {
-                    if self.cursor_position < self.text_input.chars().count() {
-                        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
-                        self.text_input.remove(byte_idx);
-                    }
-                }
+                KeyCode::Char(c) => self.insert_text_char(c),
+                KeyCode::Backspace => self.backspace_text_input(),
+                KeyCode::Delete => self.delete_text_input(),
                 KeyCode::Left => {
                     self.cursor_position = self.cursor_position.saturating_sub(1);
                 }
@@ -539,6 +455,27 @@ impl WizardState {
             },
         }
         WizardAction::Continue
+    }
+
+    fn insert_text_char(&mut self, c: char) {
+        let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+        self.text_input.insert(byte_idx, c);
+        self.cursor_position += 1;
+    }
+
+    fn backspace_text_input(&mut self) {
+        if self.cursor_position > 0 {
+            self.cursor_position -= 1;
+            let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+            self.text_input.remove(byte_idx);
+        }
+    }
+
+    fn delete_text_input(&mut self) {
+        if self.cursor_position < self.text_input.chars().count() {
+            let byte_idx = char_to_byte_index(&self.text_input, self.cursor_position);
+            self.text_input.remove(byte_idx);
+        }
     }
 
     /// Move to next screen
