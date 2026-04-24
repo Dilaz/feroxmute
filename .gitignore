@@ -1,5 +1,6 @@
 /target
 error.log
+.DS_Store
 
 # Git worktrees
 .worktrees/
