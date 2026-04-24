@@ -1142,14 +1142,44 @@ fn toml_string_literal(value: &str) -> String {
         match ch {
             '\\' => escaped.push_str("\\\\"),
             '"' => escaped.push_str("\\\""),
-            '\n' => escaped.push_str("\\n"),
-            '\r' => escaped.push_str("\\r"),
+            '\u{0008}' => escaped.push_str("\\b"),
             '\t' => escaped.push_str("\\t"),
+            '\n' => escaped.push_str("\\n"),
+            '\u{000C}' => escaped.push_str("\\f"),
+            '\r' => escaped.push_str("\\r"),
+            c if c.is_control() => push_toml_unicode_escape(&mut escaped, c),
             _ => escaped.push(ch),
         }
     }
     escaped.push('"');
     escaped
+}
+
+fn push_toml_unicode_escape(output: &mut String, ch: char) {
+    output.push_str("\\u");
+    let code = ch as u32;
+    for shift in [12, 8, 4, 0] {
+        let nibble = ((code >> shift) & 0xF) as u8;
+        output.push(match nibble {
+            0 => '0',
+            1 => '1',
+            2 => '2',
+            3 => '3',
+            4 => '4',
+            5 => '5',
+            6 => '6',
+            7 => '7',
+            8 => '8',
+            9 => '9',
+            10 => 'A',
+            11 => 'B',
+            12 => 'C',
+            13 => 'D',
+            14 => 'E',
+            15 => 'F',
+            _ => '0',
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1294,6 +1324,10 @@ mod tests {
         assert_eq!(
             toml_string_literal("model \"x\"\\next"),
             "\"model \\\"x\\\"\\\\next\""
+        );
+        assert_eq!(
+            toml_string_literal("a\u{0008}\t\n\u{000C}\r\u{0000}\u{007F}z"),
+            "\"a\\b\\t\\n\\f\\r\\u0000\\u007Fz\""
         );
     }
 
