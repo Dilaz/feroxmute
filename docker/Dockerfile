@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     hashcat \
     john \
     commix \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ProjectDiscovery tools via pdtm
@@ -90,14 +91,16 @@ RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh |
 # Install Trivy for container/dependency scanning
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
-# Install Node.js for promptfoo
+# Install Node.js (runtime for promptfoo) and bun (package manager)
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
 
 # LLM Penetration Testing Tools
 RUN uv pip install --system --break-system-packages garak pyrit && \
-    npm install -g promptfoo
+    bun install -g promptfoo
 
 # Create working directories
 RUN mkdir -p /feroxmute/workdir/{orchestrator,recon,scanner,exploit,llm_pentest,scripts} \
