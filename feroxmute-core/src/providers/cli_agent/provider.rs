@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_client_protocol as acp;
+use agent_client_protocol::schema::v1::SessionId;
 use async_trait::async_trait;
 use chrono::Utc;
 use tokio::sync::Mutex;
@@ -73,7 +73,7 @@ fn with_http_mcp_diagnostics(error: crate::Error, http: &HttpMcpServer) -> crate
 
 async fn prompt_with_progress(
     bridge: &AcpBridge,
-    session_id: &acp::SessionId,
+    session_id: &SessionId,
     prompt: &str,
     events: &dyn EventSender,
     agent_name: &str,

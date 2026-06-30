@@ -1,9 +1,11 @@
 //! Thread-safe bridge to the ACP client.
 //!
-//! The ACP SDK's `ClientSideConnection` uses `LocalBoxFuture` (requires `spawn_local`
-//! / `LocalSet`), but `LlmProvider: Send + Sync` needs `Send` futures. This bridge
-//! runs all ACP operations on a dedicated `std::thread` with a `current_thread`
-//! tokio runtime + `LocalSet`, communicating via channels.
+//! The ACP SDK drives a connection through actors that run for the lifetime of
+//! a single `connect_with` call, and the Gemini flavor uses `spawn_local`. Both
+//! need a `current_thread` runtime + `LocalSet`, but `LlmProvider: Send + Sync`
+//! needs `Send` futures. This bridge runs all ACP operations on a dedicated
+//! `std::thread` with a `current_thread` tokio runtime + `LocalSet`, communicating
+//! via channels.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -14,12 +16,20 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use acp::Agent; // Required for initialize, prompt, new_session, cancel
+use acp::schema::ProtocolVersion;
+use acp::schema::v1::{
+    CancelNotification, ContentBlock, HttpHeader, Implementation, InitializeRequest,
+    McpCapabilities, McpServer, McpServerHttp, NewSessionRequest, PermissionOptionKind,
+    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
+    SelectedPermissionOutcome, SessionId, SessionNotification, SessionUpdate, TextContent,
+    ToolCallStatus,
+};
+use acp::{Agent, ByteStreams, Client, ConnectionTo};
 use agent_client_protocol as acp;
 use futures::io::AsyncWriteExt;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::{Mutex, Notify, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -40,21 +50,21 @@ enum AcpCommand {
         working_dir: PathBuf,
         mcp_server_url: Option<String>,
         bearer_token: Option<String>,
-        reply: oneshot::Sender<Result<acp::SessionId>>,
+        reply: oneshot::Sender<Result<SessionId>>,
     },
     Prompt {
-        session_id: acp::SessionId,
+        session_id: SessionId,
         message: String,
         reply: oneshot::Sender<Result<String>>,
     },
     Cancel {
-        session_id: acp::SessionId,
+        session_id: SessionId,
     },
     Shutdown,
 }
 
 // ---------------------------------------------------------------------------
-// Response collector (single-threaded, lives inside bridge thread)
+// Response collector
 // ---------------------------------------------------------------------------
 
 const ACP_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -82,6 +92,21 @@ impl ResponseCollector {
     }
 }
 
+/// Shared collector used by both the Standard (SDK) and Gemini paths.
+///
+/// The Standard path's notification callback must be `Send`, so the collector
+/// is wrapped in an `Arc<std::sync::Mutex<_>>` rather than `Rc<RefCell<_>>`.
+type SharedCollector = Arc<std::sync::Mutex<ResponseCollector>>;
+
+/// Lock the collector, recovering from poisoning rather than panicking.
+fn lock_collector(
+    collector: &std::sync::Mutex<ResponseCollector>,
+) -> std::sync::MutexGuard<'_, ResponseCollector> {
+    collector
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// A custom connection for Gemini CLI which uses a slightly different ACP flavor.
 struct GeminiConnection {
     stdin: Arc<Mutex<tokio_util::compat::Compat<tokio::process::ChildStdin>>>,
@@ -90,16 +115,6 @@ struct GeminiConnection {
     /// Signaled by the stdout reader whenever the agent shows activity (notifications,
     /// agent-initiated requests). Used to reset the idle timeout in `call()`.
     activity: Arc<Notify>,
-}
-
-/// Standard ACP connection state.
-struct StandardConnection {
-    conn: acp::ClientSideConnection,
-    /// Signaled by the ACP delegate whenever the agent emits a notification or
-    /// client request. Used to reset the idle timeout for `session/prompt`.
-    activity: Rc<Notify>,
-    diagnostics: Rc<RefCell<CliDiagnostics>>,
-    mcp_capabilities: acp::McpCapabilities,
 }
 
 #[derive(Default)]
@@ -266,11 +281,6 @@ impl GeminiConnection {
     }
 }
 
-enum Connection {
-    Standard(StandardConnection),
-    Gemini(GeminiConnection),
-}
-
 // ---------------------------------------------------------------------------
 // AcpBridge (Send + Sync wrapper)
 // ---------------------------------------------------------------------------
@@ -331,7 +341,7 @@ impl AcpBridge {
         working_dir: &Path,
         mcp_server_url: Option<String>,
         bearer_token: Option<String>,
-    ) -> Result<acp::SessionId> {
+    ) -> Result<SessionId> {
         let (tx, rx) = oneshot::channel();
         self.cmd_tx
             .send(AcpCommand::NewSession {
@@ -348,7 +358,7 @@ impl AcpBridge {
     }
 
     /// Send a prompt to a session and wait for the complete response.
-    pub async fn prompt(&self, session_id: &acp::SessionId, message: &str) -> Result<String> {
+    pub async fn prompt(&self, session_id: &SessionId, message: &str) -> Result<String> {
         let (tx, rx) = oneshot::channel();
         self.cmd_tx
             .send(AcpCommand::Prompt {
@@ -363,7 +373,7 @@ impl AcpBridge {
     }
 
     /// Cancel an active session.
-    pub async fn cancel(&self, session_id: &acp::SessionId) {
+    pub async fn cancel(&self, session_id: &SessionId) {
         let _ = self
             .cmd_tx
             .send(AcpCommand::Cancel {
@@ -404,28 +414,283 @@ fn build_bridge_runtime() -> tokio::runtime::Runtime {
 // Bridge thread internals
 // ---------------------------------------------------------------------------
 
+fn not_connected() -> crate::Error {
+    crate::Error::Provider("ACP client not connected".to_string())
+}
+
 /// Main event loop that runs inside the bridge thread's `LocalSet`.
+///
+/// Waits for the initial `Connect`, then hands control to the per-flavor
+/// command loop, which owns the connection for its lifetime. The Standard
+/// (SDK) path drives the connection inside an `connect_with` closure; the
+/// Gemini path uses a long-lived manual JSON-RPC connection.
 async fn command_loop(mut cmd_rx: mpsc::Receiver<AcpCommand>, config: CliAgentConfig) {
-    let mut child: Option<Child> = None;
-    let mut connection: Option<Connection> = None;
-    let collector = Rc::new(RefCell::new(ResponseCollector::default()));
+    let collector: SharedCollector = Arc::new(std::sync::Mutex::new(ResponseCollector::default()));
 
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
             AcpCommand::Connect { working_dir, reply } => {
-                let result = do_connect(&config, &working_dir, &collector).await;
-                match result {
-                    Ok((c, conn)) => {
-                        child = Some(c);
-                        connection = Some(conn);
-                        let _ = reply.send(Ok(()));
-                    }
+                let child_io = match prepare_child(&config, &working_dir) {
+                    Ok(io) => io,
                     Err(e) => {
                         let _ = reply.send(Err(e));
+                        continue;
                     }
+                };
+
+                if config.agent_type == CliAgentType::GeminiCli {
+                    match connect_gemini(child_io, &collector).await {
+                        Ok((child, conn)) => {
+                            let _ = reply.send(Ok(()));
+                            gemini_command_loop(&mut cmd_rx, child, conn, &collector).await;
+                            return;
+                        }
+                        Err(e) => {
+                            let _ = reply.send(Err(e));
+                            continue;
+                        }
+                    }
+                } else {
+                    standard_session(&mut cmd_rx, child_io, reply, &collector, &config).await;
+                    return;
                 }
             }
+            AcpCommand::Shutdown => return,
+            AcpCommand::NewSession { reply, .. } => {
+                let _ = reply.send(Err(not_connected()));
+            }
+            AcpCommand::Prompt { reply, .. } => {
+                let _ = reply.send(Err(not_connected()));
+            }
+            AcpCommand::Cancel { .. } => {}
+        }
+    }
+}
 
+/// Captured subprocess I/O handles for an established CLI agent process.
+struct ChildIo {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: ChildStdout,
+    diagnostics: Rc<RefCell<CliDiagnostics>>,
+}
+
+/// Spawn the CLI subprocess and capture its stdio.
+///
+/// For CLI agents that use ACP adapters (e.g. `claude-code-acp`), the binary
+/// speaks ACP natively over stdin/stdout. MCP servers are provided later via
+/// `NewSessionRequest.mcp_servers` rather than CLI flags.
+fn prepare_child(config: &CliAgentConfig, working_dir: &Path) -> Result<ChildIo> {
+    // Check binary availability first
+    if which::which(&config.binary_path).is_err() {
+        return Err(crate::Error::Provider(format!(
+            "{} CLI not found at '{}'. Install it or specify path with --cli-path. Auth hint: {}",
+            config.agent_type.provider_name(),
+            config.binary_path.display(),
+            config.agent_type.auth_hint()
+        )));
+    }
+
+    let mut cmd = Command::new(&config.binary_path);
+    cmd.current_dir(working_dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    match config.agent_type {
+        CliAgentType::Codex => {
+            cmd.arg("-c")
+                .arg(format!("model={}", toml_string_literal(&config.model)));
+        }
+        CliAgentType::GeminiCli => {
+            cmd.arg("--experimental-acp");
+            cmd.arg("-m").arg(&config.model);
+        }
+        CliAgentType::ClaudeCode => {}
+    }
+
+    let mut child = cmd.spawn().map_err(|e| {
+        crate::Error::Provider(format!(
+            "Failed to spawn {} CLI: {e}",
+            config.agent_type.provider_name(),
+        ))
+    })?;
+
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stdin".to_string()))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stdout".to_string()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stderr".to_string()))?;
+
+    let diagnostics = Rc::new(RefCell::new(CliDiagnostics::default()));
+    let diagnostics_for_stderr = Rc::clone(&diagnostics);
+
+    // Log stderr in a background task
+    tokio::task::spawn_local(async move {
+        let mut reader = tokio::io::BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            diagnostics_for_stderr
+                .borrow_mut()
+                .push_stderr(line.clone());
+            tracing::warn!("CLI STDERR: {}", line);
+        }
+    });
+
+    Ok(ChildIo {
+        child,
+        stdin,
+        stdout,
+        diagnostics,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Standard ACP path (SDK-driven)
+// ---------------------------------------------------------------------------
+
+/// Establish a Standard ACP connection and run the command loop for its lifetime.
+///
+/// The SDK drives the connection through actors that live only while the
+/// `connect_with` closure runs, so the per-session command loop runs *inside*
+/// that closure. Permission and notification handling is registered as builder
+/// callbacks, which must be `Send` — hence the `Arc`-based shared collector.
+async fn standard_session(
+    cmd_rx: &mut mpsc::Receiver<AcpCommand>,
+    child_io: ChildIo,
+    connect_reply: oneshot::Sender<Result<()>>,
+    collector: &SharedCollector,
+    config: &CliAgentConfig,
+) {
+    let ChildIo {
+        mut child,
+        stdin,
+        stdout,
+        diagnostics,
+    } = child_io;
+
+    let activity = Arc::new(Notify::new());
+    let transport = ByteStreams::new(stdin.compat_write(), stdout.compat());
+
+    let run = Client
+        .builder()
+        .on_receive_notification(
+            {
+                let collector = Arc::clone(collector);
+                let activity = Arc::clone(&activity);
+                move |notification: SessionNotification, _cx: ConnectionTo<Agent>| {
+                    let collector = Arc::clone(&collector);
+                    let activity = Arc::clone(&activity);
+                    async move {
+                        activity.notify_waiters();
+                        handle_standard_notification(&collector, notification);
+                        Ok(())
+                    }
+                }
+            },
+            acp::on_receive_notification!(),
+        )
+        .on_receive_request(
+            {
+                let activity = Arc::clone(&activity);
+                move |request: RequestPermissionRequest,
+                      responder: acp::Responder<RequestPermissionResponse>,
+                      _cx: ConnectionTo<Agent>| {
+                    let activity = Arc::clone(&activity);
+                    async move {
+                        activity.notify_waiters();
+                        let option_id = pick_permission_option(&request);
+                        tracing::debug!("ACP request_permission auto-approved with '{option_id}'");
+                        responder.respond(RequestPermissionResponse::new(
+                            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                                option_id,
+                            )),
+                        ))
+                    }
+                }
+            },
+            acp::on_receive_request!(),
+        )
+        .connect_with(transport, |connection: ConnectionTo<Agent>| async move {
+            run_standard_protocol(
+                connection,
+                cmd_rx,
+                collector,
+                &activity,
+                &diagnostics,
+                connect_reply,
+                config,
+            )
+            .await;
+            Ok(())
+        })
+        .await;
+
+    if let Err(e) = run {
+        tracing::error!("ACP connection ended with error: {e}");
+    }
+    let _ = child.kill().await;
+}
+
+/// Drive the Standard ACP protocol: initialize, then handle commands until shutdown.
+///
+/// Runs as the `connect_with` main function, concurrently with the connection's
+/// background actors, so `block_task()` resolves normally here.
+async fn run_standard_protocol(
+    connection: ConnectionTo<Agent>,
+    cmd_rx: &mut mpsc::Receiver<AcpCommand>,
+    collector: &SharedCollector,
+    activity: &Arc<Notify>,
+    diagnostics: &Rc<RefCell<CliDiagnostics>>,
+    connect_reply: oneshot::Sender<Result<()>>,
+    config: &CliAgentConfig,
+) {
+    let provider_name = config.agent_type.provider_name();
+
+    // Initialize the connection.
+    let init = connection
+        .send_request(
+            InitializeRequest::new(ProtocolVersion::V1)
+                .client_info(Implementation::new("feroxmute", env!("CARGO_PKG_VERSION"))),
+        )
+        .block_task()
+        .await;
+
+    let mcp_capabilities: McpCapabilities = match init {
+        Ok(response) => {
+            let caps = response.agent_capabilities.mcp_capabilities.clone();
+            tracing::info!(
+                "Connected to {} (protocol version: {:?}, mcp_http: {}, mcp_sse: {})",
+                provider_name,
+                response.protocol_version,
+                caps.http,
+                caps.sse
+            );
+            diagnostics
+                .borrow_mut()
+                .push_rpc_event("-> initialize ok".to_string());
+            let _ = connect_reply.send(Ok(()));
+            caps
+        }
+        Err(e) => {
+            let _ = connect_reply.send(Err(crate::Error::Provider(format!(
+                "ACP initialization failed: {e}"
+            ))));
+            return;
+        }
+    };
+
+    while let Some(cmd) = cmd_rx.recv().await {
+        match cmd {
+            AcpCommand::Connect { reply, .. } => {
+                let _ = reply.send(Ok(()));
+            }
             AcpCommand::NewSession {
                 agent_role,
                 working_dir,
@@ -433,181 +698,57 @@ async fn command_loop(mut cmd_rx: mpsc::Receiver<AcpCommand>, config: CliAgentCo
                 bearer_token,
                 reply,
             } => {
-                let result = match connection.as_ref() {
-                    Some(Connection::Standard(conn)) => {
-                        tracing::debug!("Creating standard ACP session for role '{}'", agent_role);
-                        let request = acp::NewSessionRequest::new(&working_dir);
-                        match attach_http_mcp_server(
-                            request,
-                            mcp_server_url,
-                            bearer_token,
-                            &conn.mcp_capabilities,
-                            config.agent_type.provider_name(),
-                        ) {
-                            Ok(request) => {
-                                standard_new_session_with_timeout(
-                                    conn,
-                                    request,
-                                    config.agent_type.provider_name(),
-                                )
-                                .await
-                            }
-                            Err(e) => Err(e),
-                        }
+                tracing::debug!("Creating standard ACP session for role '{agent_role}'");
+                let request = NewSessionRequest::new(&working_dir);
+                let result = match attach_http_mcp_server(
+                    request,
+                    mcp_server_url,
+                    bearer_token,
+                    &mcp_capabilities,
+                    provider_name,
+                ) {
+                    Ok(request) => {
+                        standard_new_session(&connection, request, provider_name, diagnostics).await
                     }
-                    Some(Connection::Gemini(conn)) => {
-                        tracing::debug!("Creating Gemini ACP session for role '{}'", agent_role);
-                        let mut mcp_servers = Vec::new();
-                        if let Some(url) = mcp_server_url {
-                            let mut headers = vec![];
-                            if let Some(ref token) = bearer_token {
-                                headers.push(json!({
-                                    "name": "Authorization",
-                                    "value": format!("Bearer {token}")
-                                }));
-                            }
-                            mcp_servers.push(json!({
-                                "name": "feroxmute",
-                                "type": "http",
-                                "url": url,
-                                "headers": headers
-                            }));
-                        }
-
-                        tracing::debug!(
-                            "Gemini: calling session/new with {} MCP server(s)",
-                            mcp_servers.len()
-                        );
-                        let result = conn
-                            .call(
-                                "session/new",
-                                json!({
-                                    "cwd": working_dir.to_string_lossy(),
-                                    "mcpServers": mcp_servers
-                                }),
-                            )
-                            .await;
-
-                        match result {
-                            Ok(res) => {
-                                tracing::debug!("Gemini session/new returned: {res}");
-                                if let Some(sid) = res.get("sessionId").and_then(|v| v.as_str()) {
-                                    Ok(acp::SessionId::new(sid))
-                                } else {
-                                    Err(crate::Error::Provider(
-                                        "Gemini session/new response missing sessionId".into(),
-                                    ))
-                                }
-                            }
-                            Err(e) => {
-                                tracing::debug!("Gemini session/new failed: {e}");
-                                Err(e)
-                            }
-                        }
-                    }
-                    None => Err(crate::Error::Provider(
-                        "ACP client not connected".to_string(),
-                    )),
+                    Err(e) => Err(e),
                 };
                 let _ = reply.send(result);
             }
-
             AcpCommand::Prompt {
                 session_id,
                 message,
                 reply,
             } => {
-                let result = match connection.as_ref() {
-                    Some(Connection::Standard(conn)) => {
-                        let prompt_result = standard_prompt_with_idle_timeout(
-                            conn,
-                            session_id.clone(),
-                            &message,
-                            &config.agent_type,
-                        )
-                        .await;
-                        match prompt_result {
-                            Ok(_) => {
-                                let text =
-                                    collector.borrow_mut().take_content(session_id.0.as_ref());
-                                Ok(text)
-                            }
-                            Err(e) => Err(e),
-                        }
-                    }
-                    Some(Connection::Gemini(conn)) => {
-                        tracing::debug!(
-                            "Gemini: calling session/prompt for session '{}'",
-                            session_id.0
-                        );
-                        let result = conn
-                            .call(
-                                "session/prompt",
-                                json!({
-                                    "sessionId": session_id.0,
-                                    "prompt": [{"type": "text", "text": message}]
-                                }),
-                            )
-                            .await;
-
-                        match result {
-                            Ok(_) => {
-                                tracing::debug!(
-                                    "Gemini session/prompt completed for session '{}'",
-                                    session_id.0
-                                );
-                                let text =
-                                    collector.borrow_mut().take_content(session_id.0.as_ref());
-                                Ok(text)
-                            }
-                            Err(ref e) => {
-                                tracing::debug!(
-                                    "Gemini session/prompt failed for session '{}': {e}",
-                                    session_id.0
-                                );
-                                result.map(|_| String::new())
-                            }
-                        }
-                    }
-                    None => Err(crate::Error::Provider(
-                        "ACP client not connected".to_string(),
-                    )),
+                let result = match standard_prompt(
+                    &connection,
+                    &session_id,
+                    &message,
+                    activity,
+                    diagnostics,
+                    &config.agent_type,
+                )
+                .await
+                {
+                    Ok(()) => Ok(lock_collector(collector).take_content(session_id.0.as_ref())),
+                    Err(e) => Err(e),
                 };
                 let _ = reply.send(result);
             }
-
-            AcpCommand::Cancel { session_id } => match connection.as_ref() {
-                Some(Connection::Standard(conn)) => {
-                    let _ = conn
-                        .conn
-                        .cancel(acp::CancelNotification::new(session_id))
-                        .await;
-                }
-                Some(Connection::Gemini(conn)) => {
-                    let _ = conn
-                        .call("session/cancel", json!({ "sessionId": session_id.0 }))
-                        .await;
-                }
-                None => {}
-            },
-
-            AcpCommand::Shutdown => {
-                if let Some(ref mut c) = child {
-                    let _ = c.kill().await;
-                }
-                break;
+            AcpCommand::Cancel { session_id } => {
+                let _ = connection.send_notification(CancelNotification::new(session_id));
             }
+            AcpCommand::Shutdown => break,
         }
     }
 }
 
 fn attach_http_mcp_server(
-    mut request: acp::NewSessionRequest,
+    mut request: NewSessionRequest,
     mcp_server_url: Option<String>,
     bearer_token: Option<String>,
-    mcp_capabilities: &acp::McpCapabilities,
+    mcp_capabilities: &McpCapabilities,
     provider_name: &str,
-) -> Result<acp::NewSessionRequest> {
+) -> Result<NewSessionRequest> {
     let Some(url) = mcp_server_url else {
         return Ok(request);
     };
@@ -621,30 +762,36 @@ fn attach_http_mcp_server(
     }
 
     tracing::debug!("Attaching MCP server at {}", url);
-    let mut mcp_http = acp::McpServerHttp::new("feroxmute", url);
+    let mut mcp_http = McpServerHttp::new("feroxmute", url);
     if let Some(token) = bearer_token {
-        mcp_http = mcp_http.headers(vec![acp::HttpHeader::new(
+        mcp_http = mcp_http.headers(vec![HttpHeader::new(
             "Authorization",
             format!("Bearer {token}"),
         )]);
     }
-    request = request.mcp_servers(vec![acp::McpServer::Http(mcp_http)]);
+    request = request.mcp_servers(vec![McpServer::Http(mcp_http)]);
 
     Ok(request)
 }
 
-async fn standard_new_session_with_timeout(
-    conn: &StandardConnection,
-    request: acp::NewSessionRequest,
+async fn standard_new_session(
+    connection: &ConnectionTo<Agent>,
+    request: NewSessionRequest,
     provider_name: &str,
-) -> Result<acp::SessionId> {
-    match tokio::time::timeout(ACP_SETUP_TIMEOUT, conn.conn.new_session(request)).await {
+    diagnostics: &Rc<RefCell<CliDiagnostics>>,
+) -> Result<SessionId> {
+    match tokio::time::timeout(
+        ACP_SETUP_TIMEOUT,
+        connection.send_request(request).block_task(),
+    )
+    .await
+    {
         Ok(Ok(response)) => Ok(response.session_id),
         Ok(Err(e)) => Err(crate::Error::Provider(format!(
             "Failed to create ACP session: {e}"
         ))),
         Err(_) => {
-            let diagnostics = conn.diagnostics.borrow().recent_summary();
+            let diagnostics = diagnostics.borrow().recent_summary();
             Err(crate::Error::Provider(format!(
                 "{provider_name} ACP session/new timed out after {} seconds. \
                  The CLI connected, but did not create a session with feroxmute's MCP server. \
@@ -656,16 +803,20 @@ async fn standard_new_session_with_timeout(
     }
 }
 
-async fn standard_prompt_with_idle_timeout(
-    conn: &StandardConnection,
-    session_id: acp::SessionId,
+async fn standard_prompt(
+    connection: &ConnectionTo<Agent>,
+    session_id: &SessionId,
     message: &str,
+    activity: &Arc<Notify>,
+    diagnostics: &Rc<RefCell<CliDiagnostics>>,
     agent_type: &CliAgentType,
-) -> Result<acp::PromptResponse> {
-    let prompt_result = conn.conn.prompt(acp::PromptRequest::new(
-        session_id.clone(),
-        vec![acp::ContentBlock::Text(acp::TextContent::new(message))],
-    ));
+) -> Result<()> {
+    let prompt_result = connection
+        .send_request(PromptRequest::new(
+            session_id.clone(),
+            vec![ContentBlock::Text(TextContent::new(message))],
+        ))
+        .block_task();
     tokio::pin!(prompt_result);
 
     let idle_deadline = tokio::time::Instant::now() + ACP_PROMPT_IDLE_TIMEOUT;
@@ -675,11 +826,11 @@ async fn standard_prompt_with_idle_timeout(
     loop {
         tokio::select! {
             result = &mut prompt_result => {
-                return result.map_err(|e| standard_prompt_error(&e, agent_type));
+                return result.map(|_| ()).map_err(|e| standard_prompt_error(&e, agent_type));
             }
             _ = &mut idle_sleep => {
-                let _ = conn.conn.cancel(acp::CancelNotification::new(session_id.clone())).await;
-                let diagnostics = conn.diagnostics.borrow().recent_summary();
+                let _ = connection.send_notification(CancelNotification::new(session_id.clone()));
+                let diagnostics = diagnostics.borrow().recent_summary();
                 return Err(crate::Error::Provider(format!(
                     "{} ACP prompt timed out after {} seconds of inactivity. \
                      The CLI connected, but did not return a response or emit ACP activity. \
@@ -689,7 +840,7 @@ async fn standard_prompt_with_idle_timeout(
                     diagnostics,
                 )));
             }
-            _ = conn.activity.notified() => {
+            _ = activity.notified() => {
                 idle_sleep
                     .as_mut()
                     .reset(tokio::time::Instant::now() + ACP_PROMPT_IDLE_TIMEOUT);
@@ -710,6 +861,298 @@ fn standard_prompt_error(e: &acp::Error, agent_type: &CliAgentType) -> crate::Er
     }
 }
 
+/// Pick the best permission option from the agent's list.
+///
+/// feroxmute handles its own permissions via the MCP tool layer, so all tool
+/// calls are auto-approved: prefer `AllowAlways`, then `AllowOnce`, then first.
+fn pick_permission_option(request: &RequestPermissionRequest) -> String {
+    request
+        .options
+        .iter()
+        .find(|o| o.kind == PermissionOptionKind::AllowAlways)
+        .or_else(|| {
+            request
+                .options
+                .iter()
+                .find(|o| o.kind == PermissionOptionKind::AllowOnce)
+        })
+        .or_else(|| request.options.first())
+        .map(|o| o.option_id.0.to_string())
+        .unwrap_or_else(|| "allow_always".to_string())
+}
+
+/// Handle a session notification from the Standard ACP connection.
+fn handle_standard_notification(collector: &SharedCollector, notification: SessionNotification) {
+    let session_id = notification.session_id.0.to_string();
+
+    match notification.update {
+        SessionUpdate::AgentMessageChunk(chunk) => {
+            if let ContentBlock::Text(text_content) = chunk.content {
+                lock_collector(collector).add_content(&session_id, text_content.text);
+            }
+        }
+        SessionUpdate::AgentThoughtChunk(_) => {
+            tracing::trace!("ACP thought chunk for session '{session_id}'");
+        }
+        SessionUpdate::ToolCall(tool_call) => {
+            tracing::debug!(
+                "ACP tool call for session '{}': {} ({})",
+                session_id,
+                tool_call.title,
+                tool_call.tool_call_id.0
+            );
+        }
+        SessionUpdate::ToolCallUpdate(update) => {
+            if let Some(ToolCallStatus::Completed) = update.fields.status {
+                tracing::debug!(
+                    "ACP tool call completed for session '{}': {}",
+                    session_id,
+                    update.tool_call_id.0
+                );
+            }
+        }
+        _ => {
+            tracing::trace!("ACP session notification: {:?}", notification.update);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gemini ACP path (manual JSON-RPC)
+// ---------------------------------------------------------------------------
+
+/// Establish a Gemini CLI connection over manual JSON-RPC and initialize it.
+async fn connect_gemini(
+    child_io: ChildIo,
+    collector: &SharedCollector,
+) -> Result<(Child, GeminiConnection)> {
+    let ChildIo {
+        child,
+        stdin,
+        stdout,
+        diagnostics: _,
+    } = child_io;
+
+    let stdin = Arc::new(Mutex::new(stdin.compat_write()));
+    let pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+    let pending_requests_clone = Arc::clone(&pending_requests);
+    let collector_clone = Arc::clone(collector);
+    let activity = Arc::new(Notify::new());
+    let activity_clone = Arc::clone(&activity);
+
+    let stdin_clone = Arc::clone(&stdin);
+    tokio::task::spawn_local(async move {
+        let mut reader = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            tracing::debug!("Gemini stdout: {}", line);
+            let val: Value = match serde_json::from_str(&line) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Gemini stdout non-JSON: {e}");
+                    continue;
+                }
+            };
+
+            // Distinguish responses (result/error) from requests/notifications (method).
+            // A JSON-RPC response has `result` or `error`; a request has `method`.
+            let is_response = val.get("result").is_some() || val.get("error").is_some();
+            let has_method = val.get("method").is_some();
+
+            if is_response && !has_method {
+                // Response to one of our pending requests
+                if let Some(id) = val.get("id").and_then(|v| v.as_u64())
+                    && let Some(tx) = pending_requests_clone.lock().await.remove(&id)
+                {
+                    tracing::debug!("Gemini response matched pending request #{id}");
+                    if let Some(error) = val.get("error") {
+                        let _ = tx.send(Err(crate::Error::Provider(format!(
+                            "Gemini ACP error: {error}"
+                        ))));
+                    } else {
+                        let _ = tx.send(Ok(val.get("result").cloned().unwrap_or(Value::Null)));
+                    }
+                } else {
+                    tracing::warn!("Gemini response for unknown id: {}", val);
+                }
+            } else if let Some(method) = val.get("method").and_then(|v| v.as_str()) {
+                let has_id = val.get("id").is_some();
+
+                // Signal activity so idle timeout resets.
+                activity_clone.notify_waiters();
+
+                if has_id {
+                    // Agent-initiated request — needs a response sent back
+                    tracing::debug!("Gemini agent request: {method} body={val}");
+                    handle_gemini_request(method, &val, &stdin_clone).await;
+                } else {
+                    // Notification — no response needed
+                    tracing::debug!("Gemini notification: {method}");
+                    handle_gemini_notification(method, &val, &collector_clone);
+                }
+            } else {
+                tracing::warn!("Gemini stdout unrecognized message: {}", val);
+            }
+        }
+        // Resolve all pending requests with an error so call() doesn't hang
+        let mut pending = pending_requests_clone.lock().await;
+        let pending_count = pending.len();
+        if pending_count > 0 {
+            tracing::warn!("Gemini stdout reader exited with {pending_count} pending request(s)");
+        } else {
+            tracing::debug!("Gemini stdout reader exited cleanly");
+        }
+        for (id, tx) in pending.drain() {
+            let _ = tx.send(Err(crate::Error::Provider(format!(
+                "Gemini CLI process exited while request #{id} was pending"
+            ))));
+        }
+    });
+
+    let gemini_conn = GeminiConnection {
+        stdin,
+        pending_requests,
+        next_id: AtomicU64::new(1),
+        activity,
+    };
+
+    // Initialize Gemini connection
+    gemini_conn
+        .call(
+            "initialize",
+            json!({
+                "protocolVersion": 1,
+                "clientInfo": {
+                    "name": "feroxmute",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }),
+        )
+        .await?;
+
+    Ok((child, gemini_conn))
+}
+
+/// Per-session command loop for the Gemini CLI connection.
+async fn gemini_command_loop(
+    cmd_rx: &mut mpsc::Receiver<AcpCommand>,
+    mut child: Child,
+    conn: GeminiConnection,
+    collector: &SharedCollector,
+) {
+    while let Some(cmd) = cmd_rx.recv().await {
+        match cmd {
+            AcpCommand::Connect { reply, .. } => {
+                let _ = reply.send(Ok(()));
+            }
+            AcpCommand::NewSession {
+                agent_role,
+                working_dir,
+                mcp_server_url,
+                bearer_token,
+                reply,
+            } => {
+                tracing::debug!("Creating Gemini ACP session for role '{agent_role}'");
+                let mut mcp_servers = Vec::new();
+                if let Some(url) = mcp_server_url {
+                    let mut headers = vec![];
+                    if let Some(ref token) = bearer_token {
+                        headers.push(json!({
+                            "name": "Authorization",
+                            "value": format!("Bearer {token}")
+                        }));
+                    }
+                    mcp_servers.push(json!({
+                        "name": "feroxmute",
+                        "type": "http",
+                        "url": url,
+                        "headers": headers
+                    }));
+                }
+
+                tracing::debug!(
+                    "Gemini: calling session/new with {} MCP server(s)",
+                    mcp_servers.len()
+                );
+                let result = conn
+                    .call(
+                        "session/new",
+                        json!({
+                            "cwd": working_dir.to_string_lossy(),
+                            "mcpServers": mcp_servers
+                        }),
+                    )
+                    .await;
+
+                let result = match result {
+                    Ok(res) => {
+                        tracing::debug!("Gemini session/new returned: {res}");
+                        if let Some(sid) = res.get("sessionId").and_then(|v| v.as_str()) {
+                            Ok(SessionId::new(sid))
+                        } else {
+                            Err(crate::Error::Provider(
+                                "Gemini session/new response missing sessionId".into(),
+                            ))
+                        }
+                    }
+                    Err(e) => {
+                        tracing::debug!("Gemini session/new failed: {e}");
+                        Err(e)
+                    }
+                };
+                let _ = reply.send(result);
+            }
+            AcpCommand::Prompt {
+                session_id,
+                message,
+                reply,
+            } => {
+                tracing::debug!(
+                    "Gemini: calling session/prompt for session '{}'",
+                    session_id.0
+                );
+                let result = conn
+                    .call(
+                        "session/prompt",
+                        json!({
+                            "sessionId": session_id.0,
+                            "prompt": [{"type": "text", "text": message}]
+                        }),
+                    )
+                    .await;
+
+                let result = match result {
+                    Ok(_) => {
+                        tracing::debug!(
+                            "Gemini session/prompt completed for session '{}'",
+                            session_id.0
+                        );
+                        Ok(lock_collector(collector).take_content(session_id.0.as_ref()))
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            "Gemini session/prompt failed for session '{}': {e}",
+                            session_id.0
+                        );
+                        Err(e)
+                    }
+                };
+                let _ = reply.send(result);
+            }
+            AcpCommand::Cancel { session_id } => {
+                let _ = conn
+                    .call("session/cancel", json!({ "sessionId": session_id.0 }))
+                    .await;
+            }
+            AcpCommand::Shutdown => {
+                let _ = child.kill().await;
+                return;
+            }
+        }
+    }
+    let _ = child.kill().await;
+}
+
 /// Handle an agent-initiated JSON-RPC request from Gemini CLI.
 ///
 /// The agent may send requests like `request_permission` when it needs approval
@@ -724,7 +1167,7 @@ async fn handle_gemini_request(
     let response = match method {
         "request_permission" | "session/request_permission" => {
             // Auto-approve all tool calls — feroxmute handles its own permissions
-            // via the MCP tool layer. Mirrors the Standard delegate's behavior.
+            // via the MCP tool layer. Mirrors the Standard path's behavior.
             //
             // ACP options use `optionId` for the ID and `kind` for the type
             // (allow_always, allow_once, reject_once, etc.). Gemini CLI sends
@@ -794,11 +1237,7 @@ async fn handle_gemini_request(
 ///    ```json
 ///    {"agentMessageChunk": {"content": {"text": "..."}}}
 ///    ```
-fn handle_gemini_notification(
-    method: &str,
-    val: &Value,
-    collector: &Rc<RefCell<ResponseCollector>>,
-) {
+fn handle_gemini_notification(method: &str, val: &Value, collector: &SharedCollector) {
     if method != "session/update" && method != "session/notification" {
         tracing::trace!("Gemini notification: {method}");
         return;
@@ -825,9 +1264,7 @@ fn handle_gemini_notification(
         // ACP spec tagged format: content fields are inline in `update`
         "agent_message_chunk" => {
             if let Some(text_str) = extract_content_text(update) {
-                collector
-                    .borrow_mut()
-                    .add_content(session_id, text_str.to_string());
+                lock_collector(collector).add_content(session_id, text_str.to_string());
             }
         }
         "agent_thought_chunk" => {
@@ -843,9 +1280,7 @@ fn handle_gemini_notification(
             // Try nested object format (fallback)
             if let Some(msg) = update.get("agentMessageChunk") {
                 if let Some(text_str) = extract_content_text(msg) {
-                    collector
-                        .borrow_mut()
-                        .add_content(session_id, text_str.to_string());
+                    lock_collector(collector).add_content(session_id, text_str.to_string());
                 }
             } else if let Some(thought) = update.get("agentThoughtChunk") {
                 tracing::trace!("Gemini thought chunk for session '{session_id}': {thought}");
@@ -867,273 +1302,9 @@ fn extract_content_text(obj: &Value) -> Option<&str> {
         .and_then(|t| t.as_str())
 }
 
-fn summarize_acp_stream_message(message: &acp::StreamMessage) -> String {
-    let direction = match message.direction {
-        acp::StreamMessageDirection::Incoming => "<-",
-        acp::StreamMessageDirection::Outgoing => "->",
-    };
-
-    match &message.message {
-        acp::StreamMessageContent::Request { id, method, .. } => {
-            format!("{direction} request {id:?} {method}")
-        }
-        acp::StreamMessageContent::Response { id, result } => match result {
-            Ok(_) => format!("{direction} response {id:?} ok"),
-            Err(e) => format!("{direction} response {id:?} error {e}"),
-        },
-        acp::StreamMessageContent::Notification { method, .. } => {
-            format!("{direction} notification {method}")
-        }
-    }
-}
-
-/// Spawn the CLI subprocess and establish the ACP connection.
-///
-/// For CLI agents that use ACP adapters (e.g. `claude-code-acp`), the binary
-/// speaks ACP natively over stdin/stdout. MCP servers are provided later via
-/// `NewSessionRequest.mcp_servers` rather than CLI flags.
-async fn do_connect(
-    config: &CliAgentConfig,
-    working_dir: &Path,
-    collector: &Rc<RefCell<ResponseCollector>>,
-) -> Result<(Child, Connection)> {
-    // Check binary availability first
-    if which::which(&config.binary_path).is_err() {
-        return Err(crate::Error::Provider(format!(
-            "{} CLI not found at '{}'. Install it or specify path with --cli-path. Auth hint: {}",
-            config.agent_type.provider_name(),
-            config.binary_path.display(),
-            config.agent_type.auth_hint()
-        )));
-    }
-
-    let mut cmd = Command::new(&config.binary_path);
-    cmd.current_dir(working_dir)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    match config.agent_type {
-        CliAgentType::Codex => {
-            cmd.arg("-c")
-                .arg(format!("model={}", toml_string_literal(&config.model)));
-        }
-        CliAgentType::GeminiCli => {
-            cmd.arg("--experimental-acp");
-            cmd.arg("-m").arg(&config.model);
-        }
-        CliAgentType::ClaudeCode => {}
-    }
-
-    let mut child = cmd.spawn().map_err(|e| {
-        crate::Error::Provider(format!(
-            "Failed to spawn {} CLI: {e}",
-            config.agent_type.provider_name(),
-        ))
-    })?;
-
-    let stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stdin".to_string()))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stdout".to_string()))?;
-    let stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| crate::Error::Provider("Failed to capture CLI stderr".to_string()))?;
-
-    let diagnostics = Rc::new(RefCell::new(CliDiagnostics::default()));
-    let diagnostics_for_stderr = Rc::clone(&diagnostics);
-
-    // Log stderr in a background task
-    tokio::task::spawn_local(async move {
-        use tokio::io::AsyncBufReadExt;
-        let mut reader = tokio::io::BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            diagnostics_for_stderr
-                .borrow_mut()
-                .push_stderr(line.clone());
-            tracing::warn!("CLI STDERR: {}", line);
-        }
-    });
-
-    if config.agent_type == CliAgentType::GeminiCli {
-        let stdin = Arc::new(Mutex::new(stdin.compat_write()));
-        let pending_requests: Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let pending_requests_clone = Arc::clone(&pending_requests);
-        let collector_clone = Rc::clone(collector);
-        let activity = Arc::new(Notify::new());
-        let activity_clone = Arc::clone(&activity);
-
-        let stdin_clone = Arc::clone(&stdin);
-        tokio::task::spawn_local(async move {
-            let mut reader = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                tracing::debug!("Gemini stdout: {}", line);
-                let val: Value = match serde_json::from_str(&line) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!("Gemini stdout non-JSON: {e}");
-                        continue;
-                    }
-                };
-
-                // Distinguish responses (result/error) from requests/notifications (method).
-                // A JSON-RPC response has `result` or `error`; a request has `method`.
-                let is_response = val.get("result").is_some() || val.get("error").is_some();
-                let has_method = val.get("method").is_some();
-
-                if is_response && !has_method {
-                    // Response to one of our pending requests
-                    if let Some(id) = val.get("id").and_then(|v| v.as_u64())
-                        && let Some(tx) = pending_requests_clone.lock().await.remove(&id)
-                    {
-                        tracing::debug!("Gemini response matched pending request #{id}");
-                        if let Some(error) = val.get("error") {
-                            let _ = tx.send(Err(crate::Error::Provider(format!(
-                                "Gemini ACP error: {}",
-                                error
-                            ))));
-                        } else {
-                            let _ = tx.send(Ok(val.get("result").cloned().unwrap_or(Value::Null)));
-                        }
-                    } else {
-                        tracing::warn!("Gemini response for unknown id: {}", val);
-                    }
-                } else if let Some(method) = val.get("method").and_then(|v| v.as_str()) {
-                    let has_id = val.get("id").is_some();
-
-                    // Signal activity so idle timeout resets.
-                    activity_clone.notify_waiters();
-
-                    if has_id {
-                        // Agent-initiated request — needs a response sent back
-                        tracing::debug!("Gemini agent request: {method} body={val}");
-                        handle_gemini_request(method, &val, &stdin_clone).await;
-                    } else {
-                        // Notification — no response needed
-                        tracing::debug!("Gemini notification: {method}");
-                        handle_gemini_notification(method, &val, &collector_clone);
-                    }
-                } else {
-                    tracing::warn!("Gemini stdout unrecognized message: {}", val);
-                }
-            }
-            // Resolve all pending requests with an error so call() doesn't hang
-            let mut pending = pending_requests_clone.lock().await;
-            let pending_count = pending.len();
-            if pending_count > 0 {
-                tracing::warn!(
-                    "Gemini stdout reader exited with {pending_count} pending request(s)"
-                );
-            } else {
-                tracing::debug!("Gemini stdout reader exited cleanly");
-            }
-            for (id, tx) in pending.drain() {
-                let _ = tx.send(Err(crate::Error::Provider(format!(
-                    "Gemini CLI process exited while request #{id} was pending"
-                ))));
-            }
-        });
-
-        let gemini_conn = GeminiConnection {
-            stdin,
-            pending_requests,
-            next_id: AtomicU64::new(1),
-            activity,
-        };
-
-        // Initialize Gemini connection
-        gemini_conn
-            .call(
-                "initialize",
-                json!({
-                    "protocolVersion": 1,
-                    "clientInfo": {
-                        "name": "feroxmute",
-                        "version": env!("CARGO_PKG_VERSION")
-                    }
-                }),
-            )
-            .await?;
-
-        Ok((child, Connection::Gemini(gemini_conn)))
-    } else {
-        let activity = Rc::new(Notify::new());
-
-        // Build delegate (Rc-based, single-threaded)
-        let delegate = AcpClientDelegate {
-            collector: Rc::clone(collector),
-            activity: Rc::clone(&activity),
-        };
-
-        let (conn, io_task) = acp::ClientSideConnection::new(
-            delegate,
-            stdin.compat_write(),
-            stdout.compat(),
-            |fut| {
-                tokio::task::spawn_local(fut);
-            },
-        );
-
-        let mut stream = conn.subscribe();
-        let activity_for_stream = Rc::clone(&activity);
-        let diagnostics_for_stream = Rc::clone(&diagnostics);
-        tokio::task::spawn_local(async move {
-            while let Ok(message) = stream.recv().await {
-                if matches!(message.direction, acp::StreamMessageDirection::Incoming) {
-                    activity_for_stream.notify_waiters();
-                }
-                let summary = summarize_acp_stream_message(&message);
-                diagnostics_for_stream
-                    .borrow_mut()
-                    .push_rpc_event(summary.clone());
-                tracing::debug!("ACP RPC: {summary}");
-            }
-        });
-
-        // Spawn IO task on the LocalSet
-        tokio::task::spawn_local(async move {
-            if let Err(e) = io_task.await {
-                tracing::error!("ACP IO task error: {e}");
-            }
-        });
-
-        // Initialize the connection
-        let init_response = conn
-            .initialize(
-                acp::InitializeRequest::new(acp::ProtocolVersion::V1).client_info(
-                    acp::Implementation::new("feroxmute", env!("CARGO_PKG_VERSION")),
-                ),
-            )
-            .await
-            .map_err(|e| crate::Error::Provider(format!("ACP initialization failed: {e}")))?;
-
-        let mcp_capabilities = init_response.agent_capabilities.mcp_capabilities.clone();
-
-        tracing::info!(
-            "Connected to {} (protocol version: {:?}, mcp_http: {}, mcp_sse: {})",
-            config.agent_type.provider_name(),
-            init_response.protocol_version,
-            mcp_capabilities.http,
-            mcp_capabilities.sse
-        );
-
-        Ok((
-            child,
-            Connection::Standard(StandardConnection {
-                conn,
-                activity,
-                diagnostics,
-                mcp_capabilities,
-            }),
-        ))
-    }
-}
+// ---------------------------------------------------------------------------
+// Codex model TOML quoting
+// ---------------------------------------------------------------------------
 
 fn toml_string_literal(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len() + 2);
@@ -1179,90 +1350,6 @@ fn push_toml_unicode_escape(output: &mut String, ch: char) {
             15 => 'F',
             _ => '0',
         });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// ACP Client delegate (lives inside bridge thread, !Send is fine)
-// ---------------------------------------------------------------------------
-
-struct AcpClientDelegate {
-    collector: Rc<RefCell<ResponseCollector>>,
-    activity: Rc<Notify>,
-}
-
-#[async_trait::async_trait(?Send)]
-impl acp::Client for AcpClientDelegate {
-    async fn request_permission(
-        &self,
-        args: acp::RequestPermissionRequest,
-    ) -> acp::Result<acp::RequestPermissionResponse> {
-        self.activity.notify_waiters();
-
-        // Auto-approve all tool calls — feroxmute handles its own permissions
-        // via the MCP tool layer. Pick the best option from the agent's list:
-        // prefer AllowAlways > AllowOnce > first available.
-        let option_id = args
-            .options
-            .iter()
-            .find(|o| o.kind == acp::PermissionOptionKind::AllowAlways)
-            .or_else(|| {
-                args.options
-                    .iter()
-                    .find(|o| o.kind == acp::PermissionOptionKind::AllowOnce)
-            })
-            .or_else(|| args.options.first())
-            .map(|o| o.option_id.0.to_string())
-            .unwrap_or_else(|| "allow_always".to_string());
-
-        tracing::debug!("ACP request_permission auto-approved with '{option_id}'");
-        Ok(acp::RequestPermissionResponse::new(
-            acp::RequestPermissionOutcome::Selected(acp::SelectedPermissionOutcome::new(option_id)),
-        ))
-    }
-
-    async fn session_notification(
-        &self,
-        notification: acp::SessionNotification,
-    ) -> acp::Result<()> {
-        self.activity.notify_waiters();
-
-        let session_id = notification.session_id.0.to_string();
-
-        match notification.update {
-            acp::SessionUpdate::AgentMessageChunk(chunk) => {
-                if let acp::ContentBlock::Text(text_content) = chunk.content {
-                    self.collector
-                        .borrow_mut()
-                        .add_content(&session_id, text_content.text);
-                }
-            }
-            acp::SessionUpdate::AgentThoughtChunk(_) => {
-                tracing::trace!("ACP thought chunk for session '{session_id}'");
-            }
-            acp::SessionUpdate::ToolCall(tool_call) => {
-                tracing::debug!(
-                    "ACP tool call for session '{}': {} ({})",
-                    session_id,
-                    tool_call.title,
-                    tool_call.tool_call_id.0
-                );
-            }
-            acp::SessionUpdate::ToolCallUpdate(update) => {
-                if let Some(acp::ToolCallStatus::Completed) = update.fields.status {
-                    tracing::debug!(
-                        "ACP tool call completed for session '{}': {}",
-                        session_id,
-                        update.tool_call_id.0
-                    );
-                }
-            }
-            _ => {
-                tracing::trace!("ACP session notification: {:?}", notification.update);
-            }
-        }
-
-        Ok(())
     }
 }
 
