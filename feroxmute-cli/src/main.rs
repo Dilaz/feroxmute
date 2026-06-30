@@ -249,7 +249,7 @@ async fn main() -> Result<()> {
         }
         ProviderName::Ollama => "Set OLLAMA_API_BASE_URL if not using localhost:11434",
         ProviderName::ClaudeCode => {
-            "Install claude-code-acp in PATH or pass --cli-path, then run 'claude login'"
+            "Install the claude-code-acp package (provides the 'cc-acp' binary) in PATH or pass --cli-path, then run 'claude login'"
         }
         ProviderName::Codex => {
             "Install codex-acp in PATH or pass --cli-path /path/to/codex-acp, then authenticate with OPENAI_API_KEY, CODEX_API_KEY, or Codex auth"

@@ -149,7 +149,7 @@ Instead of calling LLM APIs directly, feroxmute can drive CLI-based AI agents as
 
 | Provider | Binary | Auth |
 |----------|--------|------|
-| `claude-code` | `claude-code-acp` | `ANTHROPIC_API_KEY` or `claude login` |
+| `claude-code` | [`cc-acp`](https://www.npmjs.com/package/claude-code-acp) (from the `claude-code-acp` package) | `ANTHROPIC_API_KEY` or `claude login` |
 | `codex` | [`codex-acp`](https://github.com/zed-industries/codex-acp) | `OPENAI_API_KEY`, `CODEX_API_KEY`, or existing Codex auth |
 | `gemini-cli` | `gemini` | `gemini auth` |
 
@@ -158,7 +158,7 @@ Instead of calling LLM APIs directly, feroxmute can drive CLI-based AI agents as
 If the CLI agent binary isn't on your `$PATH`, use `--cli-path`:
 
 ```bash
-feroxmute --target example.com --provider claude-code --cli-path ~/bin/claude-code-acp
+feroxmute --target example.com --provider claude-code --cli-path ~/.bun/bin/cc-acp
 feroxmute --target example.com --provider codex --cli-path ~/bin/codex-acp
 ```
 
