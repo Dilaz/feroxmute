@@ -1237,6 +1237,7 @@ dependencies = [
  "once_cell",
  "printpdf",
  "regex",
+ "reqwest",
  "rig-core",
  "rusqlite",
  "serde",

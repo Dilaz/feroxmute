@@ -91,6 +91,19 @@ fn find_session_by_pattern(
 async fn main() -> Result<()> {
     let args = Args::parse();
 
+    // stdio MCP proxy mode: bridge an stdio-only ACP agent to feroxmute's
+    // HTTP MCP server. Must not touch stdout (it is the MCP channel) or set up
+    // the normal logging/TUI, so handle it before anything else.
+    if args.mcp_stdio_proxy {
+        let url = args
+            .mcp_proxy_url
+            .ok_or_else(|| anyhow!("--mcp-stdio-proxy requires --mcp-proxy-url"))?;
+        let token =
+            std::env::var(feroxmute_core::mcp::stdio_proxy::MCP_TOKEN_ENV).unwrap_or_default();
+        feroxmute_core::mcp::run_stdio_proxy(url, token).await?;
+        return Ok(());
+    }
+
     // Set up tracing based on verbosity
     let filter = if args.debug {
         "debug"
