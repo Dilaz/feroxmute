@@ -123,4 +123,16 @@ pub struct Args {
     /// Skip network testing, only test the target LLM
     #[arg(long)]
     pub llm_only: bool,
+
+    /// Internal: run as an stdio↔HTTP MCP proxy for stdio-only ACP agents.
+    ///
+    /// Used automatically by feroxmute when a CLI agent (e.g. claude-code)
+    /// only supports stdio MCP servers. The bearer token is read from the
+    /// `FEROXMUTE_MCP_TOKEN` environment variable.
+    #[arg(long, hide = true)]
+    pub mcp_stdio_proxy: bool,
+
+    /// Internal: HTTP MCP server URL for `--mcp-stdio-proxy`.
+    #[arg(long, hide = true, value_name = "URL")]
+    pub mcp_proxy_url: Option<String>,
 }

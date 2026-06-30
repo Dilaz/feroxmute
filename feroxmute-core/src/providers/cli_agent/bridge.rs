@@ -18,11 +18,11 @@ use std::time::Duration;
 
 use acp::schema::ProtocolVersion;
 use acp::schema::v1::{
-    CancelNotification, ContentBlock, HttpHeader, Implementation, InitializeRequest,
-    McpCapabilities, McpServer, McpServerHttp, NewSessionRequest, PermissionOptionKind,
-    PromptRequest, RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    SelectedPermissionOutcome, SessionId, SessionNotification, SessionUpdate, TextContent,
-    ToolCallStatus,
+    CancelNotification, ContentBlock, EnvVariable, HttpHeader, Implementation, InitializeRequest,
+    McpCapabilities, McpServer, McpServerHttp, McpServerStdio, NewSessionRequest,
+    PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
+    RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
+    SessionUpdate, TextContent, ToolCallStatus,
 };
 use acp::{Agent, ByteStreams, Client, ConnectionTo};
 use agent_client_protocol as acp;
@@ -702,7 +702,7 @@ async fn run_standard_protocol(
             } => {
                 tracing::debug!("Creating standard ACP session for role '{agent_role}'");
                 let request = NewSessionRequest::new(&working_dir);
-                let result = match attach_http_mcp_server(
+                let result = match attach_mcp_server(
                     request,
                     mcp_server_url,
                     bearer_token,
@@ -744,8 +744,8 @@ async fn run_standard_protocol(
     }
 }
 
-fn attach_http_mcp_server(
-    mut request: NewSessionRequest,
+fn attach_mcp_server(
+    request: NewSessionRequest,
     mcp_server_url: Option<String>,
     bearer_token: Option<String>,
     mcp_capabilities: &McpCapabilities,
@@ -755,25 +755,50 @@ fn attach_http_mcp_server(
         return Ok(request);
     };
 
-    if !mcp_capabilities.http {
-        return Err(crate::Error::Provider(format!(
-            "{provider_name} ACP adapter does not advertise HTTP MCP support, \
-             so feroxmute cannot attach its tool server. Update the ACP adapter \
-             or use a provider that supports ACP HTTP MCP servers."
-        )));
-    }
+    // Prefer HTTP when the agent advertises it; otherwise fall back to a stdio
+    // MCP server (which every ACP agent MUST support). The stdio server is
+    // feroxmute re-invoked in proxy mode, bridging stdio MCP to this same HTTP
+    // server so tools keep executing in the main process.
+    let mcp_server = if mcp_capabilities.http {
+        tracing::debug!("Attaching HTTP MCP server at {}", url);
+        let mut mcp_http = McpServerHttp::new("feroxmute", url);
+        if let Some(token) = bearer_token {
+            mcp_http = mcp_http.headers(vec![HttpHeader::new(
+                "Authorization",
+                format!("Bearer {token}"),
+            )]);
+        }
+        McpServer::Http(mcp_http)
+    } else {
+        tracing::debug!(
+            "{provider_name} does not advertise HTTP MCP support; attaching stdio MCP proxy to {}",
+            url
+        );
+        let exe = std::env::current_exe().map_err(|e| {
+            crate::Error::Provider(format!(
+                "Cannot locate feroxmute executable to launch the stdio MCP proxy for \
+                 {provider_name}: {e}"
+            ))
+        })?;
+        let env = match bearer_token {
+            Some(token) => vec![EnvVariable::new(
+                crate::mcp::stdio_proxy::MCP_TOKEN_ENV,
+                token,
+            )],
+            None => Vec::new(),
+        };
+        McpServer::Stdio(
+            McpServerStdio::new("feroxmute", exe)
+                .args(vec![
+                    "--mcp-stdio-proxy".to_string(),
+                    "--mcp-proxy-url".to_string(),
+                    url,
+                ])
+                .env(env),
+        )
+    };
 
-    tracing::debug!("Attaching MCP server at {}", url);
-    let mut mcp_http = McpServerHttp::new("feroxmute", url);
-    if let Some(token) = bearer_token {
-        mcp_http = mcp_http.headers(vec![HttpHeader::new(
-            "Authorization",
-            format!("Bearer {token}"),
-        )]);
-    }
-    request = request.mcp_servers(vec![McpServer::Http(mcp_http)]);
-
-    Ok(request)
+    Ok(request.mcp_servers(vec![mcp_server]))
 }
 
 async fn standard_new_session(
