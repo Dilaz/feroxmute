@@ -481,17 +481,19 @@ struct ChildIo {
 /// speaks ACP natively over stdin/stdout. MCP servers are provided later via
 /// `NewSessionRequest.mcp_servers` rather than CLI flags.
 fn prepare_child(config: &CliAgentConfig, working_dir: &Path) -> Result<ChildIo> {
-    // Check binary availability first
-    if which::which(&config.binary_path).is_err() {
-        return Err(crate::Error::Provider(format!(
+    // Resolve the binary to an absolute path. `current_dir` below would
+    // otherwise make a relative binary name resolve against `working_dir`
+    // instead of `PATH`.
+    let binary_path = which::which(&config.binary_path).map_err(|_| {
+        crate::Error::Provider(format!(
             "{} CLI not found at '{}'. Install it or specify path with --cli-path. Auth hint: {}",
             config.agent_type.provider_name(),
             config.binary_path.display(),
             config.agent_type.auth_hint()
-        )));
-    }
+        ))
+    })?;
 
-    let mut cmd = Command::new(&config.binary_path);
+    let mut cmd = Command::new(&binary_path);
     cmd.current_dir(working_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
