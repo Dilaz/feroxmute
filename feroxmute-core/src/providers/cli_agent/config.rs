@@ -24,13 +24,14 @@ impl CliAgentType {
 
     /// Get the default binary name
     ///
-    /// Note: neither Claude Code nor Codex speak ACP natively. The
-    /// `claude-code-acp` npm package ships its adapter as the `cc-acp`
-    /// binary, and the `codex-acp` adapter (both maintained by Zed
-    /// Industries) translates between ACP and the agent's internal protocol.
+    /// Note: neither Claude Code nor Codex speak ACP natively. Zed Industries
+    /// maintains adapters that translate between ACP and each agent's internal
+    /// protocol: `@zed-industries/claude-code-acp` (binary `claude-code-acp`)
+    /// and `@zed-industries/codex-acp` (binary `codex-acp`). Both advertise
+    /// HTTP MCP support, so feroxmute attaches its tool server over HTTP.
     pub fn default_binary(&self) -> &'static str {
         match self {
-            Self::ClaudeCode => "cc-acp",
+            Self::ClaudeCode => "claude-code-acp",
             Self::Codex => "codex-acp",
             Self::GeminiCli => "gemini",
         }

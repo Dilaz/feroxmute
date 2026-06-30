@@ -477,7 +477,7 @@ struct ChildIo {
 
 /// Spawn the CLI subprocess and capture its stdio.
 ///
-/// For CLI agents that use ACP adapters (e.g. `cc-acp`), the binary
+/// For CLI agents that use ACP adapters (e.g. `claude-code-acp`), the binary
 /// speaks ACP natively over stdin/stdout. MCP servers are provided later via
 /// `NewSessionRequest.mcp_servers` rather than CLI flags.
 fn prepare_child(config: &CliAgentConfig, working_dir: &Path) -> Result<ChildIo> {
