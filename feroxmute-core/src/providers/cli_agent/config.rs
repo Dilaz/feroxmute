@@ -24,12 +24,13 @@ impl CliAgentType {
 
     /// Get the default binary name
     ///
-    /// Note: Codex does not speak ACP natively — the `codex-acp` adapter
-    /// binary (maintained by Zed Industries) translates between ACP and
-    /// Codex's internal protocol.
+    /// Note: neither Claude Code nor Codex speak ACP natively. The
+    /// `claude-code-acp` npm package ships its adapter as the `cc-acp`
+    /// binary, and the `codex-acp` adapter (both maintained by Zed
+    /// Industries) translates between ACP and the agent's internal protocol.
     pub fn default_binary(&self) -> &'static str {
         match self {
-            Self::ClaudeCode => "claude-code-acp",
+            Self::ClaudeCode => "cc-acp",
             Self::Codex => "codex-acp",
             Self::GeminiCli => "gemini",
         }

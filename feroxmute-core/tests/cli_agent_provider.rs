@@ -7,7 +7,7 @@ use std::path::PathBuf;
 fn test_cli_agent_config_defaults() {
     let config = CliAgentConfig::new(CliAgentType::ClaudeCode);
     assert_eq!(config.model, "claude-opus-4.5");
-    assert_eq!(config.binary_path, PathBuf::from("claude-code-acp"));
+    assert_eq!(config.binary_path, PathBuf::from("cc-acp"));
 
     let config = CliAgentConfig::new(CliAgentType::Codex);
     assert_eq!(config.model, "gpt-5.2");
@@ -33,7 +33,7 @@ fn test_cli_agent_config_custom_model() {
     let config = CliAgentConfig::new(CliAgentType::ClaudeCode).with_model("claude-sonnet-4");
 
     assert_eq!(config.model, "claude-sonnet-4");
-    assert_eq!(config.binary_path, PathBuf::from("claude-code-acp"));
+    assert_eq!(config.binary_path, PathBuf::from("cc-acp"));
 }
 
 #[test]
