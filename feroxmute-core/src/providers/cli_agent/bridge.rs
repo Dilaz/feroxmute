@@ -22,7 +22,7 @@ use acp::schema::v1::{
     McpCapabilities, McpServer, McpServerHttp, McpServerStdio, NewSessionRequest,
     PermissionOptionKind, PromptRequest, RequestPermissionOutcome, RequestPermissionRequest,
     RequestPermissionResponse, SelectedPermissionOutcome, SessionId, SessionNotification,
-    SessionUpdate, TextContent, ToolCallStatus,
+    SessionUpdate, SetSessionConfigOptionRequest, TextContent, ToolCallStatus,
 };
 use acp::{Agent, ByteStreams, Client, ConnectionTo};
 use agent_client_protocol as acp;
@@ -477,7 +477,7 @@ struct ChildIo {
 
 /// Spawn the CLI subprocess and capture its stdio.
 ///
-/// For CLI agents that use ACP adapters (e.g. `claude-code-acp`), the binary
+/// For CLI agents that use ACP adapters (e.g. `claude-agent-acp`), the binary
 /// speaks ACP natively over stdin/stdout. MCP servers are provided later via
 /// `NewSessionRequest.mcp_servers` rather than CLI flags.
 fn prepare_child(config: &CliAgentConfig, working_dir: &Path) -> Result<ChildIo> {
@@ -508,7 +508,11 @@ fn prepare_child(config: &CliAgentConfig, working_dir: &Path) -> Result<ChildIo>
             cmd.arg("--experimental-acp");
             cmd.arg("-m").arg(&config.model);
         }
-        CliAgentType::ClaudeCode => {}
+        CliAgentType::ClaudeCode => {
+            // Pin startup as well as session selection: otherwise Claude's saved
+            // model wins, and the selected model may be absent from its picker.
+            cmd.env("ANTHROPIC_MODEL", &config.model);
+        }
     }
 
     let mut child = cmd.spawn().map_err(|e| {
@@ -710,7 +714,7 @@ async fn run_standard_protocol(
                     provider_name,
                 ) {
                     Ok(request) => {
-                        standard_new_session(&connection, request, provider_name, diagnostics).await
+                        standard_new_session(&connection, request, config, diagnostics).await
                     }
                     Err(e) => Err(e),
                 };
@@ -804,16 +808,48 @@ fn attach_mcp_server(
 async fn standard_new_session(
     connection: &ConnectionTo<Agent>,
     request: NewSessionRequest,
-    provider_name: &str,
+    config: &CliAgentConfig,
     diagnostics: &Rc<RefCell<CliDiagnostics>>,
 ) -> Result<SessionId> {
+    let provider_name = config.agent_type.provider_name();
     match tokio::time::timeout(
         ACP_SETUP_TIMEOUT,
         connection.send_request(request).block_task(),
     )
     .await
     {
-        Ok(Ok(response)) => Ok(response.session_id),
+        Ok(Ok(response)) => {
+            if config.agent_type == CliAgentType::ClaudeCode {
+                let request = SetSessionConfigOptionRequest::new(
+                    response.session_id.clone(),
+                    "model",
+                    config.model.as_str(),
+                );
+                match tokio::time::timeout(
+                    ACP_SETUP_TIMEOUT,
+                    connection.send_request(request).block_task(),
+                )
+                .await
+                {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        return Err(crate::Error::Provider(format!(
+                            "{provider_name} ACP could not select model '{}': {e}",
+                            config.model,
+                        )));
+                    }
+                    Err(_) => {
+                        return Err(crate::Error::Provider(format!(
+                            "{provider_name} ACP selection of model '{}' timed out after {} seconds.{}",
+                            config.model,
+                            ACP_SETUP_TIMEOUT.as_secs(),
+                            diagnostics.borrow().recent_summary(),
+                        )));
+                    }
+                }
+            }
+            Ok(response.session_id)
+        }
         Ok(Err(e)) => Err(crate::Error::Provider(format!(
             "Failed to create ACP session: {e}"
         ))),
@@ -1383,6 +1419,9 @@ fn push_toml_unicode_escape(output: &mut String, ch: char) {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod model_tests;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
@@ -1448,7 +1487,7 @@ mod tests {
     #[test]
     fn test_bridge_binary_not_found() {
         let config = CliAgentConfig::new(CliAgentType::ClaudeCode)
-            .with_binary_path("/nonexistent/path/claude-code-acp");
+            .with_binary_path("/nonexistent/path/claude-agent-acp");
         let bridge = AcpBridge::new(config);
 
         let rt = tokio::runtime::Runtime::new().unwrap();

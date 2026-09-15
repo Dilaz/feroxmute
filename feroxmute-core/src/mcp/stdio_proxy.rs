@@ -1,6 +1,6 @@
 //! stdio ↔ HTTP MCP proxy.
 //!
-//! Some ACP agents (notably `claude-code-acp`) only support **stdio** MCP
+//! ACP agents without HTTP MCP support only support **stdio** MCP
 //! servers — they spawn a subprocess and speak MCP over its stdin/stdout.
 //! feroxmute serves its tools over an in-process HTTP MCP server
 //! ([`crate::mcp::http::HttpMcpServer`]) whose tools hold live engagement

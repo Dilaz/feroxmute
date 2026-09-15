@@ -149,20 +149,26 @@ Instead of calling LLM APIs directly, feroxmute can drive CLI-based AI agents as
 
 | Provider | Binary | Auth |
 |----------|--------|------|
-| `claude-code` | [`claude-code-acp`](https://www.npmjs.com/package/@zed-industries/claude-code-acp) (from `@zed-industries/claude-code-acp`) | `ANTHROPIC_API_KEY` or `claude login` |
+| `claude-code` | [`claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (from `@agentclientprotocol/claude-agent-acp`) | `ANTHROPIC_API_KEY` or `claude login` |
 | `codex` | [`codex-acp`](https://github.com/zed-industries/codex-acp) | `OPENAI_API_KEY`, `CODEX_API_KEY`, or existing Codex auth |
 | `gemini-cli` | `gemini` | `gemini auth` |
 
-> Install the Claude Code adapter with `bun install -g @zed-industries/claude-code-acp`.
-> The unscoped `claude-code-acp` package on npm is a different, incomplete adapter
-> (it rejects MCP servers) — make sure you install the `@zed-industries`-scoped one.
+> Install the Claude Code adapter with `bun install -g @agentclientprotocol/claude-agent-acp`.
+> With `claude-agent-acp` on your `$PATH`, `--provider claude-code` uses it automatically.
+
+For `claude-code`, the engagement's configured model overrides Claude's saved
+model preference. Feroxmute pins it when launching the adapter and waits for
+ACP model selection to succeed before making each session available for prompts.
+An invalid or rejected model stops session setup rather than using the adapter's
+default. Use the exact model ID supported by Claude (for example,
+`claude-opus-4-8`, not `claude-opus-4.8`).
 
 ### Custom Binary Path
 
 If the CLI agent binary isn't on your `$PATH`, use `--cli-path`:
 
 ```bash
-feroxmute --target example.com --provider claude-code --cli-path ~/.bun/bin/claude-code-acp
+feroxmute --target example.com --provider claude-code --cli-path ~/.bun/bin/claude-agent-acp
 feroxmute --target example.com --provider codex --cli-path ~/bin/codex-acp
 ```
 
