@@ -59,6 +59,15 @@ pub fn create_provider_with_cli_path(
     working_dir: Option<PathBuf>,
     cli_path: Option<PathBuf>,
 ) -> Result<Arc<dyn LlmProvider>> {
+    if config.reasoning_effort.is_some()
+        && !matches!(config.name, ProviderName::OpenAi | ProviderName::LiteLlm)
+    {
+        return Err(Error::Provider(format!(
+            "reasoning_effort is not supported for provider '{}'; use openai or litellm",
+            config.name
+        )));
+    }
+
     match config.name {
         ProviderName::Anthropic => {
             // Use config api_key if set, otherwise fall back to env var
@@ -83,6 +92,7 @@ pub fn create_provider_with_cli_path(
                 unsafe { std::env::set_var("OPENAI_API_KEY", &api_key) };
                 OpenAiProvider::new(&config.model, metrics)?
             };
+            let provider = provider.with_reasoning_effort(config.reasoning_effort);
             Ok(Arc::new(provider))
         }
         ProviderName::LiteLlm => {
@@ -100,6 +110,7 @@ pub fn create_provider_with_cli_path(
                 })?;
             let provider =
                 OpenAiProvider::with_base_url(api_key, base_url, &config.model, metrics)?;
+            let provider = provider.with_reasoning_effort(config.reasoning_effort);
             Ok(Arc::new(provider))
         }
         ProviderName::Cohere => {
@@ -221,6 +232,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_reasoning_effort_rejected_for_unsupported_providers() {
+        for name in [
+            ProviderName::Anthropic,
+            ProviderName::Ollama,
+            ProviderName::Codex,
+        ] {
+            let config = ProviderConfig {
+                name,
+                reasoning_effort: Some(crate::config::ReasoningEffort::None),
+                ..ProviderConfig::default()
+            };
+            let result = create_provider(&config, MetricsTracker::new(), None);
+            assert!(
+                matches!(result, Err(Error::Provider(message)) if message.contains("reasoning_effort"))
+            );
+        }
+    }
+
+    #[test]
     fn test_create_anthropic_requires_api_key() {
         temp_env::with_var("ANTHROPIC_API_KEY", None::<&str>, || {
             let config = ProviderConfig {
@@ -228,6 +258,7 @@ mod tests {
                 model: "claude-3-sonnet".to_string(),
                 api_key: None,
                 base_url: None,
+                reasoning_effort: None,
             };
             let result = create_provider(&config, MetricsTracker::new(), None);
             assert!(result.is_err());
@@ -242,6 +273,7 @@ mod tests {
                 model: "gpt-4o".to_string(),
                 api_key: None,
                 base_url: None,
+                reasoning_effort: None,
             };
             let result = create_provider(&config, MetricsTracker::new(), None);
             assert!(result.is_err());
@@ -256,6 +288,7 @@ mod tests {
                 model: "command-r-plus".to_string(),
                 api_key: None,
                 base_url: None,
+                reasoning_effort: None,
             };
             let result = create_provider(&config, MetricsTracker::new(), None);
             assert!(result.is_err());
@@ -275,6 +308,7 @@ mod tests {
                     model: "gpt-4o".to_string(),
                     api_key: Some("test-key".to_string()),
                     base_url: None,
+                    reasoning_effort: None,
                 };
                 let result = create_provider(&config, MetricsTracker::new(), None);
                 assert!(result.is_err());
@@ -293,6 +327,7 @@ mod tests {
                 model: "claude-3-sonnet".to_string(),
                 api_key: Some("test-key-from-config".to_string()),
                 base_url: None,
+                reasoning_effort: None,
             };
             let result = create_provider(&config, MetricsTracker::new(), None);
             assert!(result.is_ok());
@@ -307,6 +342,7 @@ mod tests {
                 model: "gpt-4o".to_string(),
                 api_key: Some("test-key-from-config".to_string()),
                 base_url: None,
+                reasoning_effort: None,
             };
             let result = create_provider(&config, MetricsTracker::new(), None);
             assert!(result.is_ok());
@@ -323,6 +359,7 @@ mod tests {
                     model: "gpt-4o".to_string(),
                     api_key: Some("test-key-from-config".to_string()),
                     base_url: Some("http://localhost:4000".to_string()),
+                    reasoning_effort: None,
                 };
                 let result = create_provider(&config, MetricsTracker::new(), None);
                 assert!(result.is_ok());
@@ -338,6 +375,7 @@ mod tests {
             model: "llama3.2".to_string(),
             api_key: None,
             base_url: None,
+            reasoning_effort: None,
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
@@ -350,6 +388,7 @@ mod tests {
             model: "llama3.2".to_string(),
             api_key: None,
             base_url: Some("http://custom:11434".to_string()),
+            reasoning_effort: None,
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_ok());
@@ -363,6 +402,7 @@ mod tests {
             model: "claude-opus-4.5".to_string(),
             api_key: None,
             base_url: None,
+            reasoning_effort: None,
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
@@ -376,6 +416,7 @@ mod tests {
             model: "gpt-5.2".to_string(),
             api_key: None,
             base_url: None,
+            reasoning_effort: None,
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
@@ -386,6 +427,7 @@ mod tests {
             model: "gemini-3-pro".to_string(),
             api_key: None,
             base_url: None,
+            reasoning_effort: None,
         };
         let result = create_provider(&config, MetricsTracker::new(), None);
         assert!(result.is_err());
@@ -400,6 +442,7 @@ mod tests {
             model: "gpt-5.2".to_string(),
             api_key: None,
             base_url: None,
+            reasoning_effort: None,
         };
         let provider = create_provider_with_cli_path(
             &config,

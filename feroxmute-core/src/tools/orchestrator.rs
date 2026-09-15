@@ -546,6 +546,7 @@ impl Tool for SpawnAgentTool {
                         model: target_provider_arc.name().to_string(),
                         api_key: None,
                         base_url: None,
+                        reasoning_effort: None,
                     });
 
                 let llm_context = std::sync::Arc::new(crate::tools::LlmPentestContext {

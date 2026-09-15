@@ -231,6 +231,7 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| config.provider.model.clone()),
         api_key: config.provider.api_key.clone(),
         base_url: config.provider.base_url.clone(),
+        reasoning_effort: args.reasoning_effort.or(config.provider.reasoning_effort),
     };
 
     // Validate LLM provider - fail fast
@@ -292,6 +293,7 @@ async fn main() -> Result<()> {
                 .clone()
                 .or_else(|| std::env::var("TARGET_LLM_API_KEY").ok()),
             base_url: args.target_base_url.clone(),
+            reasoning_effort: None,
         };
         config.target_llm = Some(target_config);
     }

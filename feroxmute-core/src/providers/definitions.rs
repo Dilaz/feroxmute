@@ -32,6 +32,24 @@
 
 use rig::providers::{anthropic, cohere, deepseek, gemini, mira, openai, perplexity, xai};
 
+use crate::config::ReasoningEffort;
+
+fn reasoning_params(base_url: &str, effort: ReasoningEffort) -> serde_json::Value {
+    let is_openrouter = base_url
+        .parse::<hyper::Uri>()
+        .ok()
+        .and_then(|uri| {
+            uri.host()
+                .map(|host| host.eq_ignore_ascii_case("openrouter.ai"))
+        })
+        .unwrap_or(false);
+    if is_openrouter {
+        serde_json::json!({ "reasoning": { "effort": effort } })
+    } else {
+        serde_json::json!({ "reasoning_effort": effort })
+    }
+}
+
 // =============================================================================
 // Anthropic
 // =============================================================================
@@ -53,7 +71,7 @@ define_provider! {
 define_provider! {
     name: OpenAiProvider,
     provider_name: "openai",
-    client_type: openai::Client,
+    client_type: openai::CompletionsClient,
     env_var: "OPENAI_API_KEY",
     supports_tools: true,
     client_builder: |builder, base_url| {
@@ -64,6 +82,16 @@ define_provider! {
         }
     },
     has_base_url: true
+}
+
+impl OpenAiProvider {
+    /// Set reasoning effort, using OpenRouter's nested format for its endpoint.
+    /// Passing `None` leaves reasoning effort up to the API's default.
+    pub fn with_reasoning_effort(mut self, effort: Option<ReasoningEffort>) -> Self {
+        self.additional_params =
+            effort.map(|effort| reasoning_params(self.client.base_url(), effort));
+        self
+    }
 }
 
 // =============================================================================
@@ -157,7 +185,7 @@ define_provider! {
 define_provider! {
     name: LiteLlmProvider,
     provider_name: "litellm",
-    client_type: openai::Client,
+    client_type: openai::CompletionsClient,
     env_var: "LITELLM_API_KEY",
     supports_tools: true,
     client_builder: |builder, base_url| {
@@ -166,6 +194,16 @@ define_provider! {
         builder.base_url(url)
     },
     has_base_url: true
+}
+
+impl LiteLlmProvider {
+    /// Set reasoning effort, using OpenRouter's nested format for its endpoint.
+    /// Passing `None` leaves reasoning effort up to the API's default.
+    pub fn with_reasoning_effort(mut self, effort: Option<ReasoningEffort>) -> Self {
+        self.additional_params =
+            effort.map(|effort| reasoning_params(self.client.base_url(), effort));
+        self
+    }
 }
 
 // =============================================================================
@@ -180,3 +218,36 @@ define_provider! {
 // Ollama - No API key required by default, needs special handling for optional auth.
 // The existing implementation should be kept as manual since it has different
 // constructor signatures (no required API key).
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openrouter_reasoning_uses_nested_effort() {
+        for base_url in [
+            "https://openrouter.ai/api/v1",
+            "https://OPENROUTER.AI:443/api/v1",
+        ] {
+            assert_eq!(
+                reasoning_params(base_url, ReasoningEffort::Max),
+                serde_json::json!({ "reasoning": { "effort": "max" } })
+            );
+        }
+    }
+
+    #[test]
+    fn other_endpoints_use_top_level_effort() {
+        for base_url in [
+            "https://api.openai.com/v1",
+            "http://localhost:4000",
+            "https://openrouter.ai.example.com/api/v1",
+            "https://example.com/openrouter.ai",
+        ] {
+            assert_eq!(
+                reasoning_params(base_url, ReasoningEffort::None),
+                serde_json::json!({ "reasoning_effort": "none" })
+            );
+        }
+    }
+}

@@ -64,6 +64,7 @@ macro_rules! define_provider {
             client: $client_type,
             model: String,
             metrics: $crate::state::MetricsTracker,
+            additional_params: Option<serde_json::Value>,
         }
 
         impl $name {
@@ -83,6 +84,7 @@ macro_rules! define_provider {
                     client,
                     model: model.into(),
                     metrics,
+                    additional_params: None,
                 })
             }
 
@@ -103,6 +105,7 @@ macro_rules! define_provider {
                     client,
                     model: model.into(),
                     metrics,
+                    additional_params: None,
                 })
             }
 
@@ -136,9 +139,11 @@ macro_rules! define_provider {
                     .join("\n");
 
                 // Build and execute request using Prompt trait with agent
-                let agent = self
-                    .client
-                    .agent(&self.model)
+                let mut builder = self.client.agent(&self.model);
+                if let Some(params) = &self.additional_params {
+                    builder = builder.additional_params(params.clone());
+                }
+                let agent = builder
                     .preamble(
                         request
                             .system
@@ -206,9 +211,11 @@ macro_rules! define_provider {
                         None,
                     );
 
-                    let agent = self
-                        .client
-                        .agent(&self.model)
+                    let mut builder = self.client.agent(&self.model);
+                    if let Some(params) = &self.additional_params {
+                        builder = builder.additional_params(params.clone());
+                    }
+                    let agent = builder
                         .preamble(system_prompt)
                         .max_tokens(4096)
                         .tool($crate::tools::DockerShellTool::new(
@@ -320,9 +327,11 @@ macro_rules! define_provider {
                     None,
                 );
 
-                let agent = self
-                    .client
-                    .agent(&self.model)
+                let mut builder = self.client.agent(&self.model);
+                if let Some(params) = &self.additional_params {
+                    builder = builder.additional_params(params.clone());
+                }
+                let agent = builder
                     .preamble(system_prompt)
                     .max_tokens(4096)
                     .tool($crate::tools::SpawnAgentTool::new(std::sync::Arc::clone(&context)))
@@ -401,9 +410,11 @@ macro_rules! define_provider {
                     None,
                 );
 
-                let agent = self
-                    .client
-                    .agent(&self.model)
+                let mut builder = self.client.agent(&self.model);
+                if let Some(params) = &self.additional_params {
+                    builder = builder.additional_params(params.clone());
+                }
+                let agent = builder
                     .preamble(system_prompt)
                     .max_tokens(4096)
                     .tool($crate::tools::DeduplicateFindingsTool::new(std::sync::Arc::clone(&context)))
@@ -490,9 +501,11 @@ macro_rules! define_provider {
                         None,
                     );
 
-                    let agent = self
-                        .client
-                        .agent(&self.model)
+                    let mut builder = self.client.agent(&self.model);
+                    if let Some(params) = &self.additional_params {
+                        builder = builder.additional_params(params.clone());
+                    }
+                    let agent = builder
                         .preamble(system_prompt)
                         .max_tokens(4096)
                         .tool($crate::tools::LlmProbeTool::new(std::sync::Arc::clone(&context)))
@@ -614,6 +627,7 @@ macro_rules! define_provider {
                 client,
                 model: model.into(),
                 metrics,
+                additional_params: None,
             })
         }
     };

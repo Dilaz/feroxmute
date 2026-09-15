@@ -1,6 +1,7 @@
 //! CLI argument parsing
 
 use clap::{ArgAction, Parser};
+use feroxmute_core::config::ReasoningEffort;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
@@ -76,6 +77,10 @@ pub struct Args {
     #[arg(long)]
     pub model: Option<String>,
 
+    /// OpenAI/LiteLLM reasoning effort (none, minimal, low, medium, high, xhigh, max)
+    #[arg(long)]
+    pub reasoning_effort: Option<ReasoningEffort>,
+
     /// Path to CLI agent binary (for claude-code, codex, gemini-cli providers)
     #[arg(long, value_name = "PATH")]
     pub cli_path: Option<PathBuf>,
@@ -135,4 +140,33 @@ pub struct Args {
     /// Internal: HTTP MCP server URL for `--mcp-stdio-proxy`.
     #[arg(long, hide = true, value_name = "URL")]
     pub mcp_proxy_url: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reasoning_effort_accepts_low_and_max() {
+        let low = Args::try_parse_from(["feroxmute", "--reasoning-effort", "low"]).unwrap();
+        assert_eq!(low.reasoning_effort, Some(ReasoningEffort::Low));
+
+        let max = Args::try_parse_from(["feroxmute", "--reasoning-effort", "max"]).unwrap();
+        assert_eq!(max.reasoning_effort, Some(ReasoningEffort::Max));
+    }
+
+    #[test]
+    fn reasoning_effort_distinguishes_unset_from_explicit_none() {
+        let unset = Args::try_parse_from(["feroxmute"]).unwrap();
+        assert_eq!(unset.reasoning_effort, None);
+
+        let disabled = Args::try_parse_from(["feroxmute", "--reasoning-effort", "none"]).unwrap();
+        assert_eq!(disabled.reasoning_effort, Some(ReasoningEffort::None));
+    }
+
+    #[test]
+    fn reasoning_effort_rejects_typos() {
+        let error = Args::try_parse_from(["feroxmute", "--reasoning-effort", "hgh"]).unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+    }
 }

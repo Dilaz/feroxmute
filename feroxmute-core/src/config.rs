@@ -43,6 +43,20 @@ pub enum ProviderName {
     GeminiCli,
 }
 
+/// Reasoning effort requested from an OpenAI-compatible provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Display, EnumString)]
+#[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
+pub enum ReasoningEffort {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
 /// Target configuration (optional in config file - use CLI --target instead)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TargetConfig {
@@ -113,6 +127,8 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     #[serde(default)]
     pub base_url: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl std::fmt::Debug for ProviderConfig {
@@ -122,6 +138,7 @@ impl std::fmt::Debug for ProviderConfig {
             .field("model", &self.model)
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
             .field("base_url", &self.base_url)
+            .field("reasoning_effort", &self.reasoning_effort)
             .finish()
     }
 }
@@ -133,6 +150,7 @@ impl Default for ProviderConfig {
             model: "claude-sonnet-4-20250514".to_string(),
             api_key: None,
             base_url: None,
+            reasoning_effort: None,
         }
     }
 }
@@ -419,6 +437,28 @@ api_key = "${TEST_TARGET_LLM_KEY}"
             let target = config.target_llm.unwrap();
             assert_eq!(target.api_key.as_deref(), Some("sk-test-key-123"));
         });
+    }
+
+    #[test]
+    fn test_reasoning_effort_distinguishes_unset_from_none() {
+        let unset: ProviderConfig = toml::from_str("model = 'test'").unwrap();
+        assert_eq!(unset.reasoning_effort, None);
+
+        let explicit_none: ProviderConfig =
+            toml::from_str("model = 'test'\nreasoning_effort = 'none'").unwrap();
+        assert_eq!(explicit_none.reasoning_effort, Some(ReasoningEffort::None));
+        let serialized = toml::to_string(&explicit_none).unwrap();
+        let restored: ProviderConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(restored.reasoning_effort, Some(ReasoningEffort::None));
+    }
+
+    #[test]
+    fn test_reasoning_effort_rejects_unknown_values() {
+        assert!(
+            toml::from_str::<ProviderConfig>("model = 'test'\nreasoning_effort = 'unlimited'")
+                .is_err()
+        );
+        assert!("unlimited".parse::<ReasoningEffort>().is_err());
     }
 
     #[test]

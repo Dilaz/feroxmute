@@ -73,6 +73,40 @@ cargo build --release
 
 This creates `~/.feroxmute/config.toml` with your provider settings.
 
+#### Reasoning effort (OpenAI-compatible providers)
+
+Set `reasoning_effort` in `~/.feroxmute/config.toml` (or the local
+`feroxmute.toml`, which takes precedence). For OpenRouter:
+
+```toml
+[provider]
+name = "openai"
+model = "z-ai/glm-5.3-flash"
+base_url = "https://openrouter.ai/api/v1"
+api_key = "${OPENROUTER_API_KEY}"
+reasoning_effort = "low"
+```
+
+Override the configured effort for a run:
+
+```bash
+./target/debug/feroxmute --target example.com --reasoning-effort high
+```
+
+Accepted values: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`.
+Supported levels depend on the model: GLM 5.3 Flash supports `low`, `high`,
+and `max`, with mandatory reasoning, so do not use `none` for that model.
+Omitting the setting preserves the model/provider default; `none` explicitly
+requests disabled reasoning where supported. CLI values override TOML values.
+
+This option applies to `openai` and `litellm` providers, including every
+specialist using the engagement provider. Other providers reject an explicit
+setting. OpenRouter receives `reasoning.effort`; other compatible endpoints
+receive `reasoning_effort`. A separately configured `[target_llm]` can set its
+own effort; it does not inherit the engagement's CLI override.
+
+See [OpenRouter reasoning documentation](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
+
 ### Run
 
 ```bash
@@ -91,6 +125,7 @@ feroxmute [OPTIONS] --target <TARGET>
 | `--target <URL>` | Target URL or IP |
 | `--provider <NAME>` | LLM provider (anthropic, openai, gemini, ollama, claude-code, codex, gemini-cli, etc.) |
 | `--model <MODEL>` | Override default model |
+| `--reasoning-effort <LEVEL>` | Override reasoning effort for OpenAI-compatible providers |
 | `--cli-path <PATH>` | Path to CLI agent binary (for claude-code, codex, gemini-cli providers) |
 | `--passive` | Passive reconnaissance only, no active scanning |
 | `--sast-only` | Source code analysis only, no web testing |
