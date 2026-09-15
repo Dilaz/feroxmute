@@ -62,7 +62,10 @@ async fn exercise_sessions(model: &str) -> Result<()> {
                 "session/prompt" => {
                     json!({"error": {"code": -32602, "message": "Prompt reached the wrong model"}})
                 }
-                method => panic!("Unexpected ACP method: {method}"),
+                method => json!({"error": {
+                    "code": -32601,
+                    "message": format!("Unexpected ACP method: {method}")
+                }}),
             };
             let mut response = response;
             response["jsonrpc"] = json!("2.0");
