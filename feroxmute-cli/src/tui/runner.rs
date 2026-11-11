@@ -6,60 +6,59 @@ use std::io::{self, stdout};
 use std::time::Duration;
 
 use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Frame, Terminal, backend::CrosstermBackend};
 
-use super::app::{App, View};
+use super::app::{App, Finding, FindingSource, Overlay};
 use super::channel::{AgentEvent, VulnSeverity};
 use super::events::{EventResult, handle_event, poll_event};
-use super::widgets::{agent_detail, dashboard, memory, memory_modal, sast, timeline};
+use super::widgets::{agent_detail, command_center, findings, memory, memory_modal, overlay};
+use feroxmute_core::state::models::{FindingType, Severity};
 
-/// Render the current view
+/// Render the command center plus any active overlay.
 fn render(frame: &mut Frame, app: &App) {
-    match &app.view {
-        View::Dashboard => dashboard::render(frame, app),
-        View::AgentDetail(agent_name) => {
-            let is_sast = app
-                .agents
-                .get(agent_name)
-                .map(|a| a.agent_type == "sast")
-                .unwrap_or(false);
+    command_center::render(frame, app);
 
-            if is_sast {
-                sast::render(frame, app, agent_name, frame.area())
-            } else {
-                agent_detail::render(frame, app, agent_name)
+    if let Some(overlay) = &app.overlay {
+        match overlay {
+            Overlay::AgentDetail(name) => agent_detail::render(frame, app, name, frame.area()),
+            Overlay::FindingDetail(idx) => render_finding_detail(frame, app, *idx),
+            Overlay::Memory => {
+                memory::render(frame, app, frame.area());
+                if app.show_memory_modal {
+                    memory_modal::render(frame, app);
+                }
             }
-        }
-        View::Logs => render_logs(frame, app),
-        View::Help => render_help(frame),
-        View::Memory => {
-            memory::render(frame, app, frame.area());
-            if app.show_memory_modal {
-                memory_modal::render(frame, app);
-            }
-        }
-        View::Timeline => {
-            timeline::render(frame, app, frame.area());
+            Overlay::Logs => overlay::render_logs(frame, app),
+            Overlay::Help => overlay::render_help(frame, app),
         }
     }
 
     if app.confirm_quit {
-        render_quit_dialog(frame);
+        render_quit_dialog(frame, app);
     }
 }
 
+/// Render the finding detail overlay.
+fn render_finding_detail(frame: &mut Frame, app: &App, idx: usize) {
+    let area = overlay::centered_rect(70, 60, frame.area());
+    let inner = overlay::frame_block(frame, area, "Finding", &app.theme);
+    findings::render_detail(frame, app, idx, inner);
+}
+
 /// Render quit confirmation dialog
-fn render_quit_dialog(frame: &mut Frame) {
+fn render_quit_dialog(frame: &mut Frame, app: &App) {
     use ratatui::{
         layout::{Constraint, Flex, Layout},
-        style::{Color, Style},
+        style::{Modifier, Style},
         text::{Line, Span},
-        widgets::{Block, Borders, Clear, Paragraph},
+        widgets::{Clear, Paragraph},
     };
 
+    let theme = &app.theme;
     let area = frame.area();
     let dialog_width = 30;
     let dialog_height = 5;
@@ -75,175 +74,32 @@ fn render_quit_dialog(frame: &mut Frame) {
 
     let text = vec![
         Line::from(""),
-        Line::from(vec![Span::raw("        Quit? (y/n)")]),
+        Line::from(Span::styled(
+            "        Quit? (y/n)",
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        )),
         Line::from(""),
     ];
 
-    let dialog = Paragraph::new(text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow))
-            .title(" Confirm "),
-    );
-
+    let dialog = Paragraph::new(text).block(theme.block("Confirm", true));
     frame.render_widget(dialog, dialog_area);
 }
 
-/// Render logs view
-fn render_logs(frame: &mut Frame, app: &App) {
-    use ratatui::{
-        layout::{Constraint, Direction, Layout},
-        style::{Color, Style},
-        text::{Line, Span},
-        widgets::{Block, Borders, List, ListItem, Paragraph},
-    };
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1)])
-        .split(frame.area());
-
-    let visible_height = chunks[0].height.saturating_sub(2) as usize;
-
-    // Show newest at bottom, apply scroll from bottom
-    let items: Vec<ListItem> = app
-        .feed
-        .iter()
-        .rev()
-        .skip(app.log_scroll)
-        .take(visible_height)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .map(|entry| {
-            let style = if entry.is_error {
-                Style::default().fg(Color::Red)
-            } else {
-                Style::default()
-            };
-            let time_str = entry.timestamp.format("%H:%M:%S").to_string();
-            let line = Line::from(vec![
-                Span::styled(
-                    format!("{} ", time_str),
-                    Style::default().fg(Color::DarkGray),
-                ),
-                Span::styled(
-                    format!("[{}] ", entry.agent),
-                    Style::default().fg(Color::Cyan),
-                ),
-                Span::styled(&entry.message, style),
-            ]);
-            ListItem::new(line)
-        })
-        .collect();
-
-    let logs = List::new(items).block(Block::default().borders(Borders::ALL).title(" Logs "));
-
-    frame.render_widget(logs, chunks[0]);
-
-    // Show thinking toggle state with color indicator
-    let (thinking_label, thinking_style) = if app.show_thinking {
-        ("[ON]", Style::default().fg(Color::Green))
-    } else {
-        ("[OFF]", Style::default().fg(Color::Red))
-    };
-
-    let help = Line::from(vec![
-        Span::styled("h", Style::default().fg(Color::Yellow)),
-        Span::raw(" back  "),
-        Span::styled("j/k", Style::default().fg(Color::Yellow)),
-        Span::raw(" scroll  "),
-        Span::styled("t", Style::default().fg(Color::Yellow)),
-        Span::raw(" thinking "),
-        Span::styled(thinking_label, thinking_style),
-        Span::raw("  "),
-        Span::styled("q", Style::default().fg(Color::Yellow)),
-        Span::raw(" quit"),
-    ]);
-    let footer = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(footer, chunks[1]);
-}
-
-/// Render help view
-fn render_help(frame: &mut Frame) {
-    use ratatui::{
-        layout::{Constraint, Direction, Layout},
-        style::{Color, Modifier, Style},
-        text::{Line, Span},
-        widgets::{Block, Borders, Paragraph},
-    };
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(1)])
-        .split(frame.area());
-
-    let help_text = vec![
-        Line::from(""),
-        Line::from(vec![Span::styled(
-            "  Keybindings",
-            Style::default().add_modifier(Modifier::BOLD),
-        )]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  q, Ctrl+c  ", Style::default().fg(Color::Yellow)),
-            Span::raw("Quit"),
-        ]),
-        Line::from(vec![
-            Span::styled("  h, Home    ", Style::default().fg(Color::Yellow)),
-            Span::raw("Dashboard"),
-        ]),
-        Line::from(vec![
-            Span::styled("  l          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Logs view"),
-        ]),
-        Line::from(vec![
-            Span::styled("  p          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Memory view"),
-        ]),
-        Line::from(vec![
-            Span::styled("  1-9        ", Style::default().fg(Color::Yellow)),
-            Span::raw("Agent details (1=orchestrator, 2-9=spawned)"),
-        ]),
-        Line::from(vec![
-            Span::styled("  t          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Event timeline (from dashboard/memory)"),
-        ]),
-        Line::from(vec![
-            Span::styled("  m          ", Style::default().fg(Color::Yellow)),
-            Span::raw("Toggle mouse support"),
-        ]),
-        Line::from(vec![
-            Span::styled("  j, Down    ", Style::default().fg(Color::Yellow)),
-            Span::raw("Scroll down"),
-        ]),
-        Line::from(vec![
-            Span::styled("  k, Up      ", Style::default().fg(Color::Yellow)),
-            Span::raw("Scroll up"),
-        ]),
-        Line::from(vec![
-            Span::styled("  ?          ", Style::default().fg(Color::Yellow)),
-            Span::raw("This help"),
-        ]),
-    ];
-
-    let help =
-        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title(" Help "));
-
-    frame.render_widget(help, chunks[0]);
-
-    let footer_text = Line::from(vec![Span::styled(
-        "Press any key to close",
-        Style::default().fg(Color::DarkGray),
-    )]);
-    let footer = Paragraph::new(footer_text);
-    frame.render_widget(footer, chunks[1]);
+/// Map a channel vulnerability severity to the core model severity.
+fn map_severity(severity: VulnSeverity) -> Severity {
+    match severity {
+        VulnSeverity::Critical => Severity::Critical,
+        VulnSeverity::High => Severity::High,
+        VulnSeverity::Medium => Severity::Medium,
+        VulnSeverity::Low => Severity::Low,
+        VulnSeverity::Info => Severity::Info,
+    }
 }
 
 /// Drain pending events from the channel
 fn drain_events(app: &mut App) {
     let mut events = Vec::new();
-    if let Some(ref mut rx) = app.event_rx {
+    if let Some(rx) = &mut app.event_rx {
         while let Ok(event) = rx.try_recv() {
             events.push(event);
         }
@@ -283,23 +139,7 @@ fn drain_events(app: &mut App) {
                 status,
                 current_tool,
             } => {
-                // Track spawned agents for timeline
-                let is_new = !app.agents.contains_key(&agent);
-
-                app.update_agent_status(&agent, status);
                 app.update_spawned_agent_status(&agent, &agent_type, status, current_tool);
-
-                // Record timeline events for key status changes
-                if is_new && agent != "orchestrator" {
-                    app.add_timeline_event(
-                        &agent,
-                        "spawned",
-                        &format!("Agent spawned ({})", agent_type),
-                    );
-                }
-                if status == feroxmute_core::agents::AgentStatus::Cancelled {
-                    app.add_timeline_event(&agent, "cancelled", "Agent cancelled");
-                }
             }
             AgentEvent::Metrics {
                 input,
@@ -315,18 +155,18 @@ fn drain_events(app: &mut App) {
                 app.metrics.tool_calls += tool_calls;
             }
             AgentEvent::Vulnerability { severity, title } => {
-                match severity {
-                    VulnSeverity::Critical => app.vuln_counts.critical += 1,
-                    VulnSeverity::High => app.vuln_counts.high += 1,
-                    VulnSeverity::Medium => app.vuln_counts.medium += 1,
-                    VulnSeverity::Low => app.vuln_counts.low += 1,
-                    VulnSeverity::Info => app.vuln_counts.info += 1,
-                }
+                app.add_finding(Finding {
+                    severity: map_severity(severity),
+                    title: title.clone(),
+                    source: FindingSource::Net,
+                    agent: "vuln".to_string(),
+                    location: None,
+                    timestamp: chrono::Local::now(),
+                });
                 app.add_feed(super::app::FeedEntry::new(
                     "vuln",
-                    format!("[{:?}] {}", severity, title),
+                    format!("[{severity:?}] {title}"),
                 ));
-                app.add_timeline_event("vuln", "finding", &format!("[{:?}] {}", severity, title));
             }
             AgentEvent::Finished { success, message } => {
                 let agent = "system";
@@ -347,45 +187,36 @@ fn drain_events(app: &mut App) {
                 next_steps,
                 raw_output,
             } => {
-                // Record timeline event
-                let event_type = if success { "completed" } else { "failed" };
-                let timeline_msg = if summary.is_empty() {
-                    format!("Agent {}", event_type)
-                } else {
-                    summary.clone()
-                };
-                app.add_timeline_event(&agent, event_type, &timeline_msg);
-
                 // Show raw output as separate feed entries for proper display
-                let icon = if success { "✓" } else { "✗" };
+                let icon = if success {
+                    app.theme.glyphs.ok
+                } else {
+                    app.theme.glyphs.fail
+                };
                 app.add_feed(super::app::FeedEntry::new(
                     &agent,
-                    format!("{} AGENT COMPLETE", icon),
+                    format!("{icon} AGENT COMPLETE"),
                 ));
 
-                // Show raw output if available for debugging
                 if let Some(output) = raw_output {
                     for line in output.lines() {
                         if !line.trim().is_empty() {
-                            app.add_feed(super::app::FeedEntry::new(&agent, format!("  {}", line)));
+                            app.add_feed(super::app::FeedEntry::new(&agent, format!("  {line}")));
                         }
                     }
                     app.add_feed(super::app::FeedEntry::new(&agent, "--- Summary ---"));
                 }
 
                 if !summary.is_empty() {
-                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  {}", summary)));
+                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  {summary}")));
                 }
 
                 for finding in key_findings.iter().take(5) {
-                    app.add_feed(super::app::FeedEntry::new(
-                        &agent,
-                        format!("  • {}", finding),
-                    ));
+                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  • {finding}")));
                 }
 
                 for step in next_steps.iter().take(3) {
-                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  → {}", step)));
+                    app.add_feed(super::app::FeedEntry::new(&agent, format!("  → {step}")));
                 }
             }
             AgentEvent::MemoryUpdated { entries } => {
@@ -396,36 +227,37 @@ fn drain_events(app: &mut App) {
                 }
             }
             AgentEvent::CodeFinding { agent, finding } => {
-                // Convert event to CodeFinding model
-                let code_finding = feroxmute_core::state::models::CodeFinding::new(
-                    &finding.file_path,
-                    finding.severity,
-                    finding.finding_type,
-                    &finding.title,
-                    &finding.tool,
-                );
-                let code_finding = if let Some(line) = finding.line_number {
-                    code_finding.with_line(line)
-                } else {
-                    code_finding
+                // Surface the affected package for dependency findings, else the
+                // file path (with line number when available).
+                let location = match finding.finding_type {
+                    FindingType::Dependency => finding
+                        .package_name
+                        .clone()
+                        .or_else(|| Some(finding.file_path.clone())),
+                    _ => finding
+                        .line_number
+                        .map(|l| format!("{}:{}", finding.file_path, l))
+                        .or_else(|| Some(finding.file_path.clone())),
                 };
-                let code_finding = if let Some(ref cve) = finding.cve_id {
-                    code_finding.with_cve(cve)
-                } else {
-                    code_finding
+                // Append the CVE id to the title when present.
+                let title = match &finding.cve_id {
+                    Some(cve) if !finding.title.contains(cve.as_str()) => {
+                        format!("{} ({cve})", finding.title)
+                    }
+                    _ => finding.title.clone(),
                 };
-                let code_finding = if let Some(ref pkg) = finding.package_name {
-                    code_finding.with_package(pkg, "")
-                } else {
-                    code_finding
-                };
+                app.add_finding(Finding {
+                    severity: finding.severity,
+                    title: title.clone(),
+                    source: FindingSource::from(finding.finding_type),
+                    agent: agent.clone(),
+                    location,
+                    timestamp: chrono::Local::now(),
+                });
 
-                app.add_code_finding(code_finding);
-
-                // Also add to feed for visibility
                 app.add_feed(super::app::FeedEntry::new(
                     &agent,
-                    format!("[{:?}] {}", finding.severity, finding.title),
+                    format!("[{:?}] {} ({})", finding.severity, title, finding.tool),
                 ));
             }
             AgentEvent::Milestone {
@@ -433,10 +265,8 @@ fn drain_events(app: &mut App) {
                 milestone,
                 details,
             } => {
-                let msg = format!("[MILESTONE] {}: {}", milestone, details);
-                let entry = super::app::FeedEntry::new(&agent, &msg);
-                app.add_feed(entry);
-                app.add_timeline_event(&agent, "milestone", &format!("{}: {}", milestone, details));
+                let msg = format!("[MILESTONE] {milestone}: {details}");
+                app.add_feed(super::app::FeedEntry::new(&agent, &msg));
             }
             AgentEvent::ToolCall => {
                 app.metrics.tool_calls += 1;
@@ -450,7 +280,7 @@ pub fn run(app: &mut App) -> io::Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -461,7 +291,11 @@ pub fn run(app: &mut App) -> io::Result<()> {
 
     // Cleanup
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
 
     result
@@ -473,6 +307,9 @@ fn run_loop(
     app: &mut App,
 ) -> io::Result<()> {
     loop {
+        // Advance the animation frame counter (spinner animation).
+        app.tick = app.tick.wrapping_add(1);
+
         // Draw
         terminal.draw(|frame| render(frame, app))?;
 
@@ -494,4 +331,100 @@ fn run_loop(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::tui::app::FindingSource;
+    use feroxmute_core::agents::{AgentStatus, EngagementPhase};
+    use feroxmute_core::state::models::Severity;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn sample_app() -> App {
+        let mut app = App::new("example.com", "sess-1", None);
+        app.phase = EngagementPhase::Scanning;
+        app.update_spawned_agent_status(
+            "recon-1",
+            "recon",
+            AgentStatus::Executing,
+            Some("nmap".into()),
+        );
+        app.add_finding(Finding {
+            severity: Severity::Critical,
+            title: "Remote code execution".to_string(),
+            source: FindingSource::Net,
+            agent: "scanner".to_string(),
+            location: None,
+            timestamp: chrono::Local::now(),
+        });
+        app.add_finding(Finding {
+            severity: Severity::Medium,
+            title: "Hardcoded secret".to_string(),
+            source: FindingSource::Sast,
+            agent: "sast".to_string(),
+            location: Some("src/main.rs:10".to_string()),
+            timestamp: chrono::Local::now(),
+        });
+        app.add_feed(super::super::app::FeedEntry::new(
+            "system",
+            "engagement started",
+        ));
+        app.add_feed(super::super::app::FeedEntry::new(
+            "recon-1",
+            "scanning host",
+        ));
+        app
+    }
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn renders_command_center() {
+        let app = sample_app();
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        let text = buffer_text(&terminal);
+        assert!(text.contains("example.com"), "target shown");
+        assert!(text.contains("Agents"), "agents pane title");
+        assert!(text.contains("Findings"), "findings pane title");
+        assert!(text.contains("Activity"), "activity pane title");
+        assert!(text.contains("recon-1"), "spawned agent shown");
+        assert!(
+            text.contains("Remote code execution"),
+            "finding title shown"
+        );
+    }
+
+    #[test]
+    fn renders_help_overlay_without_panic() {
+        let mut app = sample_app();
+        app.overlay = Some(Overlay::Help);
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(text.contains("Help"), "help overlay title shown");
+    }
+
+    #[test]
+    fn renders_ascii_mode_without_panic() {
+        let mut app = sample_app();
+        app.theme = crate::tui::theme::Theme::detect(true);
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        // Must not panic in the ASCII/16-color fallback path.
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
 }

@@ -105,6 +105,10 @@ pub struct Args {
     #[arg(long)]
     pub debug: bool,
 
+    /// Force plain ASCII, 16-color output (no Unicode/truecolor)
+    #[arg(long)]
+    pub ascii: bool,
+
     /// Custom instruction to guide the engagement (supplements default behavior)
     #[arg(long)]
     pub instruction: Option<String>,
