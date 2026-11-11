@@ -5,29 +5,107 @@ use std::time::{Duration, Instant};
 use chrono::{DateTime, Local};
 
 use super::channel::{AgentEvent, MemoryEntry};
+use super::theme::Theme;
 use feroxmute_core::agents::{AgentStatus, EngagementPhase};
-use feroxmute_core::state::models::{CodeFinding, FindingType};
+use feroxmute_core::state::models::{FindingType, Severity};
 use tokio::sync::mpsc;
 
-/// Active view in the TUI
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum View {
+/// Focusable pane in the unified command center.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Pane {
     #[default]
-    Dashboard,
-    AgentDetail(String), // Agent name instead of AgentView enum
-    Logs,
-    Help,
-    Memory,
-    Timeline,
+    Agents,
+    Findings,
+    Activity,
 }
 
-/// A timeline event for the event timeline view
+impl Pane {
+    /// Next pane in the cycle: Agents → Findings → Activity → Agents.
+    pub fn next(self) -> Self {
+        match self {
+            Pane::Agents => Pane::Findings,
+            Pane::Findings => Pane::Activity,
+            Pane::Activity => Pane::Agents,
+        }
+    }
+
+    /// Previous pane in the cycle (reverse of [`Pane::next`]).
+    pub fn prev(self) -> Self {
+        match self {
+            Pane::Agents => Pane::Activity,
+            Pane::Findings => Pane::Agents,
+            Pane::Activity => Pane::Findings,
+        }
+    }
+}
+
+/// A centered overlay rendered on top of the command center.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Overlay {
+    /// Detailed view of a single agent (by name).
+    AgentDetail(String),
+    /// Detailed view of a finding (index into the sorted findings view).
+    FindingDetail(usize),
+    /// Orchestrator memory browser.
+    Memory,
+    /// Full-screen activity log.
+    Logs,
+    /// Keybinding help.
+    Help,
+}
+
+/// Source of a finding, shown as a tag in the Findings pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingSource {
+    Net,
+    Sast,
+    Dep,
+    Secret,
+}
+
+impl FindingSource {
+    /// Short uppercase tag for display.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Net => "NET",
+            Self::Sast => "SAST",
+            Self::Dep => "DEP",
+            Self::Secret => "SECRET",
+        }
+    }
+}
+
+impl From<FindingType> for FindingSource {
+    fn from(ft: FindingType) -> Self {
+        match ft {
+            FindingType::Dependency => Self::Dep,
+            FindingType::Sast => Self::Sast,
+            FindingType::Secret => Self::Secret,
+        }
+    }
+}
+
+/// A unified finding (network vuln or code/SAST finding) for the Findings pane.
 #[derive(Debug, Clone)]
-pub struct TimelineEvent {
-    pub timestamp: DateTime<Local>,
+pub struct Finding {
+    pub severity: Severity,
+    pub title: String,
+    pub source: FindingSource,
     pub agent: String,
-    pub event_type: String,
-    pub message: String,
+    /// e.g. "src/foo.rs:42" for code findings; `None` for network vulns.
+    pub location: Option<String>,
+    pub timestamp: DateTime<Local>,
+}
+
+/// Rank for severity ordering (Critical highest, Info lowest).
+pub fn severity_rank(s: Severity) -> u8 {
+    match s {
+        Severity::Critical => 0,
+        Severity::High => 1,
+        Severity::Medium => 2,
+        Severity::Low => 3,
+        Severity::Info => 4,
+    }
 }
 
 /// Metrics display
@@ -38,40 +116,6 @@ pub struct Metrics {
     pub cache_read_tokens: u64,
     pub tool_calls: u64,
     pub estimated_cost_usd: f64,
-}
-
-/// Vulnerability severity counts
-#[derive(Debug, Clone, Default)]
-pub struct VulnCounts {
-    pub critical: u32,
-    pub high: u32,
-    pub medium: u32,
-    pub low: u32,
-    pub info: u32,
-}
-
-impl VulnCounts {
-    #[allow(dead_code)]
-    pub fn total(&self) -> u32 {
-        self.critical + self.high + self.medium + self.low + self.info
-    }
-}
-
-/// Code finding counts by type
-#[derive(Debug, Clone, Default)]
-pub struct CodeFindingCounts {
-    pub dependencies: u32,
-    pub sast: u32,
-    pub secrets: u32,
-}
-
-/// Status for each agent
-#[derive(Debug, Clone, Default)]
-pub struct AgentStatuses {
-    pub orchestrator: AgentStatus,
-    pub recon: AgentStatus,
-    pub scanner: AgentStatus,
-    pub sast: Option<String>,
 }
 
 /// Display info for a dynamically spawned agent
@@ -144,8 +188,6 @@ const FEED_MAX_SIZE: usize = 500;
 
 /// TUI Application state
 pub struct App {
-    /// Current view
-    pub view: View,
     /// Should quit the application
     pub should_quit: bool,
     /// Show quit confirmation dialog
@@ -164,11 +206,7 @@ pub struct App {
     pub start_time: Instant,
     /// Token metrics
     pub metrics: Metrics,
-    /// Vulnerability counts
-    pub vuln_counts: VulnCounts,
-    /// Agent statuses (legacy, kept for orchestrator)
-    pub agent_statuses: AgentStatuses,
-    /// Dynamically spawned agents (name -> info)
+    /// Dynamically spawned agents (name -> info), including the orchestrator
     pub agents: std::collections::HashMap<String, AgentDisplayInfo>,
     /// Currently selected agent for thinking display
     pub selected_agent: Option<String>,
@@ -178,26 +216,16 @@ pub struct App {
     pub feed: Vec<FeedEntry>,
     /// Per-agent feed indices for efficient filtering
     pub agent_feed_indices: std::collections::HashMap<String, Vec<usize>>,
-    /// Scroll offset for logs
+    /// Unified findings (network vulns + code findings), insertion order
+    pub findings: Vec<Finding>,
+    /// Scroll offset for logs / agent detail output
     pub log_scroll: usize,
-    /// Selected feed item
-    pub selected_feed: usize,
-    /// Horizontal scroll offset for feed
-    pub feed_scroll_x: u16,
     /// Source path for SAST analysis
     pub source_path: Option<String>,
     /// Detected programming languages
     pub detected_languages: Vec<String>,
-    /// Code findings from SAST
-    pub code_findings: Vec<CodeFinding>,
-    /// Code finding counts by type
-    pub code_finding_counts: CodeFindingCounts,
     /// Channel receiver for agent events
     pub event_rx: Option<mpsc::Receiver<AgentEvent>>,
-    /// Timeline events for event timeline view
-    pub timeline_events: Vec<TimelineEvent>,
-    /// Scroll offset for timeline view
-    pub timeline_scroll: usize,
     /// Memory entries for display
     pub memory_entries: Vec<MemoryEntry>,
     /// Currently selected memory entry index
@@ -206,6 +234,21 @@ pub struct App {
     pub show_memory_modal: bool,
     /// Scroll offset for modal content
     pub memory_modal_scroll: usize,
+
+    /// Currently focused pane in the command center
+    pub focus: Pane,
+    /// Active overlay (None = command center focused)
+    pub overlay: Option<Overlay>,
+    /// Selected index into the ordered agent list
+    pub agents_selected: usize,
+    /// Selected index into the sorted findings view
+    pub findings_selected: usize,
+    /// Activity pane scroll (offset from bottom)
+    pub activity_scroll: usize,
+    /// Resolved theme and capabilities
+    pub theme: Theme,
+    /// Frame counter for spinner animation
+    pub tick: u64,
 }
 
 impl App {
@@ -223,7 +266,6 @@ impl App {
         );
 
         Self {
-            view: View::Dashboard,
             should_quit: false,
             confirm_quit: false,
             show_thinking: true,
@@ -233,27 +275,27 @@ impl App {
             phase: EngagementPhase::Setup,
             start_time: Instant::now(),
             metrics: Metrics::default(),
-            vuln_counts: VulnCounts::default(),
-            agent_statuses: AgentStatuses::default(),
             agents,
             selected_agent: Some("orchestrator".to_string()),
             agent_spawn_counter: 0,
             feed: Vec::new(),
             agent_feed_indices: std::collections::HashMap::new(),
+            findings: Vec::new(),
             log_scroll: 0,
-            selected_feed: 0,
-            feed_scroll_x: 0,
             source_path: None,
             detected_languages: Vec::new(),
-            code_findings: Vec::new(),
-            code_finding_counts: CodeFindingCounts::default(),
             event_rx,
-            timeline_events: Vec::new(),
-            timeline_scroll: 0,
             memory_entries: Vec::new(),
             selected_memory: 0,
             show_memory_modal: false,
             memory_modal_scroll: 0,
+            focus: Pane::default(),
+            overlay: None,
+            agents_selected: 0,
+            findings_selected: 0,
+            activity_scroll: 0,
+            theme: Theme::detect(false),
+            tick: 0,
         }
     }
 
@@ -267,6 +309,44 @@ impl App {
             .iter()
             .find(|(name, info)| *name != "orchestrator" && info.spawn_order == key - 1)
             .map(|(name, _)| name.clone())
+    }
+
+    /// Agents in display order: orchestrator first, then spawned by spawn order.
+    pub fn ordered_agents(&self) -> Vec<(&String, &AgentDisplayInfo)> {
+        let mut result = Vec::new();
+        if let Some((name, info)) = self.agents.get_key_value("orchestrator") {
+            result.push((name, info));
+        }
+        let mut spawned: Vec<_> = self
+            .agents
+            .iter()
+            .filter(|(name, _)| name.as_str() != "orchestrator")
+            .collect();
+        spawned.sort_by_key(|(_, info)| info.spawn_order);
+        result.extend(spawned);
+        result
+    }
+
+    /// Findings sorted by severity (Critical→Info), ties most-recent first.
+    pub fn sorted_findings(&self) -> Vec<&Finding> {
+        let mut v: Vec<&Finding> = self.findings.iter().collect();
+        v.sort_by(|a, b| {
+            severity_rank(a.severity)
+                .cmp(&severity_rank(b.severity))
+                .then_with(|| b.timestamp.cmp(&a.timestamp))
+        });
+        v
+    }
+
+    /// Severity counts as `[critical, high, medium, low, info]`.
+    pub fn severity_counts(&self) -> [u32; 5] {
+        let mut counts = [0u32; 5];
+        for finding in &self.findings {
+            if let Some(c) = counts.get_mut(severity_rank(finding.severity) as usize) {
+                *c += 1;
+            }
+        }
+        counts
     }
 
     /// Get the thinking text for the currently selected agent
@@ -337,15 +417,9 @@ impl App {
         }
     }
 
-    /// Update agent status
-    pub fn update_agent_status(&mut self, agent: &str, status: AgentStatus) {
-        match agent {
-            "orchestrator" => self.agent_statuses.orchestrator = status,
-            "recon" => self.agent_statuses.recon = status,
-            "scanner" => self.agent_statuses.scanner = status,
-            "sast" => self.agent_statuses.sast = Some(format!("{:?}", status)),
-            _ => {}
-        }
+    /// Add a unified finding.
+    pub fn add_finding(&mut self, finding: Finding) {
+        self.findings.push(finding);
     }
 
     /// Update agent activity (from non-indented feed messages)
@@ -406,21 +480,6 @@ impl App {
         }
     }
 
-    /// Add a code finding and update counts
-    pub fn add_code_finding(&mut self, finding: CodeFinding) {
-        match finding.finding_type {
-            FindingType::Dependency => self.code_finding_counts.dependencies += 1,
-            FindingType::Sast => self.code_finding_counts.sast += 1,
-            FindingType::Secret => self.code_finding_counts.secrets += 1,
-        }
-        self.code_findings.push(finding);
-    }
-
-    /// Navigate to view
-    pub fn navigate(&mut self, view: View) {
-        self.view = view;
-    }
-
     /// Toggle thinking panel
     pub fn toggle_thinking(&mut self) {
         self.show_thinking = !self.show_thinking;
@@ -466,32 +525,63 @@ impl App {
         self.log_scroll = self.log_scroll.saturating_sub(1);
     }
 
-    /// Select next feed item
-    pub fn select_next(&mut self) {
-        if self.selected_feed < self.feed.len().saturating_sub(1) {
-            self.selected_feed += 1;
+    /// Advance focus to the next pane.
+    pub fn focus_next(&mut self) {
+        self.focus = self.focus.next();
+    }
+
+    /// Move focus to the previous pane.
+    pub fn focus_prev(&mut self) {
+        self.focus = self.focus.prev();
+    }
+
+    /// Move selection/scroll up in the focused pane.
+    pub fn move_up(&mut self) {
+        match self.focus {
+            Pane::Agents => {
+                self.agents_selected = self.agents_selected.saturating_sub(1);
+            }
+            Pane::Findings => {
+                self.findings_selected = self.findings_selected.saturating_sub(1);
+            }
+            Pane::Activity => {
+                self.activity_scroll = self.activity_scroll.saturating_add(1);
+            }
         }
     }
 
-    /// Select previous feed item
-    pub fn select_prev(&mut self) {
-        self.selected_feed = self.selected_feed.saturating_sub(1);
+    /// Move selection/scroll down in the focused pane.
+    pub fn move_down(&mut self) {
+        match self.focus {
+            Pane::Agents => {
+                let max = self.agents.len().saturating_sub(1);
+                if self.agents_selected < max {
+                    self.agents_selected += 1;
+                }
+            }
+            Pane::Findings => {
+                let max = self.findings.len().saturating_sub(1);
+                if self.findings_selected < max {
+                    self.findings_selected += 1;
+                }
+            }
+            Pane::Activity => {
+                self.activity_scroll = self.activity_scroll.saturating_sub(1);
+            }
+        }
     }
 
-    /// Scroll feed left
-    pub fn scroll_feed_left(&mut self) {
-        self.feed_scroll_x = self.feed_scroll_x.saturating_sub(4);
+    /// Open an overlay, resetting overlay scroll state.
+    pub fn open_overlay(&mut self, overlay: Overlay) {
+        self.log_scroll = 0;
+        self.overlay = Some(overlay);
     }
 
-    /// Scroll feed right
-    pub fn scroll_feed_right(&mut self) {
-        self.feed_scroll_x = self.feed_scroll_x.saturating_add(4);
-    }
-
-    /// Reset feed scroll
-    #[allow(dead_code)]
-    pub fn reset_feed_scroll(&mut self) {
-        self.feed_scroll_x = 0;
+    /// Close any open overlay and reset modal state.
+    pub fn close_overlay(&mut self) {
+        self.overlay = None;
+        self.show_memory_modal = false;
+        self.memory_modal_scroll = 0;
     }
 
     /// Select next memory entry
@@ -534,35 +624,6 @@ impl App {
     pub fn selected_memory_entry(&self) -> Option<&MemoryEntry> {
         self.memory_entries.get(self.selected_memory)
     }
-
-    /// Scroll timeline up (show older entries)
-    pub fn scroll_timeline_up(&mut self) {
-        self.timeline_scroll = self
-            .timeline_scroll
-            .saturating_add(1)
-            .min(self.timeline_events.len());
-    }
-
-    /// Scroll timeline down (show newer entries)
-    pub fn scroll_timeline_down(&mut self) {
-        self.timeline_scroll = self.timeline_scroll.saturating_sub(1);
-    }
-
-    /// Reset timeline scroll to bottom (newest)
-    #[allow(dead_code)]
-    pub fn scroll_timeline_to_bottom(&mut self) {
-        self.timeline_scroll = 0;
-    }
-
-    /// Add a timeline event
-    pub fn add_timeline_event(&mut self, agent: &str, event_type: &str, message: &str) {
-        self.timeline_events.push(TimelineEvent {
-            timestamp: Local::now(),
-            agent: agent.to_string(),
-            event_type: event_type.to_string(),
-            message: message.to_string(),
-        });
-    }
 }
 
 #[cfg(test)]
@@ -570,25 +631,25 @@ impl App {
 mod tests {
     use super::*;
 
+    fn finding(sev: Severity, title: &str, source: FindingSource) -> Finding {
+        Finding {
+            severity: sev,
+            title: title.to_string(),
+            source,
+            agent: "test".to_string(),
+            location: None,
+            timestamp: Local::now(),
+        }
+    }
+
     #[test]
     fn test_app_creation() {
         let app = App::new("example.com", "session-123", None);
         assert_eq!(app.target, "example.com");
         assert_eq!(app.session_id, "session-123");
-        assert_eq!(app.view, View::Dashboard);
+        assert_eq!(app.focus, Pane::Agents);
+        assert!(app.overlay.is_none());
         assert!(!app.should_quit);
-    }
-
-    #[test]
-    fn test_vuln_counts() {
-        let counts = VulnCounts {
-            critical: 1,
-            high: 2,
-            medium: 3,
-            low: 4,
-            info: 5,
-        };
-        assert_eq!(counts.total(), 15);
     }
 
     #[test]
@@ -602,18 +663,6 @@ mod tests {
     }
 
     #[test]
-    fn test_navigation() {
-        let mut app = App::new("test.com", "test-session", None);
-        assert_eq!(app.view, View::Dashboard);
-
-        app.navigate(View::Logs);
-        assert_eq!(app.view, View::Logs);
-
-        app.navigate(View::AgentDetail("orchestrator".to_string()));
-        assert_eq!(app.view, View::AgentDetail("orchestrator".to_string()));
-    }
-
-    #[test]
     fn test_get_agent_by_key() {
         let mut app = App::new("test.com", "test-session", None);
         assert_eq!(app.get_agent_by_key(1), Some("orchestrator".to_string()));
@@ -624,6 +673,19 @@ mod tests {
 
         app.update_spawned_agent_status("scanner-1", "scanner", AgentStatus::Streaming, None);
         assert_eq!(app.get_agent_by_key(3), Some("scanner-1".to_string()));
+    }
+
+    #[test]
+    fn test_ordered_agents_orchestrator_first() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.update_spawned_agent_status("recon-1", "recon", AgentStatus::Streaming, None);
+        app.update_spawned_agent_status("scanner-1", "scanner", AgentStatus::Streaming, None);
+
+        let ordered = app.ordered_agents();
+        assert_eq!(ordered.len(), 3);
+        assert_eq!(ordered[0].0, "orchestrator");
+        assert_eq!(ordered[1].0, "recon-1");
+        assert_eq!(ordered[2].0, "scanner-1");
     }
 
     #[test]
@@ -643,21 +705,93 @@ mod tests {
     }
 
     #[test]
-    fn test_feed_scroll() {
+    fn test_add_finding_and_sorted_order() {
         let mut app = App::new("test.com", "test-session", None);
-        assert_eq!(app.feed_scroll_x, 0);
+        app.add_finding(finding(Severity::Low, "low-net", FindingSource::Net));
+        app.add_finding(finding(
+            Severity::Critical,
+            "crit-sast",
+            FindingSource::Sast,
+        ));
+        app.add_finding(finding(Severity::Medium, "med-dep", FindingSource::Dep));
+        // Second critical added later must sort before the earlier one (recent-first tie).
+        app.add_finding(finding(
+            Severity::Critical,
+            "crit-later",
+            FindingSource::Secret,
+        ));
 
-        app.scroll_feed_right();
-        assert_eq!(app.feed_scroll_x, 4);
+        let sorted = app.sorted_findings();
+        assert_eq!(sorted.len(), 4);
+        assert_eq!(sorted[0].title, "crit-later");
+        assert_eq!(sorted[1].title, "crit-sast");
+        assert_eq!(sorted[2].title, "med-dep");
+        assert_eq!(sorted[3].title, "low-net");
+    }
 
-        app.scroll_feed_right();
-        assert_eq!(app.feed_scroll_x, 8);
+    #[test]
+    fn test_severity_counts_mixed_sources() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.add_finding(finding(Severity::Critical, "a", FindingSource::Net));
+        app.add_finding(finding(Severity::Critical, "b", FindingSource::Sast));
+        app.add_finding(finding(Severity::High, "c", FindingSource::Dep));
+        app.add_finding(finding(Severity::Medium, "d", FindingSource::Secret));
+        app.add_finding(finding(Severity::Info, "e", FindingSource::Net));
 
-        app.scroll_feed_left();
-        assert_eq!(app.feed_scroll_x, 4);
+        // [critical, high, medium, low, info]
+        assert_eq!(app.severity_counts(), [2, 1, 1, 0, 1]);
+    }
 
-        app.reset_feed_scroll();
-        assert_eq!(app.feed_scroll_x, 0);
+    #[test]
+    fn test_focus_cycle() {
+        let mut app = App::new("test.com", "test-session", None);
+        assert_eq!(app.focus, Pane::Agents);
+        app.focus_next();
+        assert_eq!(app.focus, Pane::Findings);
+        app.focus_next();
+        assert_eq!(app.focus, Pane::Activity);
+        app.focus_next();
+        assert_eq!(app.focus, Pane::Agents);
+        app.focus_prev();
+        assert_eq!(app.focus, Pane::Activity);
+    }
+
+    #[test]
+    fn test_move_down_clamps_on_agents() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.update_spawned_agent_status("recon-1", "recon", AgentStatus::Streaming, None);
+        // 2 agents total (orchestrator + recon-1); max index is 1.
+        app.focus = Pane::Agents;
+        app.move_down();
+        assert_eq!(app.agents_selected, 1);
+        app.move_down();
+        assert_eq!(app.agents_selected, 1); // clamped
+        app.move_up();
+        assert_eq!(app.agents_selected, 0);
+    }
+
+    #[test]
+    fn test_overlay_open_close() {
+        let mut app = App::new("test.com", "test-session", None);
+        assert!(app.overlay.is_none());
+        app.open_overlay(Overlay::Help);
+        assert_eq!(app.overlay, Some(Overlay::Help));
+        app.close_overlay();
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn test_finding_source_tags() {
+        assert_eq!(FindingSource::Net.tag(), "NET");
+        assert_eq!(
+            FindingSource::from(FindingType::Dependency),
+            FindingSource::Dep
+        );
+        assert_eq!(FindingSource::from(FindingType::Sast), FindingSource::Sast);
+        assert_eq!(
+            FindingSource::from(FindingType::Secret),
+            FindingSource::Secret
+        );
     }
 
     #[test]
@@ -808,51 +942,5 @@ mod tests {
         let entry = app.selected_memory_entry();
         assert!(entry.is_some(), "should have selected entry");
         assert_eq!(entry.map(|e| e.key.clone()), Some("second".to_string()));
-    }
-
-    #[test]
-    fn test_add_code_finding() {
-        use feroxmute_core::state::models::{CodeFinding, FindingType, Severity};
-
-        let mut app = App::new("test.com", "test-session", None);
-
-        // Add dependency finding
-        let dep_finding = CodeFinding::new(
-            "Cargo.lock",
-            Severity::High,
-            FindingType::Dependency,
-            "CVE-2024-1234 in pkg@1.0",
-            "grype",
-        );
-        app.add_code_finding(dep_finding);
-        assert_eq!(app.code_finding_counts.dependencies, 1);
-        assert_eq!(app.code_finding_counts.sast, 0);
-        assert_eq!(app.code_finding_counts.secrets, 0);
-
-        // Add SAST finding
-        let sast_finding = CodeFinding::new(
-            "src/main.rs",
-            Severity::Medium,
-            FindingType::Sast,
-            "SQL injection",
-            "semgrep",
-        );
-        app.add_code_finding(sast_finding);
-        assert_eq!(app.code_finding_counts.dependencies, 1);
-        assert_eq!(app.code_finding_counts.sast, 1);
-
-        // Add secret finding
-        let secret_finding = CodeFinding::new(
-            ".env",
-            Severity::High,
-            FindingType::Secret,
-            "API key exposed",
-            "gitleaks",
-        );
-        app.add_code_finding(secret_finding);
-        assert_eq!(app.code_finding_counts.secrets, 1);
-
-        // Total findings
-        assert_eq!(app.code_findings.len(), 3);
     }
 }
