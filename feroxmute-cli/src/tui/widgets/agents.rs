@@ -7,7 +7,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem},
+    widgets::{List, ListItem, ListState},
 };
 
 use crate::tui::app::{AgentDisplayInfo, App};
@@ -36,19 +36,20 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
         .iter()
         .enumerate()
         .map(|(i, (name, info))| {
-            let is_last = i == last_idx;
-            let line = agent_line(app, name, info, i == 0, is_last, inner_width);
-            let item = ListItem::new(line);
-            if focused && i == selected {
-                item.style(Style::default().add_modifier(Modifier::REVERSED))
-            } else {
-                item
-            }
+            let line = agent_line(app, name, info, i == 0, i == last_idx, inner_width);
+            ListItem::new(line)
         })
         .collect();
 
-    let block = theme.block("Agents", focused);
-    frame.render_widget(List::new(items).block(block), area);
+    let mut list = List::new(items).block(theme.block("Agents", focused));
+    if focused {
+        list = list.highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    }
+
+    // Stateful render keeps the selected row scrolled into view.
+    let mut state = ListState::default();
+    state.select(Some(selected));
+    frame.render_stateful_widget(list, area, &mut state);
 }
 
 /// Build the display line for a single agent.
@@ -115,4 +116,45 @@ fn agent_line(
     }
 
     Line::from(spans)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use feroxmute_core::agents::AgentStatus;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn selected_agent_scrolls_into_view() {
+        let mut app = App::new("t", "s", None);
+        for i in 0..20 {
+            app.update_spawned_agent_status(
+                &format!("agent-{i:02}"),
+                "recon",
+                AgentStatus::Idle,
+                None,
+            );
+        }
+        // Select the last agent, which sits below the visible pane height.
+        app.agents_selected = app.agents.len() - 1;
+        let backend = TestBackend::new(50, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app, f.area(), true)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(
+            text.contains("agent-19"),
+            "selection beyond pane height must scroll into view"
+        );
+    }
 }
