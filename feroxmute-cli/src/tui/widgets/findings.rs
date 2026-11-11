@@ -8,7 +8,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, Paragraph, Wrap},
+    widgets::{List, ListItem, ListState, Paragraph, Wrap},
 };
 
 use crate::tui::app::App;
@@ -46,8 +46,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
 
     let items: Vec<ListItem> = sorted
         .iter()
-        .enumerate()
-        .map(|(i, f)| {
+        .map(|f| {
             let marker = theme.severity_marker(f.severity);
             let sev_color = theme.severity_color(f.severity);
             let sev_label = f.severity.as_str().to_uppercase();
@@ -71,16 +70,19 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect, focused: bool) {
                 Span::styled(title, Style::default().fg(theme.text)),
             ]);
 
-            let item = ListItem::new(line);
-            if focused && i == selected {
-                item.style(Style::default().add_modifier(Modifier::REVERSED))
-            } else {
-                item
-            }
+            ListItem::new(line)
         })
         .collect();
 
-    frame.render_widget(List::new(items).block(block), area);
+    let mut list = List::new(items).block(block);
+    if focused {
+        list = list.highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    }
+
+    // Stateful render keeps the selected row scrolled into view.
+    let mut state = ListState::default();
+    state.select(Some(selected));
+    frame.render_stateful_widget(list, area, &mut state);
 }
 
 /// Render the detail body for the finding at `idx` into `area`.
@@ -139,4 +141,49 @@ pub fn render_detail(frame: &mut Frame, app: &App, idx: usize, area: Rect) {
         .wrap(Wrap { trim: false })
         .scroll((app.log_scroll as u16, 0));
     frame.render_widget(para, area);
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+    use crate::tui::app::{Finding, FindingSource};
+    use feroxmute_core::state::models::Severity;
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn selected_finding_scrolls_into_view() {
+        let mut app = App::new("t", "s", None);
+        // All Low severity so sort order mirrors insertion (recent-first ties).
+        for i in 0..20 {
+            app.add_finding(Finding {
+                severity: Severity::Low,
+                title: format!("finding-{i:02}"),
+                source: FindingSource::Net,
+                agent: "scanner".to_string(),
+                location: None,
+                timestamp: chrono::Local::now(),
+            });
+        }
+        // Oldest finding sorts last; select it so it sits below the pane.
+        app.findings_selected = app.findings.len() - 1;
+        let backend = TestBackend::new(50, 6);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app, f.area(), true)).unwrap();
+        let text = buffer_text(&terminal);
+        assert!(
+            text.contains("finding-00"),
+            "selection beyond pane height must scroll into view"
+        );
+    }
 }

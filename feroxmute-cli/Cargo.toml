@@ -16,7 +16,7 @@ anyhow.workspace = true
 miette = { workspace = true, features = ["fancy"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
-ratatui.workspace = true
+ratatui = { workspace = true, features = ["unstable-rendered-line-info"] }
 crossterm.workspace = true
 clap.workspace = true
 uuid.workspace = true
