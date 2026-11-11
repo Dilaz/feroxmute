@@ -527,6 +527,7 @@ async fn main() -> Result<()> {
 
         // Create TUI app with receiver
         let mut app = tui::App::new(&target, &session.id, Some(rx));
+        app.theme = tui::theme::Theme::detect(args.ascii);
 
         // Add initial feed entries
         app.add_feed(tui::FeedEntry::new(

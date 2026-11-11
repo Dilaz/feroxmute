@@ -2,9 +2,9 @@
 
 pub mod app;
 pub mod channel;
-pub mod colors;
 pub mod events;
 pub mod runner;
+pub mod theme;
 pub mod widgets;
 
 pub use app::{App, FeedEntry};

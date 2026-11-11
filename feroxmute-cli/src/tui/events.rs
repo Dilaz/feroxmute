@@ -3,7 +3,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use std::time::Duration;
 
-use super::app::{App, View};
+use super::app::{App, Overlay, Pane};
 
 /// Event handling result
 pub enum EventResult {
@@ -24,7 +24,7 @@ pub fn poll_event(timeout: Duration) -> std::io::Result<Option<Event>> {
 
 /// Handle keyboard events
 pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
-    // Handle quit confirmation dialog
+    // Quit confirmation dialog takes precedence.
     if app.confirm_quit {
         match key.code {
             KeyCode::Char('y') | KeyCode::Enter => {
@@ -39,7 +39,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
-    // Check for quit keys - show confirmation
+    // Quit keys show confirmation.
     if key.code == KeyCode::Char('q')
         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
     {
@@ -47,155 +47,115 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
-    // Timeline view specific handling
-    if app.view == View::Timeline {
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                app.scroll_timeline_up();
-                return EventResult::Continue;
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                app.scroll_timeline_down();
-                return EventResult::Continue;
-            }
-            _ => {} // Fall through to global keys
-        }
+    // Overlay-specific handling.
+    if let Some(overlay) = app.overlay.clone() {
+        handle_overlay_key(app, overlay, key);
+        return EventResult::Continue;
     }
 
-    // Memory view specific handling
-    if app.view == View::Memory {
-        if app.show_memory_modal {
-            // Modal is open
-            match key.code {
-                KeyCode::Esc | KeyCode::Enter => {
-                    app.close_memory_modal();
-                    return EventResult::Continue;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    app.scroll_memory_modal_up();
-                    return EventResult::Continue;
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    app.scroll_memory_modal_down();
-                    return EventResult::Continue;
-                }
-                _ => return EventResult::Continue,
-            }
-        } else {
-            // List view
-            match key.code {
-                KeyCode::Up | KeyCode::Char('k') => {
-                    app.select_prev_memory();
-                    return EventResult::Continue;
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    app.select_next_memory();
-                    return EventResult::Continue;
-                }
-                KeyCode::Enter => {
-                    app.open_memory_modal();
-                    return EventResult::Continue;
-                }
-                _ => {} // Fall through to global keys
-            }
-        }
-    }
-
+    // Command center keys.
     match key.code {
-        // Navigation
-        KeyCode::Char('h') | KeyCode::Home | KeyCode::Esc => {
-            app.navigate(View::Dashboard);
-        }
-        KeyCode::Char('l') => {
-            app.navigate(View::Logs);
-        }
-        KeyCode::Char('p') => {
-            app.navigate(View::Memory);
-        }
-
-        // Agent detail views (number keys)
-        KeyCode::Char(c @ '1'..='9') => {
-            // Safe: pattern guarantees c is '1'-'9', which always converts to a digit
-            if let Some(key_num) = c.to_digit(10)
-                && let Some(agent_name) = app.get_agent_by_key(key_num as usize)
-            {
-                app.selected_agent = Some(agent_name.clone());
-                app.navigate(View::AgentDetail(agent_name));
-            }
-        }
-
-        // Timeline / thinking toggle
-        KeyCode::Char('t') => {
-            if matches!(app.view, View::Dashboard | View::Memory | View::Timeline) {
-                app.view = if app.view == View::Timeline {
-                    View::Dashboard
-                } else {
-                    View::Timeline
-                };
-            } else {
-                app.toggle_thinking();
-            }
-        }
-        KeyCode::Char('o') => {
-            if let View::AgentDetail(agent_name) = &app.view {
-                let agent_name = agent_name.clone();
-                app.toggle_output(Some(&agent_name));
-            }
-        }
-        KeyCode::Char('m') => {
-            app.mouse_enabled = !app.mouse_enabled;
-        }
-        KeyCode::Char('?') => {
-            app.navigate(View::Help);
-        }
-
-        // Scrolling
-        KeyCode::Up | KeyCode::Char('k') => {
-            if matches!(app.view, View::Logs | View::AgentDetail(_)) {
-                app.scroll_up();
-            } else {
-                app.select_prev();
-            }
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            if matches!(app.view, View::Logs | View::AgentDetail(_)) {
-                app.scroll_down();
-            } else {
-                app.select_next();
-            }
-        }
+        KeyCode::Tab => app.focus_next(),
+        KeyCode::BackTab => app.focus_prev(),
+        KeyCode::Up | KeyCode::Char('k') => app.move_up(),
+        KeyCode::Down | KeyCode::Char('j') => app.move_down(),
         KeyCode::PageUp => {
             for _ in 0..10 {
-                app.scroll_up();
+                app.move_up();
             }
         }
         KeyCode::PageDown => {
             for _ in 0..10 {
-                app.scroll_down();
+                app.move_down();
             }
         }
-
-        // Horizontal feed scrolling (Dashboard view only)
-        KeyCode::Left | KeyCode::Char('H') => {
-            if matches!(app.view, View::Dashboard) {
-                app.scroll_feed_left();
+        KeyCode::Enter => open_focused_detail(app),
+        KeyCode::Char(c @ '1'..='9') => {
+            if let Some(n) = c.to_digit(10)
+                && let Some(name) = app.get_agent_by_key(n as usize)
+            {
+                app.focus = Pane::Agents;
+                let idx = app.ordered_agents().iter().position(|(nm, _)| **nm == name);
+                if let Some(i) = idx {
+                    app.agents_selected = i;
+                }
+                app.selected_agent = Some(name.clone());
+                app.open_overlay(Overlay::AgentDetail(name));
             }
         }
-        KeyCode::Right | KeyCode::Char('L') => {
-            if matches!(app.view, View::Dashboard) {
-                app.scroll_feed_right();
-            }
-        }
-
-        // Enter to select/confirm
-        KeyCode::Enter => {
-            // Could expand selected feed item, etc.
-        }
-
+        KeyCode::Char('p') => app.open_overlay(Overlay::Memory),
+        KeyCode::Char('l') => app.open_overlay(Overlay::Logs),
+        KeyCode::Char('?') => app.open_overlay(Overlay::Help),
+        KeyCode::Char('m') => app.mouse_enabled = !app.mouse_enabled,
         _ => {}
     }
 
     EventResult::Continue
+}
+
+/// Open the detail overlay for the currently focused pane.
+fn open_focused_detail(app: &mut App) {
+    match app.focus {
+        Pane::Agents => {
+            let name = {
+                let ordered = app.ordered_agents();
+                let idx = app.agents_selected.min(ordered.len().saturating_sub(1));
+                ordered.get(idx).map(|(n, _)| (*n).clone())
+            };
+            if let Some(name) = name {
+                app.selected_agent = Some(name.clone());
+                app.open_overlay(Overlay::AgentDetail(name));
+            }
+        }
+        Pane::Findings => {
+            if !app.findings.is_empty() {
+                let idx = app
+                    .findings_selected
+                    .min(app.findings.len().saturating_sub(1));
+                app.open_overlay(Overlay::FindingDetail(idx));
+            }
+        }
+        Pane::Activity => app.open_overlay(Overlay::Logs),
+    }
+}
+
+/// Dispatch a key while an overlay is open.
+fn handle_overlay_key(app: &mut App, overlay: Overlay, key: KeyEvent) {
+    match overlay {
+        Overlay::Memory => {
+            if app.show_memory_modal {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Enter => app.close_memory_modal(),
+                    KeyCode::Up | KeyCode::Char('k') => app.scroll_memory_modal_up(),
+                    KeyCode::Down | KeyCode::Char('j') => app.scroll_memory_modal_down(),
+                    _ => {}
+                }
+            } else {
+                match key.code {
+                    KeyCode::Esc => app.close_overlay(),
+                    KeyCode::Up | KeyCode::Char('k') => app.select_prev_memory(),
+                    KeyCode::Down | KeyCode::Char('j') => app.select_next_memory(),
+                    KeyCode::Enter => app.open_memory_modal(),
+                    _ => {}
+                }
+            }
+        }
+        Overlay::AgentDetail(name) => match key.code {
+            KeyCode::Esc => app.close_overlay(),
+            KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
+            KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
+            KeyCode::Char('t') => app.toggle_thinking(),
+            KeyCode::Char('o') => app.toggle_output(Some(&name)),
+            _ => {}
+        },
+        Overlay::FindingDetail(_) | Overlay::Logs => match key.code {
+            KeyCode::Esc => app.close_overlay(),
+            KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
+            KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
+            _ => {}
+        },
+        Overlay::Help => app.close_overlay(),
+    }
 }
 
 /// Handle mouse events
@@ -204,15 +164,21 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    let overlay_open = app.overlay.is_some();
     match mouse.kind {
         MouseEventKind::ScrollUp => {
-            app.scroll_up();
+            if overlay_open {
+                app.scroll_up();
+            } else {
+                app.move_up();
+            }
         }
         MouseEventKind::ScrollDown => {
-            app.scroll_down();
-        }
-        MouseEventKind::Down(_) => {
-            // Could implement click handling for specific areas
+            if overlay_open {
+                app.scroll_down();
+            } else {
+                app.move_down();
+            }
         }
         _ => {}
     }
@@ -226,10 +192,7 @@ pub fn handle_event(app: &mut App, event: Event) -> EventResult {
     match event {
         Event::Key(key) => handle_key_event(app, key),
         Event::Mouse(mouse) => handle_mouse_event(app, mouse),
-        Event::Resize(_, _) => {
-            // Terminal resize - ratatui handles this automatically
-            EventResult::Continue
-        }
+        Event::Resize(_, _) => EventResult::Continue,
         _ => EventResult::Continue,
     }
 }
@@ -238,6 +201,19 @@ pub fn handle_event(app: &mut App, event: Event) -> EventResult {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::tui::app::{Finding, FindingSource};
+    use feroxmute_core::state::models::Severity;
+
+    fn finding(sev: Severity, title: &str) -> Finding {
+        Finding {
+            severity: sev,
+            title: title.to_string(),
+            source: FindingSource::Net,
+            agent: "test".to_string(),
+            location: None,
+            timestamp: chrono::Local::now(),
+        }
+    }
 
     #[test]
     fn test_quit_shows_confirmation() {
@@ -283,73 +259,74 @@ mod tests {
     }
 
     #[test]
-    fn test_navigation_to_dashboard() {
+    fn test_tab_advances_focus() {
         let mut app = App::new("test.com", "test-session", None);
-        app.navigate(View::Logs);
-        assert_eq!(app.view, View::Logs);
-
-        let key = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
-
-        assert_eq!(app.view, View::Dashboard);
+        assert_eq!(app.focus, Pane::Agents);
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Pane::Findings);
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(app.focus, Pane::Activity);
     }
 
     #[test]
-    fn test_navigation_to_agent_detail() {
+    fn test_enter_on_findings_opens_detail() {
         let mut app = App::new("test.com", "test-session", None);
-
-        let key = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::AgentDetail("orchestrator".to_string()));
-
-        app.navigate(View::Dashboard);
-        let key = KeyEvent::new(KeyCode::Char('2'), KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::Dashboard); // No agent at key 2
+        app.add_finding(finding(Severity::High, "open port"));
+        app.focus = Pane::Findings;
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(app.overlay, Some(Overlay::FindingDetail(0)));
     }
 
     #[test]
-    fn test_timeline_toggle() {
+    fn test_key_one_opens_orchestrator_detail() {
         let mut app = App::new("test.com", "test-session", None);
-        assert_eq!(app.view, View::Dashboard);
-
-        // From dashboard, 't' switches to timeline
-        let key = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::Timeline);
-
-        // From timeline, 't' switches back to dashboard
-        handle_key_event(&mut app, key);
-        assert_eq!(app.view, View::Dashboard);
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE),
+        );
+        assert_eq!(
+            app.overlay,
+            Some(Overlay::AgentDetail("orchestrator".to_string()))
+        );
     }
 
     #[test]
-    fn test_toggle_thinking_from_logs() {
+    fn test_esc_closes_overlay() {
         let mut app = App::new("test.com", "test-session", None);
-        app.navigate(View::Logs);
-        let initial = app.show_thinking;
-
-        // From non-dashboard/memory/timeline views, 't' toggles thinking
-        let key = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
-
-        assert_ne!(app.show_thinking, initial);
+        app.open_overlay(Overlay::Logs);
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        assert!(app.overlay.is_none());
     }
 
     #[test]
-    fn test_scroll() {
+    fn test_question_opens_help() {
         let mut app = App::new("test.com", "test-session", None);
-        app.navigate(View::Logs);
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE),
+        );
+        assert_eq!(app.overlay, Some(Overlay::Help));
+    }
+
+    #[test]
+    fn test_help_closes_on_any_key() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.open_overlay(Overlay::Help);
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+        );
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn test_agent_detail_scroll() {
+        let mut app = App::new("test.com", "test-session", None);
+        app.open_overlay(Overlay::AgentDetail("orchestrator".to_string()));
         app.log_scroll = 5;
-
-        // Up increases offset from bottom (shows older entries)
-        let key = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         assert_eq!(app.log_scroll, 6);
-
-        // Down decreases offset from bottom (shows newer entries)
-        let key = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
-        handle_key_event(&mut app, key);
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         assert_eq!(app.log_scroll, 5);
     }
 }
