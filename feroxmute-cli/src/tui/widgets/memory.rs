@@ -1,35 +1,45 @@
-//! Memory list widget
+//! Memory browser overlay (list view).
+
+#![allow(clippy::indexing_slicing)]
 
 use ratatui::{
     Frame,
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    style::{Modifier, Style},
+    text::Line,
+    widgets::{Cell, Paragraph, Row, Table},
 };
 
 use crate::tui::app::App;
 
-/// Render the memory list view
+use super::overlay::{centered_rect, frame_block};
+
+/// Render the memory list overlay inside `area` (the frame area).
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = &app.theme;
+    let rect = centered_rect(80, 80, area);
+    let title = format!("Memory ({} entries)", app.memory_entries.len());
+    let inner = frame_block(frame, rect, &title, theme);
+
     if app.memory_entries.is_empty() {
-        render_empty(frame, area);
+        let empty = Paragraph::new(Line::from("No memory entries yet"))
+            .style(Style::default().fg(theme.muted));
+        frame.render_widget(empty, inner);
         return;
     }
 
     let header = Row::new(vec!["Key", "Value", "Updated"]).style(
         Style::default()
-            .fg(Color::Yellow)
+            .fg(theme.accent)
             .add_modifier(Modifier::BOLD),
     );
 
-    // Calculate column widths
-    let key_width = (area.width as f32 * 0.3) as u16;
-    let updated_width = 10;
-    let value_width = area
+    let key_width = (inner.width as f32 * 0.3) as u16;
+    let updated_width = 10u16;
+    let value_width = inner
         .width
-        .saturating_sub(key_width + updated_width + 6)
-        .max(5); // 6 for borders/spacing, min 5
+        .saturating_sub(key_width + updated_width + 4)
+        .max(5);
 
     let rows: Vec<Row> = app
         .memory_entries
@@ -37,27 +47,23 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .map(|(i, entry)| {
             let is_selected = i == app.selected_memory;
-            let style = if is_selected {
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD)
+            let row_style = if is_selected {
+                Style::default().add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
             };
 
-            // Truncate key
-            let key_display = truncate_str(&entry.key, key_width as usize - 2);
+            let key_display = truncate_str(&entry.key, (key_width as usize).saturating_sub(2));
             let key_cell = if is_selected {
-                format!("▶ {}", key_display)
+                format!("▶ {key_display}")
             } else {
-                format!("  {}", key_display)
+                format!("  {key_display}")
             };
 
-            // Truncate value preview
             let value_preview = entry.value.replace('\n', " ");
-            let value_display = truncate_str(&value_preview, value_width as usize - 1);
+            let value_display =
+                truncate_str(&value_preview, (value_width as usize).saturating_sub(1));
 
-            // Format time (just HH:MM:SS from datetime string)
             let time_display = entry
                 .updated_at
                 .split(' ')
@@ -68,15 +74,14 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 .collect::<String>();
 
             Row::new(vec![
-                Cell::from(key_cell),
-                Cell::from(value_display).style(Style::default().fg(Color::DarkGray)),
-                Cell::from(time_display).style(Style::default().fg(Color::DarkGray)),
+                Cell::from(key_cell).style(Style::default().fg(theme.text)),
+                Cell::from(value_display).style(Style::default().fg(theme.muted)),
+                Cell::from(time_display).style(Style::default().fg(theme.muted)),
             ])
-            .style(style)
+            .style(row_style)
         })
         .collect();
 
-    let title = format!(" Memory ({} entries) ", app.memory_entries.len());
     let table = Table::new(
         rows,
         [
@@ -85,53 +90,17 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(updated_width),
         ],
     )
-    .header(header)
-    .block(Block::default().borders(Borders::ALL).title(title));
+    .header(header);
 
-    frame.render_widget(table, area);
-
-    // Render footer
-    render_footer(frame, area);
+    frame.render_widget(table, inner);
 }
 
-/// Render empty state
-fn render_empty(frame: &mut Frame, area: Rect) {
-    let text = Paragraph::new("No memory entries yet")
-        .style(Style::default().fg(Color::DarkGray))
-        .block(Block::default().borders(Borders::ALL).title(" Memory "));
-    frame.render_widget(text, area);
-}
-
-/// Render footer with keybindings
-fn render_footer(frame: &mut Frame, area: Rect) {
-    let footer_area = Rect {
-        x: area.x,
-        y: area.y + area.height.saturating_sub(1),
-        width: area.width,
-        height: 1,
-    };
-
-    let help = Line::from(vec![
-        Span::styled("↑/↓", Style::default().fg(Color::Yellow)),
-        Span::raw(" navigate  "),
-        Span::styled("Enter", Style::default().fg(Color::Yellow)),
-        Span::raw(" view  "),
-        Span::styled("h", Style::default().fg(Color::Yellow)),
-        Span::raw(" back  "),
-        Span::styled("q", Style::default().fg(Color::Yellow)),
-        Span::raw(" quit"),
-    ]);
-
-    let footer = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(footer, footer_area);
-}
-
-/// Truncate string to max length with ellipsis
+/// Truncate string to max length with ellipsis.
 fn truncate_str(s: &str, max_len: usize) -> String {
     if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        let truncated: String = s.chars().take(max_len.saturating_sub(3)).collect();
-        format!("{}...", truncated)
+        let truncated: String = s.chars().take(max_len.saturating_sub(1)).collect();
+        format!("{truncated}…")
     }
 }

@@ -1,68 +1,45 @@
-//! Memory modal popup widget
+//! Memory detail modal (opened from the memory list overlay).
 
 #![allow(clippy::indexing_slicing)]
 
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    layout::{Alignment, Constraint, Direction, Layout},
+    style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph, Wrap},
 };
 
 use crate::tui::app::App;
 use crate::tui::channel::MemoryEntry;
 
-/// Render the memory detail modal
+use super::overlay::{centered_rect, frame_block};
+
+/// Render the memory detail modal on top of the memory list.
 pub fn render(frame: &mut Frame, app: &App) {
-    let entry = match app.selected_memory_entry() {
-        Some(e) => e,
-        None => return,
+    let Some(entry) = app.selected_memory_entry() else {
+        return;
     };
+    let theme = &app.theme;
 
-    let area = frame.area();
+    let rect = centered_rect(80, 80, frame.area());
+    let title = format!("Memory: {}", entry.key);
+    let inner = frame_block(frame, rect, &title, theme);
 
-    // Calculate modal size (80% of screen)
-    let modal_width = (area.width as f32 * 0.8) as u16;
-    let modal_height = (area.height as f32 * 0.8) as u16;
-    let modal_x = (area.width - modal_width) / 2;
-    let modal_y = (area.height - modal_height) / 2;
-
-    let modal_area = Rect {
-        x: modal_x,
-        y: modal_y,
-        width: modal_width,
-        height: modal_height,
-    };
-
-    // Clear the modal area (creates overlay effect)
-    frame.render_widget(Clear, modal_area);
-
-    // Render modal content
-    render_modal_content(frame, app, entry, modal_area);
+    render_content(frame, app, entry, inner);
 }
 
-fn render_modal_content(frame: &mut Frame, app: &App, entry: &MemoryEntry, area: Rect) {
+fn render_content(frame: &mut Frame, app: &App, entry: &MemoryEntry, area: ratatui::layout::Rect) {
+    let theme = &app.theme;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(3),    // Content
-            Constraint::Length(3), // Timestamps
-            Constraint::Length(1), // Footer
+            Constraint::Min(3),
+            Constraint::Length(2),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    // Main content area
-    let title = format!(" Memory: {} ", entry.key);
-    let content_block = Block::default()
-        .borders(Borders::ALL)
-        .title(title)
-        .border_style(Style::default().fg(Color::Cyan));
-
-    let inner_area = content_block.inner(chunks[0]);
-    frame.render_widget(content_block, chunks[0]);
-
-    // Content with word wrap and scroll
     let content_lines: Vec<Line> = entry
         .value
         .lines()
@@ -72,31 +49,26 @@ fn render_modal_content(frame: &mut Frame, app: &App, entry: &MemoryEntry, area:
 
     let content = Paragraph::new(content_lines)
         .wrap(Wrap { trim: false })
-        .style(Style::default().fg(Color::White));
+        .style(Style::default().fg(theme.text));
+    frame.render_widget(content, chunks[0]);
 
-    frame.render_widget(content, inner_area);
-
-    // Timestamps
-    let timestamps = Paragraph::new(vec![Line::from(vec![
-        Span::styled("Created: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(&entry.created_at, Style::default().fg(Color::Gray)),
-        Span::raw("  "),
-        Span::styled("Updated: ", Style::default().fg(Color::DarkGray)),
-        Span::styled(&entry.updated_at, Style::default().fg(Color::Gray)),
-    ])])
-    .block(Block::default().borders(Borders::TOP));
-
+    let timestamps = Paragraph::new(Line::from(vec![
+        Span::styled("Created: ", Style::default().fg(theme.muted)),
+        Span::styled(entry.created_at.clone(), Style::default().fg(theme.text)),
+        Span::styled("  Updated: ", Style::default().fg(theme.muted)),
+        Span::styled(entry.updated_at.clone(), Style::default().fg(theme.text)),
+    ]))
+    .block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(theme.border)),
+    );
     frame.render_widget(timestamps, chunks[1]);
 
-    // Footer
-    let footer = Paragraph::new(Line::from(vec![
-        Span::styled("Esc/Enter", Style::default().fg(Color::Yellow)),
-        Span::raw(" close  "),
-        Span::styled("Up/Down", Style::default().fg(Color::Yellow)),
-        Span::raw(" scroll"),
-    ]))
-    .style(Style::default().fg(Color::DarkGray))
+    let footer = Paragraph::new(Line::from(Span::styled(
+        "j/k scroll · Esc close",
+        Style::default().fg(theme.muted),
+    )))
     .alignment(Alignment::Center);
-
     frame.render_widget(footer, chunks[2]);
 }
