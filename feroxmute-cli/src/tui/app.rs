@@ -249,6 +249,16 @@ pub struct App {
     pub theme: Theme,
     /// Frame counter for spinner animation
     pub tick: u64,
+    /// Sender for operator steering guidance to the orchestrator (None in tests).
+    pub steer_tx: Option<mpsc::Sender<String>>,
+    /// Active steer input buffer; Some(..) means the input prompt is open.
+    pub steer_input: Option<String>,
+    /// Wall-clock instant the engagement finished; freezes the elapsed timer.
+    /// `None` while the engagement is still running.
+    pub finished_at: Option<Instant>,
+    /// Whether the finished engagement ended successfully (only meaningful
+    /// once `finished_at` is set).
+    pub finished_success: bool,
 }
 
 impl App {
@@ -296,6 +306,10 @@ impl App {
             activity_scroll: 0,
             theme: Theme::detect(false),
             tick: 0,
+            steer_tx: None,
+            steer_input: None,
+            finished_at: None,
+            finished_success: false,
         }
     }
 
@@ -358,9 +372,53 @@ impl App {
             .and_then(|info| info.thinking.as_deref())
     }
 
-    /// Get elapsed time since start
+    /// Get elapsed time since start. Once the engagement has finished the
+    /// value is frozen at the finish instant so the header timer stops.
     pub fn elapsed(&self) -> Duration {
-        self.start_time.elapsed()
+        match self.finished_at {
+            Some(end) => end.saturating_duration_since(self.start_time),
+            None => self.start_time.elapsed(),
+        }
+    }
+
+    /// Whether the engagement has reached a terminal state.
+    pub fn is_finished(&self) -> bool {
+        self.finished_at.is_some()
+    }
+
+    /// Transition the UI into its terminal state: freeze the elapsed timer and
+    /// drive any still-active agents (including the orchestrator) to a terminal
+    /// status so nothing keeps rendering as "running". Idempotent.
+    pub fn mark_finished(&mut self, success: bool) {
+        if self.finished_at.is_some() {
+            return;
+        }
+        self.finished_at = Some(Instant::now());
+        self.finished_success = success;
+        if success {
+            self.phase = EngagementPhase::Complete;
+        }
+        let terminal = if success {
+            AgentStatus::Completed
+        } else {
+            AgentStatus::Cancelled
+        };
+        for info in self.agents.values_mut() {
+            let still_active = matches!(
+                info.status,
+                AgentStatus::Idle
+                    | AgentStatus::Thinking
+                    | AgentStatus::Streaming
+                    | AgentStatus::Executing
+                    | AgentStatus::Processing
+                    | AgentStatus::Waiting
+                    | AgentStatus::Retrying
+            );
+            if still_active {
+                info.status = terminal;
+                info.current_tool = None;
+            }
+        }
     }
 
     /// Format elapsed time for display
@@ -640,6 +698,60 @@ mod tests {
             location: None,
             timestamp: Local::now(),
         }
+    }
+
+    #[test]
+    fn mark_finished_freezes_elapsed_timer() {
+        let mut app = App::new("example.com", "sess-1", None);
+        assert!(!app.is_finished());
+        app.mark_finished(true);
+        assert!(app.is_finished());
+        let first = app.elapsed();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // Timer must not advance once finished.
+        assert_eq!(app.elapsed(), first);
+    }
+
+    #[test]
+    fn mark_finished_terminalizes_active_agents() {
+        let mut app = App::new("example.com", "sess-1", None);
+        // Orchestrator starts Idle; spawn an executing specialist.
+        app.update_spawned_agent_status(
+            "recon-1",
+            "recon",
+            AgentStatus::Executing,
+            Some("nmap".into()),
+        );
+        app.mark_finished(true);
+        // Orchestrator (the "main agent") must no longer render as active.
+        assert_eq!(app.agents["orchestrator"].status, AgentStatus::Completed);
+        let recon = &app.agents["recon-1"];
+        assert_eq!(recon.status, AgentStatus::Completed);
+        assert!(recon.current_tool.is_none());
+        assert_eq!(app.phase, EngagementPhase::Complete);
+    }
+
+    #[test]
+    fn mark_finished_preserves_completed_status_on_failure() {
+        let mut app = App::new("example.com", "sess-1", None);
+        app.update_spawned_agent_status("recon-1", "recon", AgentStatus::Completed, None);
+        app.update_spawned_agent_status("scanner-1", "scanner", AgentStatus::Executing, None);
+        app.mark_finished(false);
+        // Already-terminal agents keep their result; still-active ones are cancelled.
+        assert_eq!(app.agents["recon-1"].status, AgentStatus::Completed);
+        assert_eq!(app.agents["scanner-1"].status, AgentStatus::Cancelled);
+        assert!(!app.finished_success);
+    }
+
+    #[test]
+    fn mark_finished_is_idempotent() {
+        let mut app = App::new("example.com", "sess-1", None);
+        app.mark_finished(true);
+        let frozen = app.finished_at;
+        app.mark_finished(false);
+        // A second call must not overwrite the recorded finish instant/result.
+        assert_eq!(app.finished_at, frozen);
+        assert!(app.finished_success);
     }
 
     #[test]

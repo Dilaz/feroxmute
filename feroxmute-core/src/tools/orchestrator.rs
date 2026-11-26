@@ -231,6 +231,8 @@ pub struct OrchestratorContext {
     pub event_bus: Arc<Mutex<AgentEventBus>>,
     /// Sender half of the event bus (cloned to each spawned agent)
     pub event_bus_sender: AgentEventSender,
+    /// Operator-supplied guidance queued for the orchestrator (human-in-the-loop steering).
+    pub operator_guidance: crate::tools::OperatorGuidance,
 }
 
 // ============================================================================
@@ -243,11 +245,26 @@ fn agent_required_categories(agent_type: &str) -> Vec<ToolCategory> {
     match agent_type {
         "recon" => vec![SubdomainEnum, AssetDiscovery, PortScan, WebCrawl],
         "scanner" => vec![WebScan, NetworkScan],
-        "exploit" => vec![WebExploit, NetworkExploit],
         "sast" => vec![Sast],
         "llm_pentest" => vec![LlmPentest],
         "report" => vec![Report],
         _ => vec![],
+    }
+}
+
+/// Once a report agent exists the engagement is in its terminal reporting phase.
+/// No further agent of any type may be spawned (no second/"full" report, no
+/// follow-up scanner). Returns the rejection message when a spawn must be blocked.
+fn report_phase_spawn_block(registry: &AgentRegistry) -> Option<String> {
+    if registry.has_agent_type("report") {
+        Some(
+            "A report agent already exists; the engagement is in its reporting phase. \
+Do not spawn any additional agent (no second or 'full' report). \
+Call wait_for_agent(\"report\") then complete_engagement."
+                .to_string(),
+        )
+    } else {
+        None
     }
 }
 
@@ -339,15 +356,23 @@ impl Tool for SpawnAgentTool {
             });
         }
 
-        if args.agent_type == "report" && registry.has_agent_type("report") {
+        // Reporting is the terminal phase: once a report agent exists, refuse all
+        // further spawns (including a second/"full" report) and steer to completion.
+        if let Some(message) = report_phase_spawn_block(&registry) {
             return Ok(SpawnAgentOutput {
                 success: false,
-                message: "A report agent has already been spawned. Only one report agent is allowed per engagement.".to_string(),
+                message,
             });
         }
 
-        // Get base prompt for agent type
-        let base_prompt = self.context.prompts.get(&args.agent_type).unwrap_or("");
+        // Get base prompt for agent type, processing {{#if ...}} conditionals
+        // against the engagement's scope limitations.
+        let prompt_ctx = self.context.limitations.to_prompt_context();
+        let base_prompt = self
+            .context
+            .prompts
+            .get_with_context(&args.agent_type, &prompt_ctx)
+            .unwrap_or_default();
 
         // For SAST agents, use source_path; for others, use web target
         let agent_target = if args.agent_type == "sast" {
@@ -763,6 +788,9 @@ pub struct WaitForAgentOutput {
     pub raw_output_truncated: String,
     /// Workflow guidance based on current state
     pub workflow_hint: String,
+    /// Operator-supplied guidance queued since the last decision (human-in-the-loop).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub operator_guidance: Vec<String>,
 }
 
 pub struct WaitForAgentTool {
@@ -852,6 +880,8 @@ impl Tool for WaitForAgentTool {
             None,
         );
 
+        let operator_guidance = self.context.operator_guidance.take().await;
+
         match result {
             Some(result) => {
                 self.context.events.send_status(
@@ -898,6 +928,7 @@ impl Tool for WaitForAgentTool {
                     summary,
                     raw_output_truncated: truncate_output(&result.output, 500),
                     workflow_hint,
+                    operator_guidance,
                 })
             }
             None => Ok(WaitForAgentOutput {
@@ -911,6 +942,7 @@ impl Tool for WaitForAgentTool {
                 },
                 raw_output_truncated: String::new(),
                 workflow_hint: "Agent not found.".to_string(),
+                operator_guidance,
             }),
         }
     }
@@ -934,6 +966,9 @@ pub struct WaitForAnyOutput {
     pub remaining_running: usize,
     /// Workflow guidance based on current state
     pub workflow_hint: String,
+    /// Operator-supplied guidance queued since the last decision (human-in-the-loop).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub operator_guidance: Vec<String>,
 }
 
 pub struct WaitForAnyTool {
@@ -1029,6 +1064,8 @@ impl Tool for WaitForAnyTool {
             None,
         );
 
+        let operator_guidance = self.context.operator_guidance.take().await;
+
         match result {
             Some(result) => {
                 self.context.events.send_status(
@@ -1072,6 +1109,7 @@ impl Tool for WaitForAnyTool {
                     raw_output_truncated: truncate_output(&result.output, 500),
                     remaining_running,
                     workflow_hint,
+                    operator_guidance,
                 })
             }
             None => Ok(WaitForAnyOutput {
@@ -1083,6 +1121,7 @@ impl Tool for WaitForAnyTool {
                 remaining_running: 0,
                 workflow_hint: "No agents running. Spawn agents to continue the engagement."
                     .to_string(),
+                operator_guidance,
             }),
         }
     }
@@ -1103,6 +1142,9 @@ pub struct ReviewEventsOutput {
     pub events: Vec<ReviewEventEntry>,
     pub event_count: usize,
     pub agents_running: usize,
+    /// Operator-supplied guidance queued since the last decision (human-in-the-loop).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub operator_guidance: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1246,6 +1288,7 @@ impl Tool for ReviewEventsTool {
             events: entries,
             event_count,
             agents_running,
+            operator_guidance: self.context.operator_guidance.take().await,
         })
     }
 }
@@ -1456,6 +1499,9 @@ pub struct ListAgentsArgs {}
 #[derive(Debug, Serialize)]
 pub struct ListAgentsOutput {
     pub agents: Vec<AgentInfo>,
+    /// Operator-supplied guidance queued since the last decision (human-in-the-loop).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub operator_guidance: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1508,7 +1554,10 @@ impl Tool for ListAgentsTool {
             })
             .collect();
 
-        Ok(ListAgentsOutput { agents })
+        Ok(ListAgentsOutput {
+            agents,
+            operator_guidance: self.context.operator_guidance.take().await,
+        })
     }
 }
 
@@ -1567,7 +1616,7 @@ impl Tool for RecordFindingTool {
                     },
                     "severity": {
                         "type": "string",
-                        "description": "Severity level for vulnerabilities: critical, high, medium, low, info. Required when category is 'vulnerability'."
+                        "description": "Severity level: critical, high, medium, low, info. Optional, defaults to 'info'; always set it for vulnerability findings."
                     },
                     "cwe": {
                         "type": "string",
@@ -2009,5 +2058,27 @@ mod tests {
         let json = r#"{}"#;
         let args: ReviewEventsArgs = serde_json::from_str(json).unwrap();
         assert!(args.timeout_seconds.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_report_phase_blocks_all_further_spawns() {
+        let (mut registry, _waiter) = AgentRegistry::new();
+
+        // Before any report agent exists, spawns are not blocked by this guard.
+        assert!(report_phase_spawn_block(&registry).is_none());
+
+        // Register a report agent, entering the terminal reporting phase.
+        registry.register(
+            "report".to_string(),
+            "report".to_string(),
+            "generate the final report".to_string(),
+            tokio::spawn(async {}),
+        );
+
+        // Now every spawn is rejected regardless of agent type — this is the
+        // deterministic proof the "full-report"/second-agent row cannot appear.
+        let msg = report_phase_spawn_block(&registry).expect("spawn must be blocked");
+        assert!(msg.contains("reporting phase"));
+        assert!(msg.contains("complete_engagement"));
     }
 }

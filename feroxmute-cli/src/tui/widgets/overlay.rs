@@ -94,7 +94,10 @@ pub fn render_help(frame: &mut Frame, app: &App) {
             key("↑ / k, ↓ / j     "),
             desc("Move selection / scroll"),
         ]),
-        Line::from(vec![key("PageUp/PageDown  "), desc("Move 10 rows")]),
+        Line::from(vec![
+            key("PageUp/PageDown  "),
+            desc("Move 10 rows (command center)"),
+        ]),
         Line::from(vec![
             key("Enter            "),
             desc("Open detail for focused pane"),
@@ -107,6 +110,10 @@ pub fn render_help(frame: &mut Frame, app: &App) {
         Line::from(vec![key("l                "), desc("Logs")]),
         Line::from(vec![key("m                "), desc("Toggle mouse support")]),
         Line::from(vec![
+            key("i                "),
+            desc("Steer the orchestrator"),
+        ]),
+        Line::from(vec![
             key("t                "),
             desc("Toggle thinking (agent detail)"),
         ]),
@@ -115,8 +122,22 @@ pub fn render_help(frame: &mut Frame, app: &App) {
             desc("Toggle tool output (agent detail)"),
         ]),
         Line::from(vec![key("Esc              "), desc("Close overlay")]),
-        Line::from(vec![key("? / any key      "), desc("Close this help")]),
-        Line::from(vec![key("q / Ctrl-C       "), desc("Quit")]),
+        Line::from(vec![
+            key("? / Esc / key    "),
+            desc("Close this help (q and Ctrl-C open quit-confirm instead)"),
+        ]),
+        Line::from(vec![
+            key("q / Ctrl-C       "),
+            desc("Open quit confirmation"),
+        ]),
+        Line::from(vec![
+            key("y / Enter        "),
+            desc("Confirm quit (at prompt)"),
+        ]),
+        Line::from(vec![
+            key("n / Esc          "),
+            desc("Cancel quit (at prompt)"),
+        ]),
     ];
 
     frame.render_widget(Paragraph::new(lines), inner);

@@ -40,6 +40,10 @@ fn render(frame: &mut Frame, app: &App) {
     if app.confirm_quit {
         render_quit_dialog(frame, app);
     }
+
+    if let Some(buf) = &app.steer_input {
+        render_steer_input(frame, buf, &app.theme);
+    }
 }
 
 /// Render the finding detail overlay.
@@ -83,6 +87,35 @@ fn render_quit_dialog(frame: &mut Frame, app: &App) {
 
     let dialog = Paragraph::new(text).block(theme.block("Confirm", true));
     frame.render_widget(dialog, dialog_area);
+}
+
+/// Render the operator steering input bar, anchored to the bottom of the screen.
+fn render_steer_input(frame: &mut Frame, buf: &str, theme: &super::theme::Theme) {
+    use ratatui::{
+        layout::{Constraint, Flex, Layout},
+        style::Style,
+        text::{Line, Span},
+        widgets::{Clear, Paragraph},
+    };
+
+    let area = frame.area();
+    let bar_height = 3;
+
+    let [bar_area] = Layout::vertical([Constraint::Length(bar_height)])
+        .flex(Flex::End)
+        .areas(area);
+
+    frame.render_widget(Clear, bar_area);
+
+    let text = Line::from(vec![
+        Span::styled("> ", Style::default().fg(theme.accent)),
+        Span::styled(buf, Style::default().fg(theme.text)),
+        Span::styled("_", Style::default().fg(theme.accent)),
+    ]);
+
+    let bar = Paragraph::new(text)
+        .block(theme.block("Steer orchestrator — Enter send · Esc cancel", true));
+    frame.render_widget(bar, bar_area);
 }
 
 /// Map a channel vulnerability severity to the core model severity.
@@ -175,6 +208,9 @@ fn drain_events(app: &mut App) {
                 } else {
                     app.add_feed(super::app::FeedEntry::error(agent, &message));
                 }
+                // Freeze the elapsed timer and terminalize any still-active
+                // agents so the UI reflects a stopped engagement.
+                app.mark_finished(success);
             }
             AgentEvent::Phase { phase } => {
                 app.phase = phase;
@@ -426,5 +462,39 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         // Must not panic in the ASCII/16-color fallback path.
         terminal.draw(|f| render(f, &app)).unwrap();
+    }
+
+    #[test]
+    fn drain_events_finished_freezes_timer_and_terminalizes_agents() {
+        use crate::tui::channel::AgentEvent;
+        use tokio::sync::mpsc;
+
+        let (tx, rx) = mpsc::channel::<AgentEvent>(16);
+        let mut app = App::new("example.com", "sess-1", Some(rx));
+        app.phase = EngagementPhase::Reporting;
+        // Orchestrator reported as actively waiting on the report agent.
+        app.update_spawned_agent_status("orchestrator", "orchestrator", AgentStatus::Waiting, None);
+
+        // Drive the real channel path the backend uses on completion.
+        tx.try_send(AgentEvent::Finished {
+            success: true,
+            message: "Engagement complete.".to_string(),
+        })
+        .unwrap();
+        drain_events(&mut app);
+
+        assert!(app.is_finished(), "finished state set via drain_events");
+        assert_eq!(
+            app.agents["orchestrator"].status,
+            AgentStatus::Completed,
+            "main agent no longer renders as active"
+        );
+        assert_eq!(app.phase, EngagementPhase::Complete);
+
+        // Header must render the frozen timer with a DONE badge.
+        let backend = TestBackend::new(120, 40);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+        assert!(buffer_text(&terminal).contains("DONE"), "DONE badge shown");
     }
 }

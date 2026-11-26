@@ -31,7 +31,6 @@ fn agent_required_categories(agent_type: &str) -> Vec<ToolCategory> {
     match agent_type {
         "recon" => vec![SubdomainEnum, AssetDiscovery, PortScan, WebCrawl],
         "scanner" => vec![WebScan, NetworkScan],
-        "exploit" => vec![WebExploit, NetworkExploit],
         "sast" => vec![Sast],
         "report" => vec![Report],
         _ => vec![],
@@ -138,9 +137,14 @@ impl McpTool for McpSpawnAgentTool {
             )));
         }
 
-        if args.agent_type == "report" && registry.has_agent_type("report") {
+        // Reporting is the terminal phase: once a report agent exists, refuse all
+        // further spawns (including a second/"full" report) and steer to completion.
+        if registry.has_agent_type("report") {
             return Ok(McpToolResult::error(
-                "A report agent has already been spawned. Only one report agent is allowed per engagement.".to_string(),
+                "A report agent already exists; the engagement is in its reporting phase. \
+Do not spawn any additional agent (no second or 'full' report). \
+Call wait_for_agent(\"report\") then complete_engagement."
+                    .to_string(),
             ));
         }
 

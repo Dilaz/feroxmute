@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 pub struct AgentEvent {
     /// Name of the agent that emitted this event
     pub agent_name: String,
-    /// Type of agent (e.g. "recon", "scanner", "exploit")
+    /// Type of agent (e.g. "recon", "scanner", "report")
     pub agent_type: String,
     /// When the event was created
     pub timestamp: DateTime<Utc>,
