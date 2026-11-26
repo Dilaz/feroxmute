@@ -1,6 +1,6 @@
 //! OpenAI-compatible gateways must use the Chat Completions protocol.
 
-#![allow(clippy::indexing_slicing, clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 
 use std::io::{Read, Write};
 use std::net::TcpListener;

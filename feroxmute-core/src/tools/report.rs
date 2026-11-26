@@ -874,7 +874,8 @@ impl Tool for AddRecommendationTool {
         ToolDefinition {
             name: "add_recommendation".to_string(),
             description:
-                "Add a security recommendation to the report. Must call generate_report first."
+                "Append a prioritized security recommendation to the report summary's key findings \
+(prefixed with its priority, e.g. \"[HIGH] ...\"). Must call generate_report first."
                     .to_string(),
             parameters: json!({
                 "type": "object",

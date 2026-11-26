@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use feroxmute_core::agents::{
-    Agent, AgentRegistry, AgentStatus, EngagementPhase, OrchestratorAgent, Prompts,
+    AgentRegistry, AgentStatus, EngagementPhase, OrchestratorAgent, Prompts,
 };
 use feroxmute_core::docker::ContainerManager;
 use feroxmute_core::limitations::EngagementLimitations;
@@ -270,6 +270,7 @@ pub async fn run_orchestrator(
     container: Arc<ContainerManager>,
     tx: mpsc::Sender<AgentEvent>,
     cancel: CancellationToken,
+    steer_rx: mpsc::Receiver<String>,
     source_path: Option<String>,
     limitations: Arc<EngagementLimitations>,
     instruction: Option<String>,
@@ -308,9 +309,21 @@ pub async fn run_orchestrator(
     // Create flag to distinguish engagement completion from user cancellation
     let engagement_completed = Arc::new(AtomicBool::new(false));
 
+    // Bridge operator steering input (from the TUI) into the orchestrator's guidance queue.
+    let operator_guidance = feroxmute_core::tools::OperatorGuidance::new();
+    {
+        let guidance = operator_guidance.clone();
+        let mut steer_rx = steer_rx;
+        tokio::spawn(async move {
+            while let Some(text) = steer_rx.recv().await {
+                guidance.push(text).await;
+            }
+        });
+    }
+
     // Run orchestrator with new provider method
     tokio::select! {
-        (result, maybe_context) = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider, target_llm_config) => {
+        (result, maybe_context) = run_orchestrator_with_tools(&orchestrator, &target, &tx, Arc::clone(&provider), Arc::clone(&container), &prompts, cancel.clone(), source_path.clone(), Arc::clone(&limitations), instruction, Arc::clone(&engagement_completed), Arc::clone(&session), target_provider, target_llm_config, operator_guidance.clone()) => {
             match result {
                 Ok(output) => {
                     // Check if engagement was properly completed via complete_engagement tool
@@ -418,6 +431,7 @@ async fn run_orchestrator_with_tools(
     session: Arc<feroxmute_core::state::Session>,
     target_provider: Option<Arc<dyn LlmProvider>>,
     target_llm_config: Option<feroxmute_core::config::ProviderConfig>,
+    operator_guidance: feroxmute_core::tools::OperatorGuidance,
 ) -> (anyhow::Result<String>, Option<Arc<OrchestratorContext>>) {
     // Create TuiEventSender first so it can be shared
     let events: Arc<dyn feroxmute_core::tools::EventSender> =
@@ -469,6 +483,7 @@ async fn run_orchestrator_with_tools(
         target_llm_config,
         event_bus,
         event_bus_sender,
+        operator_guidance,
     });
 
     let has_source_target = source_path.is_some();

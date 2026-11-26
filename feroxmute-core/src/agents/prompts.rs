@@ -18,7 +18,6 @@ pub struct Prompts {
     pub orchestrator: AgentPrompt,
     pub recon: AgentPrompt,
     pub scanner: AgentPrompt,
-    pub exploit: AgentPrompt,
     pub report: AgentPrompt,
     pub sast: AgentPrompt,
     pub llm_pentest: AgentPrompt,
@@ -50,7 +49,6 @@ impl Prompts {
             "orchestrator" => Some(&self.orchestrator.prompt),
             "recon" => Some(&self.recon.prompt),
             "scanner" => Some(&self.scanner.prompt),
-            "exploit" => Some(&self.exploit.prompt),
             "report" => Some(&self.report.prompt),
             "sast" => Some(&self.sast.prompt),
             "llm_pentest" => Some(&self.llm_pentest.prompt),
@@ -79,7 +77,6 @@ fn process_conditionals(template: &str, ctx: &PromptContext) -> String {
     result = process_conditional(&result, "discover", ctx.discover);
     result = process_conditional(&result, "portscan", ctx.portscan);
     result = process_conditional(&result, "network", ctx.network);
-    result = process_conditional(&result, "exploit", ctx.exploit);
 
     result
 }
@@ -180,5 +177,50 @@ mod tests {
         let result = process_conditionals(template, &ctx);
         assert!(result.contains("subfinder"));
         assert!(result.contains("dnsx"));
+    }
+
+    #[test]
+    fn test_recon_prompt_conditionals_rendered() {
+        let prompts = Prompts::default_prompts();
+
+        // With discovery enabled, the discover-only content is included and no
+        // raw template markup leaks through.
+        let with_discover = prompts
+            .get_with_context(
+                "recon",
+                &PromptContext {
+                    discover: true,
+                    ..Default::default()
+                },
+            )
+            .expect("recon prompt exists");
+        assert!(
+            !with_discover.contains("{{#if"),
+            "rendered prompt must not contain raw conditional markup"
+        );
+        assert!(
+            !with_discover.contains("{{/if}}"),
+            "rendered prompt must not contain raw conditional close markup"
+        );
+        assert!(
+            with_discover.contains("subfinder"),
+            "discover-enabled prompt should include subdomain enumeration guidance"
+        );
+
+        // With discovery disabled, the discover-only content is excluded.
+        let without_discover = prompts
+            .get_with_context(
+                "recon",
+                &PromptContext {
+                    discover: false,
+                    ..Default::default()
+                },
+            )
+            .expect("recon prompt exists");
+        assert!(!without_discover.contains("{{#if"));
+        assert!(
+            !without_discover.contains("subfinder"),
+            "discover-disabled prompt should omit subdomain enumeration guidance"
+        );
     }
 }

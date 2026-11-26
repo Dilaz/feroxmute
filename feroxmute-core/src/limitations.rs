@@ -142,7 +142,6 @@ pub struct PromptContext {
     pub discover: bool,
     pub portscan: bool,
     pub network: bool,
-    pub exploit: bool,
 }
 
 /// Engagement scope limitations derived from CLI args
@@ -277,7 +276,6 @@ impl EngagementLimitations {
             discover: self.discover,
             portscan: self.portscan,
             network: self.network,
-            exploit: self.exploit,
         }
     }
 

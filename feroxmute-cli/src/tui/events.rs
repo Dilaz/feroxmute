@@ -3,7 +3,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use std::time::Duration;
 
-use super::app::{App, Overlay, Pane};
+use super::app::{App, FeedEntry, Overlay, Pane};
 
 /// Event handling result
 pub enum EventResult {
@@ -39,11 +39,40 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
         return EventResult::Continue;
     }
 
+    // Steer input capture takes precedence over all other keys.
+    if let Some(buf) = app.steer_input.as_mut() {
+        match key.code {
+            KeyCode::Enter => {
+                let text = buf.trim().to_string();
+                app.steer_input = None;
+                if !text.is_empty() {
+                    if let Some(tx) = &app.steer_tx {
+                        let _ = tx.try_send(text.clone());
+                    }
+                    app.add_feed(FeedEntry::new("operator", format!("Steer: {text}")));
+                }
+            }
+            KeyCode::Esc => app.steer_input = None,
+            KeyCode::Backspace => {
+                buf.pop();
+            }
+            KeyCode::Char(c) => buf.push(c),
+            _ => {}
+        }
+        return EventResult::Continue;
+    }
+
     // Quit keys show confirmation.
     if key.code == KeyCode::Char('q')
         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
     {
         app.confirm_quit = true;
+        return EventResult::Continue;
+    }
+
+    // Open the operator steering prompt from any screen.
+    if key.code == KeyCode::Char('i') {
+        app.steer_input = Some(String::new());
         return EventResult::Continue;
     }
 
@@ -164,23 +193,46 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) -> EventResult {
         return EventResult::Continue;
     }
 
-    let overlay_open = app.overlay.is_some();
-    match mouse.kind {
-        MouseEventKind::ScrollUp => {
-            if overlay_open {
-                app.scroll_up();
+    // Determine scroll direction once; routing depends on the active overlay.
+    let up = match mouse.kind {
+        MouseEventKind::ScrollUp => true,
+        MouseEventKind::ScrollDown => false,
+        _ => return EventResult::Continue,
+    };
+
+    match &app.overlay {
+        // Memory browser: scroll the modal when open, otherwise move the selection.
+        Some(Overlay::Memory) => {
+            if app.show_memory_modal {
+                if up {
+                    app.scroll_memory_modal_up();
+                } else {
+                    app.scroll_memory_modal_down();
+                }
+            } else if up {
+                app.select_prev_memory();
             } else {
-                app.move_up();
+                app.select_next_memory();
             }
         }
-        MouseEventKind::ScrollDown => {
-            if overlay_open {
+        // Scrollable text overlays drive the shared log scroll.
+        Some(Overlay::Logs | Overlay::AgentDetail(_) | Overlay::FindingDetail(_)) => {
+            if up {
+                app.scroll_up();
+            } else {
                 app.scroll_down();
+            }
+        }
+        // Help is static.
+        Some(Overlay::Help) => {}
+        // No overlay: scroll moves the focused pane's selection.
+        None => {
+            if up {
+                app.move_up();
             } else {
                 app.move_down();
             }
         }
-        _ => {}
     }
 
     EventResult::Continue
@@ -328,5 +380,52 @@ mod tests {
         assert_eq!(app.log_scroll, 6);
         handle_key_event(&mut app, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         assert_eq!(app.log_scroll, 5);
+    }
+
+    #[test]
+    fn steer_input_submit_sends_and_echoes() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(4);
+        let mut app = App::new("t", "s", None);
+        app.steer_tx = Some(tx);
+
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE),
+        );
+        assert_eq!(app.steer_input, Some(String::new()));
+
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE),
+        );
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE),
+        );
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        assert_eq!(rx.try_recv().unwrap(), "go");
+        assert!(app.steer_input.is_none());
+        assert!(app.feed.iter().any(|e| e.agent == "operator"));
+    }
+
+    #[test]
+    fn steer_input_esc_cancels() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(4);
+        let mut app = App::new("t", "s", None);
+        app.steer_tx = Some(tx);
+
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE),
+        );
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+        );
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+
+        assert!(app.steer_input.is_none());
+        assert!(rx.try_recv().is_err());
     }
 }

@@ -46,6 +46,21 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled("   ", Style::default()),
     ];
 
+    // Finished badge: makes it obvious the engagement has stopped and the
+    // timer above is frozen.
+    if app.is_finished() {
+        let (label, color) = if app.finished_success {
+            (format!("{} DONE", theme.glyphs.ok), theme.status_done)
+        } else {
+            (format!("{} ENDED", theme.glyphs.fail), theme.status_failed)
+        };
+        spans.push(Span::styled(
+            label,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled("   ", Style::default()));
+    }
+
     // Phase progress bar.
     for i in 0..PHASE_COUNT {
         let (glyph, style) = if i < current {

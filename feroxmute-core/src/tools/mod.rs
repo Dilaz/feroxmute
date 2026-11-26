@@ -1,6 +1,5 @@
 //! Tool integration module
 
-pub mod executor;
 pub mod llm_pentest_context;
 pub mod llm_probe;
 pub mod llm_scanners;
@@ -11,8 +10,8 @@ pub mod report;
 pub mod sast;
 pub mod script;
 pub mod shell;
+pub mod steering;
 
-pub use executor::{ToolDef, ToolExecution, ToolExecutor, ToolRegistry};
 pub use llm_pentest_context::LlmPentestContext;
 pub use llm_probe::{LlmProbeError, LlmProbeTool};
 pub use llm_scanners::{GarakScanTool, LlmScannerError, PromptfooScanTool, PyritAttackTool};
@@ -31,6 +30,7 @@ pub use report::{
 };
 pub use script::{RunScriptTool, ScriptError};
 pub use shell::DockerShellTool;
+pub use steering::OperatorGuidance;
 
 /// Memory entry for event updates
 #[derive(Debug, Clone)]

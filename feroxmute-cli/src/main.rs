@@ -522,11 +522,15 @@ async fn main() -> Result<()> {
         // Create channel for agent events
         let (tx, rx) = mpsc::channel::<tui::AgentEvent>(100);
 
+        // Create channel for operator steering guidance (TUI -> orchestrator)
+        let (steer_tx, steer_rx) = mpsc::channel::<String>(16);
+
         // Create cancellation token
         let cancel = CancellationToken::new();
 
         // Create TUI app with receiver
         let mut app = tui::App::new(&target, &session.id, Some(rx));
+        app.steer_tx = Some(steer_tx);
         app.theme = tui::theme::Theme::detect(args.ascii);
 
         // Add initial feed entries
@@ -659,6 +663,7 @@ async fn main() -> Result<()> {
                 container,
                 tx,
                 agent_cancel,
+                steer_rx,
                 source_path,
                 limitations,
                 instruction,

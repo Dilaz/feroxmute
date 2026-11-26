@@ -598,14 +598,12 @@ mod tests {
         session
             .mark_agent_completed("scanner")
             .expect("mark scanner");
-        session
-            .mark_agent_completed("exploit")
-            .expect("mark exploit");
+        session.mark_agent_completed("sast").expect("mark sast");
 
         let agents = session.completed_agents().expect("list");
         assert!(agents.contains(&"recon".to_string()), "missing recon");
         assert!(agents.contains(&"scanner".to_string()), "missing scanner");
-        assert!(agents.contains(&"exploit".to_string()), "missing exploit");
+        assert!(agents.contains(&"sast".to_string()), "missing sast");
         assert_eq!(agents.len(), 3);
     }
 
