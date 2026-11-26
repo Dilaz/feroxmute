@@ -46,10 +46,29 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) -> EventResult {
                 let text = buf.trim().to_string();
                 app.steer_input = None;
                 if !text.is_empty() {
-                    if let Some(tx) = &app.steer_tx {
-                        let _ = tx.try_send(text.clone());
+                    let delivery = app.steer_tx.as_ref().map(|tx| tx.try_send(text.clone()));
+                    match delivery {
+                        // No channel wired (non-interactive/tests) or queued successfully.
+                        None | Some(Ok(())) => {
+                            app.add_feed(FeedEntry::new("operator", format!("Steer: {text}")));
+                        }
+                        Some(Err(err)) => {
+                            let reason = match err {
+                                tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                                    "queue full, retry"
+                                }
+                                tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                                    "orchestrator stopped"
+                                }
+                            };
+                            app.add_feed(FeedEntry::new(
+                                "system",
+                                format!("Steer NOT delivered ({reason}): {text}"),
+                            ));
+                            // Retain the text so the operator can retry or edit it.
+                            app.steer_input = Some(text);
+                        }
                     }
-                    app.add_feed(FeedEntry::new("operator", format!("Steer: {text}")));
                 }
             }
             KeyCode::Esc => app.steer_input = None,
@@ -427,5 +446,36 @@ mod tests {
 
         assert!(app.steer_input.is_none());
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn steer_input_retains_text_when_channel_closed() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<String>(4);
+        drop(rx); // Simulate the orchestrator having stopped accepting input.
+        let mut app = App::new("t", "s", None);
+        app.steer_tx = Some(tx);
+
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE),
+        );
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE),
+        );
+        handle_key_event(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE),
+        );
+        handle_key_event(&mut app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        // Undelivered guidance is retained, not echoed as a successful steer.
+        assert_eq!(app.steer_input.as_deref(), Some("go"));
+        assert!(!app.feed.iter().any(|e| e.agent == "operator"));
+        assert!(
+            app.feed
+                .iter()
+                .any(|e| e.agent == "system" && e.message.contains("NOT delivered"))
+        );
     }
 }
